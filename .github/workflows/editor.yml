@@ -1,0 +1,34 @@
+name: Editor
+
+# Typecheck and regression tests for packages/editor. Separate from ci.yml,
+# which skips Markdown-only changes: the editor's test pages are Markdown.
+on:
+  push:
+    branches: [main]
+    paths: ["packages/editor/**", ".github/workflows/editor.yml"]
+  pull_request:
+    paths: ["packages/editor/**", ".github/workflows/editor.yml"]
+  workflow_dispatch:
+
+concurrency:
+  group: editor-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: Typecheck and test
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: packages/editor
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: packages/editor/package-lock.json
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test

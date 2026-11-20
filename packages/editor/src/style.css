@@ -1,0 +1,62 @@
+/* Base styles for page content. The app can override the custom properties. */
+.milkdown .ProseMirror {
+  --page-text: #1f2328;
+  --page-muted: #59636e;
+  --page-border: #d1d9e0;
+  --page-code-bg: #f6f8fa;
+  --page-accent: #0969da;
+
+  outline: none;
+  color: var(--page-text);
+  font: 16px/1.6 system-ui, -apple-system, "Segoe UI", sans-serif;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+@media (prefers-color-scheme: dark) {
+  .milkdown .ProseMirror {
+    --page-text: #e6edf3;
+    --page-muted: #9198a1;
+    --page-border: #3d444d;
+    --page-code-bg: #151b23;
+    --page-accent: #4493f8;
+  }
+}
+.milkdown .ProseMirror > * + * { margin-top: 0.75em; }
+.milkdown .ProseMirror :is(h1, h2, h3, h4) { line-height: 1.25; margin: 1.2em 0 0.4em; }
+.milkdown .ProseMirror h1 { font-size: 1.9em; }
+.milkdown .ProseMirror h2 { font-size: 1.45em; }
+.milkdown .ProseMirror h3 { font-size: 1.2em; }
+.milkdown .ProseMirror p { margin: 0; }
+.milkdown .ProseMirror a { color: var(--page-accent); }
+.milkdown .ProseMirror code {
+  font: 0.9em ui-monospace, SFMono-Regular, Menlo, monospace;
+  background: var(--page-code-bg);
+  padding: 0.1em 0.3em;
+  border-radius: 4px;
+}
+.milkdown .ProseMirror pre {
+  background: var(--page-code-bg);
+  padding: 12px 16px;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+.milkdown .ProseMirror pre code { background: none; padding: 0; }
+.milkdown .ProseMirror blockquote {
+  margin: 0;
+  padding-left: 1em;
+  border-left: 3px solid var(--page-border);
+  color: var(--page-muted);
+}
+.milkdown .ProseMirror :is(ul, ol) { padding-left: 1.6em; }
+.milkdown .ProseMirror li > p { margin: 0; }
+.milkdown .ProseMirror li[data-item-type="task"] { list-style: none; position: relative; }
+.milkdown .ProseMirror li[data-item-type="task"]::before {
+  content: "☐";
+  position: absolute;
+  left: -1.4em;
+}
+.milkdown .ProseMirror li[data-item-type="task"][data-checked="true"]::before { content: "☑"; }
+.milkdown .ProseMirror hr { border: 0; border-top: 1px solid var(--page-border); }
+.milkdown .ProseMirror table { border-collapse: collapse; }
+.milkdown .ProseMirror :is(th, td) { border: 1px solid var(--page-border); padding: 4px 10px; }
+.milkdown .ProseMirror img { max-width: 100%; }

@@ -17,7 +17,12 @@ git remote and resolves every conflict automatically, so users never see git.
 - Run a longer randomized soak test:
   `DOCSYNC_SIM_SEEDS=300 DOCSYNC_SIM_STEPS=150 cargo test --release --test simulation`
 
-Requires Rust 1.89+ and git 2.43+. The desktop app will bundle its own git.
+The second is the **page editor** (`packages/editor`): Milkdown, set up so
+saving a page only changes the lines someone edited. See
+[packages/editor/README.md](packages/editor/README.md); try it with
+`cd packages/editor && npm install && npm run dev`.
+
+Requires Rust 1.89+ and git 2.43+ (and Node 24+ for the editor). The desktop app will bundle its own git.
 
 ## Next
 
