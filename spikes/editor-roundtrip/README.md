@@ -33,21 +33,68 @@ Editors tested (versions pinned in `package.json`):
 - Tiptap 3.35 with the official `@tiptap/markdown` extension
 - Tiptap 3.35 with the community `tiptap-markdown` 0.9 extension
 - BlockNote 0.57 (`blocksToMarkdownLossy`)
+- Milkdown 7.23 with the commonmark and GFM presets, once with default
+  settings and once with our "house style": `-` for bullets and rules, and
+  tables without column padding
 
 ## Results
 
-| | Tiptap + `@tiptap/markdown` | Tiptap + `tiptap-markdown` | BlockNote |
-|---|---|---|---|
-| Identical after open + save | 1 / 12 | 1 / 12 | 0 / 12 |
-| Rewritten, renders the same | 7 | 6 | 2 |
-| Rendering changed | 1 | 3 | 7 |
-| Visible text changed | 3 | 2 | 3 |
-| Changes again on a second save | 1 (front matter only) | 0 | 3 |
-| One-word edit changes exactly 1 line | 10 / 12 | 11 / 11 | 9 / 12 |
-| Keeps hard-wrapped lines | yes | no, joins them | no, adds `\` breaks |
+| | Tiptap + `@tiptap/markdown` | Tiptap + `tiptap-markdown` | BlockNote | Milkdown | Milkdown, house style |
+|---|---|---|---|---|---|
+| Identical after open + save | 1 / 12 | 1 / 12 | 0 / 12 | 1 / 12 | **3 / 12** |
+| Rewritten, renders the same | 7 | 6 | 2 | 10 | 8 |
+| Rendering changed | 1 | 3 | 7 | 0 | **0** |
+| Visible text changed | 3 | 2 | 3 | 1 | **1** (front matter) |
+| Changes again on a second save | 1 | 0 | 3 | 0 | **0** |
+| One-word edit changes exactly 1 line | 10 / 12 | 11 / 11 | 9 / 12 | 10 / 11 | **11 / 11** |
+| Keeps hard-wrapped lines | yes | no, joins them | no, adds `\` breaks | yes | yes |
+| Keeps raw HTML, comments, footnotes | no | no | partly | yes | yes |
 
-None of the editors round-trips Markdown untouched. As expected, every one
-rewrites pages into its own style.
+None of the editors round-trips every page untouched: each rewrites pages
+into one consistent style. Milkdown is the only one whose rewrites never
+change what a page shows (front matter aside).
+
+### Milkdown, house style: recommended
+
+Milkdown reads and writes Markdown through remark, a widely used Markdown
+library, instead of its own converter. That's why it does so much better:
+
+- Raw HTML, HTML comments and footnotes are kept exactly. `08-html-footnotes.md`
+  comes back byte for byte.
+- No escaping bugs. `1986\.`, `snake_case_name` and `C:\Users\sam` all stay
+  as written. It adds only two harmless escapes (`5 \* 3`, `AT\&T`).
+- Wrapped lines stay wrapped, so line-by-line merging keeps working.
+- Its output style is a remark setting, not hard-coded. Two settings (bullets
+  as `-`, and `tablePipeAlign: false` for tables) make our files match the
+  most common style. Without padding, editing one table cell changes one
+  line; with padding (the default) it changed 10.
+
+The remaining rewrites are a one-time switch to a consistent style that
+renders the same: `#` headings instead of underlined ones, fenced code,
+renumbered lists (`1. 1. 1.` becomes `1. 2. 3.`), and inline links instead of
+reference links.
+
+The one real loss is front matter, which becomes a horizontal rule and a
+heading. That doesn't affect our own format, which keeps metadata in
+`meta.json`, but the importer must move front matter into `meta.json` before
+a page reaches the editor.
+
+### Tiptap + `@tiptap/markdown`: usable, but needs fixes
+
+It keeps line wrapping and is stable after the first save, but:
+
+1. **Raw HTML, HTML comments and footnotes are lost.** That's data loss for
+   imported pages and for pages that agents edit.
+2. **Escaping bugs.** `1986\.` loses its escape and turns into a numbered list
+   starting at 1986 the next time the page is opened. It also adds
+   unnecessary escapes (`snake\_case\_name`, `C:\\Users`), which break plain
+   text search.
+3. **Tables are padded,** and it writes a malformed delimiter row and extra
+   blank lines.
+4. **The trailing newline is inconsistent.**
+
+All four can be fixed with our own extensions, but Milkdown gets them right
+without any.
 
 ### BlockNote: ruled out
 
@@ -57,58 +104,47 @@ rewrites pages into its own style.
   code block into a normal paragraph.
 - 3 files change again on a second save.
 
-Its own API calls the export "lossy", and this test confirms it. Using
-BlockNote would mean writing our own Markdown serializer for it.
+Its own API calls the export "lossy", and this test confirms it.
 
 ### Community `tiptap-markdown`: ruled out
 
 - Joins hard-wrapped paragraphs into one long line. Git merges by line, so two
   people editing different sentences of one paragraph would always conflict.
 - Drops table column alignment, and drops raw HTML even with `html: true`.
-- It's a small, one-maintainer project, and the official extension below
-  replaces it.
-
-### Tiptap + `@tiptap/markdown`: usable, with fixes
-
-Most of its changes are a one-time switch to a consistent style that renders
-the same: `-` bullets, `*emphasis*`, `#` headings, fenced code, `---` rules,
-renumbered lists, and inline links instead of reference links. It keeps
-line wrapping, and after that first save a one-word edit changes exactly one
-line. That's the "workable" outcome: convert each page once, and from then on
-only real edits show up as changes.
-
-Things that need fixing before we rely on it, roughly in order of importance:
-
-1. **Raw HTML, HTML comments and footnotes are lost.** `<details>`, `<kbd>`,
-   `<!-- -->` and `[^1]` footnotes are dropped or escaped. That is data loss for
-   imported pages and for pages that agents edit. Fix: a node that keeps raw
-   HTML as-is, plus a footnote extension.
-2. **Escaping bugs.** `1986\.` loses its escape and turns into a numbered list
-   starting at 1986 the next time the page is opened. It also adds
-   unnecessary escapes: `snake\_case\_name`, `5 \* 3`, `C:\\Users`. Those
-   render the same, but they make the raw files harder to read and break plain
-   text search for `snake_case_name`.
-3. **Tables are padded to column width.** Editing one cell so a column gets
-   wider rewrites every row of the table (10 lines for a one-word edit in
-   `04-table.md`). It also writes a malformed delimiter row and extra blank
-   lines. Fix: our own table serializer without padding (extensions can
-   override `renderMarkdown`).
-4. **Trailing newline is inconsistent.** Sometimes missing, sometimes doubled.
-   Fix: always end the file with exactly one newline when saving.
-5. **Front matter is destroyed and unstable.** This doesn't affect our own
-   format, which keeps metadata in `meta.json`, but the importer must move
-   front matter into `meta.json` before a page reaches the editor.
+- The official extension above replaces it.
 
 ## Recommendation
 
-Use **Tiptap with `@tiptap/markdown`**. This doesn't change the sync design.
+Use **Milkdown with the house-style settings**. This doesn't change the sync
+design.
+
+Why it fits beyond these numbers: in Milkdown, every kind of block has to
+say how it's written as Markdown, through remark's syntax tree. That's
+exactly our constraint. Every Notion-style feature we add (callouts, toggles,
+page links, columns) needs a Markdown form anyway, and Milkdown makes us
+define it up front.
+
+Trade-offs compared with Tiptap:
+
+- **Smaller ecosystem.** Tiptap has more ready-made extensions, a company
+  behind it and much more usage. Milkdown is mostly the work of one main
+  maintainer. Both sit on ProseMirror and Milkdown on remark, which are large,
+  well-maintained projects, so the risk is limited: in the worst case we
+  maintain a fork of a fairly thin layer.
+- **React integration needs more glue.** Tiptap has first-class React node
+  views. Milkdown doesn't depend on any framework, and React node views go
+  through an adapter (`@prosemirror-adapter/react`, by the same author).
+- **Notion-style UI.** Milkdown has plugins for a slash menu, a block drag
+  handle, tooltips and uploads, and Crepe, a ready-made editor built from
+  them. That's a head start comparable to Tiptap's.
+
+Rules that apply whichever editor we use:
 
 - **Only write a page when the user actually changed it.** Opening a page
   must never save it. Then the one-time style conversion only happens on a
   page's first real edit, or on import.
-- **Fix items 1–4 above** with our own extensions and a thin save wrapper, and
-  turn this corpus into a regression test for them. That's days of work, not
-  a custom editor.
+- **Turn this corpus into a regression test** for the editor package, and add
+  pages for each new block type.
 - **Add a safety check on save.** Re-parse what we're about to write. If its
   visible text differs from the editor's document, keep the old file and log
   it rather than lose content.

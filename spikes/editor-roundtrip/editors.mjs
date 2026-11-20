@@ -12,6 +12,16 @@ import { TableKit } from "@tiptap/extension-table";
 import { TaskList, TaskItem } from "@tiptap/extension-list";
 import Image from "@tiptap/extension-image";
 import { ServerBlockNoteEditor } from "@blocknote/server-util";
+import {
+  Editor as MilkdownEditor,
+  parserCtx,
+  remarkStringifyOptionsCtx,
+  rootCtx,
+  schemaCtx,
+  serializerCtx,
+} from "@milkdown/kit/core";
+import { commonmark } from "@milkdown/kit/preset/commonmark";
+import { gfm, remarkGFMPlugin } from "@milkdown/kit/preset/gfm";
 
 // The Tiptap extensions a Notion-like page editor would realistically use.
 const tiptapExtensions = () => [
@@ -24,10 +34,10 @@ const tiptapExtensions = () => [
 
 const WORD = /\b[a-z]{5,}\b/;
 
-// Tiptap JSON: { type, content: [...], text, marks: [...] }
-function editTiptapWord(doc) {
+// ProseMirror JSON (Tiptap and Milkdown): { type, content: [...], text, marks: [...] }
+function editProseMirrorWord(doc) {
   const visit = (node, inParagraph) => {
-    if (node.type === "text" && inParagraph && !node.marks?.some((m) => m.type === "code")) {
+    if (node.type === "text" && inParagraph && !node.marks?.some((m) => m.type === "code" || m.type === "inlineCode")) {
       const match = node.text.match(WORD);
       if (match) {
         node.text = node.text.replace(match[0], "EDITED");
@@ -76,7 +86,7 @@ function tiptapOfficial() {
       editor.commands.setContent(doc);
       return editor.getMarkdown();
     },
-    editWord: editTiptapWord,
+    editWord: editProseMirrorWord,
   };
 }
 
@@ -96,7 +106,7 @@ function tiptapCommunity() {
       editor.commands.setContent(doc);
       return editor.storage.markdown.getMarkdown();
     },
-    editWord: editTiptapWord,
+    editWord: editProseMirrorWord,
   };
 }
 
@@ -115,4 +125,43 @@ function blockNote() {
   };
 }
 
-export const editors = [tiptapOfficial(), tiptapCommunity(), blockNote()];
+// `houseStyle` sets remark's output options to the style we'd pick for
+// pages: `-` bullets and rules, and tables without column padding, so editing
+// one cell changes one line.
+async function milkdown({ houseStyle = false } = {}) {
+  const editor = await MilkdownEditor.make()
+    .config((ctx) => {
+      ctx.set(rootCtx, document.createElement("div"));
+      if (houseStyle) {
+        ctx.update(remarkStringifyOptionsCtx, (options) => ({
+          ...options,
+          bullet: "-",
+          rule: "-",
+        }));
+        ctx.set(remarkGFMPlugin.options.key, { tablePipeAlign: false });
+      }
+    })
+    .use(commonmark)
+    .use(gfm)
+    .create();
+  const run = (fn) => editor.action(fn);
+  return {
+    name: houseStyle ? "Milkdown, house style" : "Milkdown (commonmark + gfm)",
+    id: houseStyle ? "milkdown-house-style" : "milkdown",
+    async open(md) {
+      return run((ctx) => ctx.get(parserCtx)(md).toJSON());
+    },
+    async save(doc) {
+      return run((ctx) => ctx.get(serializerCtx)(ctx.get(schemaCtx).nodeFromJSON(doc)));
+    },
+    editWord: editProseMirrorWord,
+  };
+}
+
+export const editors = [
+  tiptapOfficial(),
+  tiptapCommunity(),
+  blockNote(),
+  await milkdown(),
+  await milkdown({ houseStyle: true }),
+];

@@ -851,3 +851,409 @@ Summary: 7 rendering changed, 3 visible text changed, 2 rewritten, renders the s
 ```
 
 </details>
+
+## Milkdown (commonmark + gfm)
+
+| File | Open + save | Lines changed | Saving again changes it | Lines changed by a one-word edit |
+|---|---|---:|---|---:|
+| 01-meeting-notes.md | rewritten, renders the same | 6 | no | 2 |
+| 02-lists.md | rewritten, renders the same | 12 | no | 2 |
+| 03-code.md | rewritten, renders the same | 10 | no | 2 |
+| 04-table.md | rewritten, renders the same | 10 | no | 10 |
+| 05-wrapped-prose.md | rewritten, renders the same | 2 | no | 2 |
+| 06-links-images.md | rewritten, renders the same | 6 | no | 2 |
+| 07-frontmatter.md | **visible text changed** | 7 | no | n/a |
+| 08-html-footnotes.md | identical | 0 | no | 2 |
+| 09-quotes-rules-setext.md | rewritten, renders the same | 6 | no | 2 |
+| 10-escaping.md | rewritten, renders the same | 4 | no | 2 |
+| 11-agent-written.md | rewritten, renders the same | 8 | no | 2 |
+| 12-already-plain.md | rewritten, renders the same | 6 | no | 2 |
+
+Summary: 10 rewritten, renders the same, 1 visible text changed, 1 identical.
+
+<details><summary>Diffs</summary>
+
+### 01-meeting-notes.md
+
+```diff
++++ saved/01-meeting-notes.md
+@@ -13,4 +13,4 @@
+ 
+-- Sam: draft the announcement
+-- Priya: fix the sign-in flow
+-- Jordan: book the venue
++* Sam: draft the announcement
++* Priya: fix the sign-in flow
++* Jordan: book the venue
+
+```
+
+### 02-lists.md
+
+```diff
++++ saved/02-lists.md
+@@ -13,4 +13,4 @@
+ 1. first
+-1. second
+-1. third
++2. second
++3. third
+ 
+@@ -23,5 +23,5 @@
+ 
+-- The first item has a whole paragraph of its own.
++* The first item has a whole paragraph of its own.
+ 
+-- So does the second one.
++* So does the second one.
+ 
+@@ -29,3 +29,3 @@
+ 
+-- [ ] write the spec
+-- [x] book the room
++* [ ] write the spec
++* [x] book the room
+
+```
+
+### 03-code.md
+
+```diff
++++ saved/03-code.md
+@@ -8,5 +8,5 @@
+ 
+-~~~python
++```python
+ print("tildes")
+-~~~
++```
+ 
+@@ -14,4 +14,6 @@
+ 
+-    $ cargo test
+-    $ cargo run
++```
++$ cargo test
++$ cargo run
++```
+ 
+
+```
+
+### 04-table.md
+
+```diff
++++ saved/04-table.md
+@@ -2,7 +2,7 @@
+ 
+-| Plan | Price | Seats |
+-|:-----|------:|:-----:|
+-| Free | $0 | 1 |
+-| Team | $8 | 10 |
+-| Business | $20 | unlimited |
++| Plan     | Price |   Seats   |
++| :------- | ----: | :-------: |
++| Free     |    $0 |     1     |
++| Team     |    $8 |     10    |
++| Business |   $20 | unlimited |
+ 
+
+```
+
+### 05-wrapped-prose.md
+
+```diff
++++ saved/05-wrapped-prose.md
+@@ -7,3 +7,3 @@
+ 
+-This line ends with two spaces for a hard break  
++This line ends with two spaces for a hard break\
+ and this one follows it.
+
+```
+
+### 06-links-images.md
+
+```diff
++++ saved/06-links-images.md
+@@ -2,8 +2,6 @@
+ 
+-An inline [link](https://example.com "Example title"), a [reference link][ref],
++An inline [link](https://example.com "Example title"), a [reference link](https://example.com/reference),
+ and an autolink: <https://example.com/autolink>. A bare URL:
+-https://example.com/bare.
++<https://example.com/bare>.
+ 
+ ![A diagram](assets/diagram.png "Architecture")
+-
+-[ref]: https://example.com/reference
+
+```
+
+### 07-frontmatter.md
+
+```diff
++++ saved/07-frontmatter.md
+@@ -1,5 +1,6 @@
+----
++***
++
+ title: Imported from Obsidian
+-tags: [notes, import]
+----
++tags: \[notes, import]
++----------------------
+ 
+
+```
+
+### 09-quotes-rules-setext.md
+
+```diff
++++ saved/09-quotes-rules-setext.md
+@@ -1,6 +1,4 @@
+-Setext heading
+-==============
++# Setext heading
+ 
+-Second level
+-------------
++## Second level
+ 
+
+```
+
+### 10-escaping.md
+
+```diff
++++ saved/10-escaping.md
+@@ -4,3 +4,3 @@
+ 
+-Prices: 5 * 3 = 15, and 2*3*4 = 24.
++Prices: 5 \* 3 = 15, and 2*3*4 = 24.
+ 
+@@ -8,3 +8,3 @@
+ 
+-Use <angle brackets> and AT&T in text.
++Use <angle brackets> and AT\&T in text.
+ 
+
+```
+
+### 11-agent-written.md
+
+```diff
++++ saved/11-agent-written.md
+@@ -12,6 +12,6 @@
+ 
+-| Risk | Likelihood | Mitigation |
+-|---|---|---|
+-| Lost attachments | Low | Checksums before and after |
+-| Slow export | Medium | Run it overnight |
++| Risk             | Likelihood | Mitigation                 |
++| ---------------- | ---------- | -------------------------- |
++| Lost attachments | Low        | Checksums before and after |
++| Slow export      | Medium     | Run it overnight           |
+ 
+
+```
+
+### 12-already-plain.md
+
+```diff
++++ saved/12-already-plain.md
+@@ -4,5 +4,5 @@
+ 
+-- one
+-- two
+-- three
++* one
++* two
++* three
+ 
+
+```
+
+</details>
+
+## Milkdown, house style
+
+| File | Open + save | Lines changed | Saving again changes it | Lines changed by a one-word edit |
+|---|---|---:|---|---:|
+| 01-meeting-notes.md | identical | 0 | no | 2 |
+| 02-lists.md | rewritten, renders the same | 14 | no | 2 |
+| 03-code.md | rewritten, renders the same | 10 | no | 2 |
+| 04-table.md | rewritten, renders the same | 2 | no | 2 |
+| 05-wrapped-prose.md | rewritten, renders the same | 2 | no | 2 |
+| 06-links-images.md | rewritten, renders the same | 6 | no | 2 |
+| 07-frontmatter.md | **visible text changed** | 5 | no | n/a |
+| 08-html-footnotes.md | identical | 0 | no | 2 |
+| 09-quotes-rules-setext.md | rewritten, renders the same | 8 | no | 2 |
+| 10-escaping.md | rewritten, renders the same | 4 | no | 2 |
+| 11-agent-written.md | rewritten, renders the same | 2 | no | 2 |
+| 12-already-plain.md | identical | 0 | no | 2 |
+
+Summary: 3 identical, 8 rewritten, renders the same, 1 visible text changed.
+
+<details><summary>Diffs</summary>
+
+### 02-lists.md
+
+```diff
++++ saved/02-lists.md
+@@ -4,7 +4,7 @@
+ 
+-* apples
+-* pears
+-  * conference pears
+-  * williams pears
+-* plums
++- apples
++- pears
++  - conference pears
++  - williams pears
++- plums
+ 
+@@ -13,4 +13,4 @@
+ 1. first
+-1. second
+-1. third
++2. second
++3. third
+ 
+
+```
+
+### 03-code.md
+
+```diff
++++ saved/03-code.md
+@@ -8,5 +8,5 @@
+ 
+-~~~python
++```python
+ print("tildes")
+-~~~
++```
+ 
+@@ -14,4 +14,6 @@
+ 
+-    $ cargo test
+-    $ cargo run
++```
++$ cargo test
++$ cargo run
++```
+ 
+
+```
+
+### 04-table.md
+
+```diff
++++ saved/04-table.md
+@@ -3,3 +3,3 @@
+ | Plan | Price | Seats |
+-|:-----|------:|:-----:|
++| :- | -: | :-: |
+ | Free | $0 | 1 |
+
+```
+
+### 05-wrapped-prose.md
+
+```diff
++++ saved/05-wrapped-prose.md
+@@ -7,3 +7,3 @@
+ 
+-This line ends with two spaces for a hard break  
++This line ends with two spaces for a hard break\
+ and this one follows it.
+
+```
+
+### 06-links-images.md
+
+```diff
++++ saved/06-links-images.md
+@@ -2,8 +2,6 @@
+ 
+-An inline [link](https://example.com "Example title"), a [reference link][ref],
++An inline [link](https://example.com "Example title"), a [reference link](https://example.com/reference),
+ and an autolink: <https://example.com/autolink>. A bare URL:
+-https://example.com/bare.
++<https://example.com/bare>.
+ 
+ ![A diagram](assets/diagram.png "Architecture")
+-
+-[ref]: https://example.com/reference
+
+```
+
+### 07-frontmatter.md
+
+```diff
++++ saved/07-frontmatter.md
+@@ -1,5 +1,6 @@
+ ---
++
+ title: Imported from Obsidian
+-tags: [notes, import]
+----
++tags: \[notes, import]
++----------------------
+ 
+
+```
+
+### 09-quotes-rules-setext.md
+
+```diff
++++ saved/09-quotes-rules-setext.md
+@@ -1,6 +1,4 @@
+-Setext heading
+-==============
++# Setext heading
+ 
+-Second level
+-------------
++## Second level
+ 
+@@ -10,3 +8,3 @@
+ 
+-***
++---
+ 
+
+```
+
+### 10-escaping.md
+
+```diff
++++ saved/10-escaping.md
+@@ -4,3 +4,3 @@
+ 
+-Prices: 5 * 3 = 15, and 2*3*4 = 24.
++Prices: 5 \* 3 = 15, and 2*3*4 = 24.
+ 
+@@ -8,3 +8,3 @@
+ 
+-Use <angle brackets> and AT&T in text.
++Use <angle brackets> and AT\&T in text.
+ 
+
+```
+
+### 11-agent-written.md
+
+```diff
++++ saved/11-agent-written.md
+@@ -13,3 +13,3 @@
+ | Risk | Likelihood | Mitigation |
+-|---|---|---|
++| - | - | - |
+ | Lost attachments | Low | Checksums before and after |
+
+```
+
+</details>
