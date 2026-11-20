@@ -281,7 +281,7 @@ impl Oracle {
         // A value that some later commit overwrote (on any device, or by a
         // newest-wins merge) is no longer content a deletion could lose.
         let overwritten = |commit: &Oid, field: &Field| {
-            let out = std::process::Command::new("git")
+            let out = common::git_command()
                 .arg("-C")
                 .arg(root)
                 .args(["rev-list", "--ancestry-path", &format!("{commit}..HEAD")])
