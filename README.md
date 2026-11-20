@@ -21,6 +21,4 @@ Requires Rust 1.89+ and git 2.43+. The desktop app will bundle its own git.
 
 ## Next
 
-1. Desktop app (Tauri + React) on top of `docsync`
-2. MCP server so AI assistants can read, search and edit the workspace
-3. Installers, onboarding, GitHub/GitLab sign-in
+The plan, in order, with what is done: [docs/roadmap.md](docs/roadmap.md).
