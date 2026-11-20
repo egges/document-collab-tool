@@ -15,6 +15,28 @@ npm run dev        # demo: edit a page and see exactly what would be saved
 
 ## Using it
 
+In React, `<PageEditorView>` is the editor with its menus:
+
+- **Toolbar** above a text selection: turn into (text, headings, lists, to-do,
+  quote, code), bold, italic, strikethrough, code and link.
+- **Slash menu**: type `/` on an empty line, filter by typing, pick with the
+  arrow keys and Enter (or the mouse), close with Escape.
+- **To-dos**: click the box to tick an item.
+
+```tsx
+import { PageEditorView } from "@document-collab-tool/editor/react";
+import "@document-collab-tool/editor/style.css";
+
+<PageEditorView
+  markdown={pageMd}                          // changing it loads the new version
+  onReady={(editor) => (editorRef.current = editor)}
+  onDirtyChange={(dirty) => showUnsaved(dirty)}
+/>
+```
+
+Saving goes through the editor object from `onReady`, the same as without
+React:
+
 ```ts
 import { createPageEditor, SaveRefusedError } from "@document-collab-tool/editor";
 import "@document-collab-tool/editor/style.css";
@@ -39,6 +61,12 @@ try {
 editor.load(newerPageMd);                 // after sync pulled a newer version
 ```
 
+The menus are built on the framework-free core: `editor.commands` (toggle a
+format, set a block type, set a link, tick a to-do) and `formatState()` /
+`slashState()` for what's active. Those are tested without a browser, so the
+React layer stays thin. Theme it by overriding the `--page-*` custom
+properties on `.page-editor` in `style.css`.
+
 The editor never writes files. It only produces the Markdown and leaves
 writing, timing and syncing to the app.
 
@@ -52,6 +80,9 @@ writing, timing and syncing to the app.
 - **Front matter is kept as-is.** The editor can't show YAML front matter, so
   it's set aside on open and put back on save.
 - **Exactly one newline at the end of the file.**
+- **Empty lines aren't saved.** An empty paragraph (pressing Enter twice) is
+  spacing in the editor, but Markdown can't store it: Milkdown would write a
+  `<br />` line. If the only change is an empty line, `save()` returns null.
 - **Safety check on every save.** The Markdown is read back before it's
   returned. If it would show less than the editor does (a missing paragraph,
   image or HTML element, or changed text), `save()` throws `SaveRefusedError`
@@ -68,6 +99,11 @@ page written by an AI agent. For each one the tests check that:
 - saving again changes nothing,
 - opening the page doesn't mark it as changed,
 - a one-word edit changes exactly one line.
+
+`test/commands.test.ts` checks the Markdown each toolbar and menu command
+saves, and `test/react.test.tsx` checks the React menus: one editor under
+StrictMode, the toolbar formatting a selection, and the slash menu's
+filtering, keyboard navigation and Escape.
 
 When you add a block type, add an example page that uses it. When a change to
 the output is deliberate, update the reviewed output with `npx vitest run -u`

@@ -14,7 +14,8 @@ export function visibleContent(doc: Node): string[] {
   doc.descendants((node) => {
     if (node.isTextblock) {
       const text = node.textBetween(0, node.content.size, "\n", describeAtom);
-      out.push(`${node.type.name}: ${text}`);
+      // An empty paragraph shows nothing, and isn't saved (see withoutEmptyParagraphs).
+      if (text !== "" || node.type.name !== "paragraph") out.push(`${node.type.name}: ${text}`);
       return false;
     }
     if (node.isAtom) {

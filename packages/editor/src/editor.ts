@@ -15,7 +15,8 @@ import { $prose } from "@milkdown/kit/utils";
 import type { Node } from "@milkdown/kit/prose/model";
 import type { EditorView } from "@milkdown/kit/prose/view";
 import { SaveRefusedError, findLostContent } from "./check.ts";
-import { configureHouseStyle, joinPage, splitFrontMatter } from "./markdown.ts";
+import { type Commands, createCommands } from "./commands.ts";
+import { configureHouseStyle, joinPage, splitFrontMatter, withoutEmptyParagraphs } from "./markdown.ts";
 
 export interface PageEditorOptions {
   /** Element the editor is mounted in. */
@@ -24,6 +25,10 @@ export interface PageEditorOptions {
   markdown: string;
   /** Called whenever the page goes from unchanged to changed, or back. */
   onDirtyChange?: (dirty: boolean) => void;
+  /** Called after every change to the document or the selection. */
+  onUpdate?: (view: EditorView) => void;
+  /** Gets key presses first; return true to stop the editor handling one (for menus). */
+  handleKeyDown?: (event: KeyboardEvent) => boolean;
 }
 
 export interface PageEditor {
@@ -44,6 +49,8 @@ export interface PageEditor {
   markSaved(): void;
   /** Replaces the page, for example after sync pulled a newer version. Clears undo history. */
   load(markdown: string): void;
+  /** Formatting commands, for toolbars and menus. */
+  readonly commands: Commands;
   /** The ProseMirror view, for UI built around the editor. */
   readonly view: EditorView;
   destroy(): Promise<void>;
@@ -53,10 +60,17 @@ async function createMilkdown(
   root: HTMLElement,
   body: string,
   onUpdate: () => void = () => {},
+  handleKeyDown?: (event: KeyboardEvent) => boolean,
 ): Promise<Editor> {
   // Runs synchronously after every change, unlike Milkdown's listener plugin,
   // so `dirty` is always current.
-  const updates = $prose(() => new Plugin({ view: () => ({ update: onUpdate }) }));
+  const updates = $prose(
+    () =>
+      new Plugin({
+        view: () => ({ update: onUpdate }),
+        props: { handleKeyDown: handleKeyDown && ((_view, event) => handleKeyDown(event)) },
+      }),
+  );
   return Editor.make()
     .config((ctx) => {
       ctx.set(rootCtx, root);
@@ -74,11 +88,13 @@ async function createMilkdown(
 export async function createPageEditor(options: PageEditorOptions): Promise<PageEditor> {
   let { frontMatter, body } = splitFrontMatter(options.markdown);
   let baseline: Node | null = null; // set once the editor exists
-  let pending: Node | null = null;
+  let pending: { doc: Node; markdown: string } | null = null;
+  let onDisk = options.markdown; // the file as last loaded or saved
   let dirty = false;
 
   const updateDirty = () => {
     if (!baseline) return;
+    options.onUpdate?.(view);
     const now = !view.state.doc.eq(baseline);
     if (now !== dirty) {
       dirty = now;
@@ -86,11 +102,12 @@ export async function createPageEditor(options: PageEditorOptions): Promise<Page
     }
   };
 
-  const editor = await createMilkdown(options.root, body, updateDirty);
+  const editor = await createMilkdown(options.root, body, updateDirty, options.handleKeyDown);
   const view = editor.action((ctx) => ctx.get(editorViewCtx));
   const parse = editor.action((ctx) => ctx.get(parserCtx));
   const serialize = editor.action((ctx) => ctx.get(serializerCtx));
   baseline = view.state.doc;
+  const commands = createCommands(editor);
 
   return {
     get dirty() {
@@ -99,21 +116,29 @@ export async function createPageEditor(options: PageEditorOptions): Promise<Page
     get view() {
       return view;
     },
+    commands,
     save() {
       const doc = view.state.doc;
       if (doc.eq(baseline!)) return null;
-      const markdown = serialize(doc);
-      const lost = findLostContent(doc, parse(markdown));
+      const out = serialize(withoutEmptyParagraphs(doc));
+      const lost = findLostContent(doc, parse(out));
       if (lost) throw new SaveRefusedError(lost);
-      pending = doc;
-      return joinPage(frontMatter, markdown);
+      const markdown = joinPage(frontMatter, out);
+      // For example when the only change is an empty line.
+      if (markdown === onDisk) return null;
+      pending = { doc, markdown };
+      return markdown;
     },
     markSaved() {
-      if (pending) baseline = pending;
+      if (pending) {
+        baseline = pending.doc;
+        onDisk = pending.markdown;
+      }
       pending = null;
       updateDirty();
     },
     load(markdown) {
+      onDisk = markdown;
       ({ frontMatter, body } = splitFrontMatter(markdown));
       const doc = parse(body);
       view.updateState(EditorState.create({ doc, plugins: view.state.plugins }));
@@ -138,7 +163,7 @@ export async function formatPage(markdown: string): Promise<string> {
   try {
     return editor.action((ctx) => {
       const doc = ctx.get(parserCtx)(body);
-      const out = ctx.get(serializerCtx)(doc);
+      const out = ctx.get(serializerCtx)(withoutEmptyParagraphs(doc));
       const lost = findLostContent(doc, ctx.get(parserCtx)(out));
       if (lost) throw new SaveRefusedError(lost);
       return joinPage(frontMatter, out);

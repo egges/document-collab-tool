@@ -50,6 +50,18 @@ describe("saving", () => {
     await editor.destroy();
   });
 
+  test("empty lines are not saved, and an edit that only adds one saves nothing", async () => {
+    const editor = await open("One.\n\nTwo words here.\n");
+    const { view } = editor;
+    const empty = () => view.state.schema.nodes.paragraph.create();
+    view.dispatch(view.state.tr.insert(view.state.doc.firstChild!.nodeSize, empty()));
+    expect(editor.dirty).toBe(true);
+    expect(editor.save()).toBeNull(); // same bytes as on disk
+    editOneWord(editor.view);
+    expect(editor.save()).toBe("One.\n\nTwo EDITED here.\n");
+    await editor.destroy();
+  });
+
   test("load replaces the page and resets the baseline", async () => {
     const editor = await open("Old words here.\n");
     editOneWord(editor.view);

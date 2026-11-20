@@ -43,3 +43,4 @@ main { display: grid; grid-template-columns: 1fr 1fr; min-height: calc(100vh - 5
 dialog { border: 1px solid var(--border); border-radius: 8px; background: var(--bg); color: var(--text); width: min(640px, 92vw); }
 dialog textarea { width: 100%; font: 13px ui-monospace, monospace; background: var(--panel); color: var(--text); border: 1px solid var(--border); border-radius: 6px; }
 dialog menu { display: flex; justify-content: flex-end; gap: 8px; padding: 0; }
+.pane h2 .hint { text-transform: none; letter-spacing: 0; font-weight: 400; }
