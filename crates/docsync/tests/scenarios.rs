@@ -443,7 +443,7 @@ fn push_race_is_retried() {
     let b_root = b.root().to_path_buf();
     let url = net.url();
     a.faults.before_next(Op::Push, move || {
-        let out = std::process::Command::new("git")
+        let out = common::git_command()
             .arg("-C")
             .arg(&b_root)
             .args(["push", "-q", &url, "HEAD:refs/heads/main"])

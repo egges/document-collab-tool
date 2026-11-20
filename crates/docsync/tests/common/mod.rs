@@ -16,6 +16,16 @@ use docsync::text_merge::has_git_conflict_markers;
 use docsync::{CliGit, Error, ManualClock, Result, SyncConfig, SyncEngine, SyncReport, Workspace};
 use tempfile::TempDir;
 
+/// A raw `git` command (same binary as [`real_git`]) for test setup and
+/// inspection, with the user's own git configuration ignored.
+pub fn git_command() -> Command {
+    let null_device = if cfg!(windows) { "NUL" } else { "/dev/null" };
+    let mut cmd = Command::new(real_git().binary());
+    cmd.env("GIT_CONFIG_GLOBAL", null_device)
+        .env("GIT_CONFIG_NOSYSTEM", "1");
+    cmd
+}
+
 pub fn real_git() -> CliGit {
     let git = match std::env::var_os("DOCSYNC_TEST_GIT") {
         Some(path) => CliGit::new(path),
@@ -318,11 +328,9 @@ impl Net {
     pub fn new() -> Self {
         let dir = tempfile::tempdir().unwrap();
         let remote = dir.path().join("remote.git");
-        let status = Command::new("git")
+        let status = git_command()
             .args(["init", "-q", "--bare", "-b", "main"])
             .arg(&remote)
-            .env("GIT_CONFIG_GLOBAL", "/dev/null")
-            .env("GIT_CONFIG_NOSYSTEM", "1")
             .status()
             .unwrap();
         assert!(status.success());

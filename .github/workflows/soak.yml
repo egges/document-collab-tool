@@ -1,0 +1,36 @@
+name: Sync soak test
+
+# A long randomized simulation run: many more seeds and steps than the
+# per-commit CI run. Runs nightly and on demand.
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: Number of seeds
+        default: "200"
+      steps:
+        description: Actions per seed
+        default: "150"
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  simulation:
+    name: Simulation (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --release --locked --test simulation
+        env:
+          DOCSYNC_SIM_SEEDS: ${{ inputs.seeds || '200' }}
+          DOCSYNC_SIM_STEPS: ${{ inputs.steps || '150' }}
