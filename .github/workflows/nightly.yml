@@ -1,0 +1,93 @@
+name: Nightly
+
+# Heavier checks, run once a night, but only when main has new commits
+# since the last nightly run, to save Actions minutes:
+# - a long randomized sync simulation (Linux)
+# - the full test suite on Windows (with a shorter simulation)
+# macOS is not run here: its minutes count 10x, and development happens on
+# macOS. Start it by hand ("Run workflow" -> include_macos) when needed.
+on:
+  schedule:
+    - cron: "17 2 * * *"
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: Simulation seeds for the soak run
+        default: "100"
+      steps:
+        description: Actions per seed for the soak run
+        default: "150"
+      include_macos:
+        description: Also run the test suite on macOS (costs 10x minutes)
+        type: boolean
+        default: false
+
+concurrency:
+  group: nightly
+  cancel-in-progress: false
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: "1"
+
+jobs:
+  changes:
+    name: New commits since last run?
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      actions: read
+    outputs:
+      run: ${{ steps.check.outputs.run }}
+    steps:
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "run=true" >> "$GITHUB_OUTPUT"; exit 0
+          fi
+          last=$(gh run list --repo "${{ github.repository }}" --workflow nightly.yml \
+            --branch main --status completed --limit 1 --json headSha --jq '.[0].headSha // ""')
+          echo "last nightly ran on: ${last:-<none>}, main is at: ${{ github.sha }}"
+          if [ "$last" = "${{ github.sha }}" ]; then
+            echo "run=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "run=true" >> "$GITHUB_OUTPUT"
+          fi
+
+  soak:
+    name: Sync soak test (Linux)
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: cargo test --release --locked --test simulation
+        env:
+          DOCSYNC_SIM_SEEDS: ${{ inputs.seeds || '100' }}
+          DOCSYNC_SIM_STEPS: ${{ inputs.steps || '150' }}
+
+  platforms:
+    name: Test (${{ matrix.os }})
+    needs: changes
+    if: needs.changes.outputs.run == 'true'
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+    strategy:
+      fail-fast: false
+      matrix:
+        os: ${{ fromJSON(inputs.include_macos && '["windows-latest","macos-latest"]' || '["windows-latest"]') }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - run: git --version
+      # Release build: the tests spend their time in git processes, but
+      # optimized code still trims the in-process work.
+      - run: cargo test --release --locked
+        env:
+          DOCSYNC_SIM_SEEDS: "8"
