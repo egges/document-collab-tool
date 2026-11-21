@@ -15,7 +15,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@milkdown/kit": "7.23.0"
+    "@milkdown/kit": "7.23.0",
+    "lowlight": "3.3.0"
   },
   "devDependencies": {
     "@types/node": "24.19.2",

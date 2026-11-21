@@ -14,6 +14,19 @@
   --page-font: system-ui, -apple-system, "Segoe UI", sans-serif;
   --page-font-code: ui-monospace, SFMono-Regular, Menlo, monospace;
 
+  /* Syntax highlighting (GitHub's palette). */
+  --page-hl-keyword: #cf222e;
+  --page-hl-string: #0a3069;
+  --page-hl-comment: #6e7781;
+  --page-hl-number: #0550ae;
+  --page-hl-function: #8250df;
+  --page-hl-type: #953800;
+  --page-hl-tag: #116329;
+  --page-hl-added: #116329;
+  --page-hl-added-bg: #dafbe1;
+  --page-hl-deleted: #82071e;
+  --page-hl-deleted-bg: #ffebe9;
+
   position: relative;
   color: var(--page-text);
   font: 16px/1.6 var(--page-font);
@@ -28,6 +41,17 @@
     --page-menu-bg: #1c2129;
     --page-menu-hover: #2a313c;
     --page-menu-shadow: 0 1px 3px rgb(0 0 0 / 0.5), 0 6px 20px rgb(0 0 0 / 0.4);
+    --page-hl-keyword: #ff7b72;
+    --page-hl-string: #a5d6ff;
+    --page-hl-comment: #8b949e;
+    --page-hl-number: #79c0ff;
+    --page-hl-function: #d2a8ff;
+    --page-hl-type: #ffa657;
+    --page-hl-tag: #7ee787;
+    --page-hl-added: #aff5b4;
+    --page-hl-added-bg: #033a16;
+    --page-hl-deleted: #ffdcd7;
+    --page-hl-deleted-bg: #67060c;
   }
 }
 
@@ -59,7 +83,51 @@
   border-radius: 6px;
   overflow-x: auto;
 }
-.page-editor .ProseMirror pre code { background: none; padding: 0; }
+.page-editor .ProseMirror pre code { background: none; padding: 0; font-size: 0.875em; line-height: 1.55; }
+
+/* Code blocks: the language picker and copy button show on hover. */
+.page-editor .page-code-block { position: relative; }
+.page-editor .page-code-header {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  display: flex;
+  gap: 2px;
+  align-items: center;
+  opacity: 0;
+  transition: opacity 120ms;
+  user-select: none;
+}
+.page-editor .page-code-block:hover .page-code-header,
+.page-editor .page-code-header:focus-within { opacity: 1; }
+.page-editor .page-code-language,
+.page-editor .page-code-copy {
+  font: 12px var(--page-font);
+  color: var(--page-muted);
+  background: transparent;
+  border: 0;
+  border-radius: 4px;
+  height: 24px;
+  cursor: pointer;
+}
+.page-editor .page-code-language { padding: 0 4px; max-width: 160px; }
+.page-editor .page-code-copy { width: 24px; display: grid; place-items: center; padding: 0; }
+.page-editor .page-code-language:hover,
+.page-editor .page-code-copy:hover { background: var(--page-menu-hover); color: var(--page-text); }
+.page-editor .page-code-copy.done { color: var(--page-hl-tag); }
+
+.page-editor .ProseMirror pre :is(.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-built_in.hljs-keyword, .hljs-meta .hljs-keyword, .hljs-doctag, .hljs-template-tag) { color: var(--page-hl-keyword); }
+.page-editor .ProseMirror pre :is(.hljs-string, .hljs-regexp, .hljs-meta .hljs-string, .hljs-char.escape_) { color: var(--page-hl-string); }
+.page-editor .ProseMirror pre :is(.hljs-comment, .hljs-quote) { color: var(--page-hl-comment); font-style: italic; }
+.page-editor .ProseMirror pre :is(.hljs-number, .hljs-variable, .hljs-template-variable, .hljs-attr, .hljs-attribute, .hljs-symbol, .hljs-meta, .hljs-selector-attr, .hljs-selector-class, .hljs-selector-id, .hljs-property) { color: var(--page-hl-number); }
+.page-editor .ProseMirror pre :is(.hljs-title, .hljs-title.function_, .hljs-section) { color: var(--page-hl-function); }
+.page-editor .ProseMirror pre :is(.hljs-type, .hljs-title.class_, .hljs-built_in, .hljs-params, .hljs-variable.language_) { color: var(--page-hl-type); }
+.page-editor .ProseMirror pre :is(.hljs-name, .hljs-tag, .hljs-selector-pseudo, .hljs-bullet) { color: var(--page-hl-tag); }
+.page-editor .ProseMirror pre .hljs-section { font-weight: 600; }
+.page-editor .ProseMirror pre .hljs-addition { color: var(--page-hl-added); background: var(--page-hl-added-bg); }
+.page-editor .ProseMirror pre .hljs-deletion { color: var(--page-hl-deleted); background: var(--page-hl-deleted-bg); }
+.page-editor .ProseMirror pre .hljs-emphasis { font-style: italic; }
+.page-editor .ProseMirror pre .hljs-strong { font-weight: 600; }
 .page-editor .ProseMirror blockquote {
   margin: 0;
   padding-left: 1em;

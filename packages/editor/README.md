@@ -22,6 +22,17 @@ In React, `<PageEditorView>` is the editor with its menus:
 - **Slash menu**: type `/` on an empty line, filter by typing, pick with the
   arrow keys and Enter (or the mouse), close with Escape.
 - **To-dos**: click the box to tick an item.
+- **Code blocks**: type ```` ``` ```` at the start of a line and it becomes a
+  code block straight away. The code is highlighted (about 35 languages, via
+  [lowlight](https://github.com/wooorm/lowlight)), and the language is
+  detected by itself: when you paste into a block, or when you finish typing
+  and move on, it's written into the fence (```` ```python ````). Pointing at a
+  block shows a language picker and a copy button. A language that was picked
+  by hand or came with the file is never changed, and opening a page never
+  adds one. In a block, Enter keeps the indentation, Tab and Shift-Tab indent
+  and outdent the lines, ⌘↩ (or ↓ on the last line of the page) moves on to
+  text below, Backspace in an empty block makes it text again, and ⌘A selects
+  just the code.
 
 ```tsx
 import { PageEditorView } from "@document-collab-tool/editor/react";
