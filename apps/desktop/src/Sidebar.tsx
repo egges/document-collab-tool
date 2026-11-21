@@ -1,0 +1,159 @@
+import { useMemo, useState } from "react";
+import { ChevronDown, ChevronRight, Keyboard, Plus, Search, SquareTerminal } from "lucide-react";
+import { type PageSummary, type SyncStatus, type WorkspaceInfo, api, errorText } from "./api.ts";
+import { childrenOf } from "./pageTree.ts";
+import { SHORTCUTS, keysLabel, tip } from "./shortcuts.ts";
+import { SyncStatusBar } from "./SyncStatusBar.tsx";
+
+interface SidebarProps {
+  workspace: WorkspaceInfo;
+  pages: PageSummary[];
+  selected: string | null;
+  status: SyncStatus | null;
+  onSelect: (id: string) => void;
+  onCreate: (parent: string | null) => void;
+  onWorkspaceChange: (w: WorkspaceInfo | null) => void;
+  onError: (message: string) => void;
+  onShowShortcuts: () => void;
+  onQuickOpen: () => void;
+  /** Set when the developer panel is available. */
+  onOpenDevPanel?: () => void;
+}
+
+export function Sidebar(props: SidebarProps) {
+  const { workspace, pages, selected, status } = props;
+  const children = useMemo(() => childrenOf(pages), [pages]);
+
+  return (
+    <aside className="sidebar">
+      <div className="sidebar-header">
+        <span className="workspace-name" title={workspace.path}>
+          {workspace.name}
+        </span>
+        <button className="icon-button" title={tip("New page", "newPage")} aria-label="New page" onClick={() => props.onCreate(null)}>
+          <Plus size={16} />
+        </button>
+      </div>
+      <button className="sidebar-search" title={tip("Go to page", "quickOpen")} onClick={props.onQuickOpen}>
+        <Search size={14} aria-hidden />
+        <span>Go to page</span>
+        <kbd>{keysLabel(SHORTCUTS.quickOpen.keys)}</kbd>
+      </button>
+      <nav className="tree" aria-label="Pages">
+        <ul className="tree-level" role="tree">
+          {(children.get(null) ?? []).map((page) => (
+            <TreeItem
+              key={page.id}
+              page={page}
+              children={children}
+              depth={0}
+              selected={selected}
+              onSelect={props.onSelect}
+              onCreate={props.onCreate}
+            />
+          ))}
+        </ul>
+        {pages.length === 0 && <p className="muted tree-empty">No pages yet.</p>}
+      </nav>
+      <div className="sidebar-footer">
+        <SyncStatusBar
+        workspace={workspace}
+        status={status}
+        onWorkspaceChange={props.onWorkspaceChange}
+        onSetRemote={async (url) => {
+          try {
+            props.onWorkspaceChange(await api.setRemote(url));
+          } catch (e) {
+            props.onError(errorText(e));
+          }
+        }}
+        />
+        <button
+          className="icon-button"
+          title={tip("Keyboard shortcuts", "showShortcuts")}
+          aria-label="Keyboard shortcuts"
+          onClick={props.onShowShortcuts}
+        >
+          <Keyboard size={15} />
+        </button>
+        {props.onOpenDevPanel && (
+          <button
+            className="icon-button"
+            title={tip("Developer log", "toggleDevPanel")}
+            aria-label="Developer log"
+            onClick={props.onOpenDevPanel}
+          >
+            <SquareTerminal size={15} />
+          </button>
+        )}
+      </div>
+    </aside>
+  );
+}
+
+function TreeItem({
+  page,
+  children,
+  depth,
+  selected,
+  onSelect,
+  onCreate,
+}: {
+  page: PageSummary;
+  children: Map<string | null, PageSummary[]>;
+  depth: number;
+  selected: string | null;
+  onSelect: (id: string) => void;
+  onCreate: (parent: string | null) => void;
+}) {
+  const [open, setOpen] = useState(true);
+  const kids = children.get(page.id) ?? [];
+  return (
+    <li role="treeitem" aria-expanded={kids.length ? open : undefined} aria-selected={page.id === selected}>
+      <div
+        className={"tree-row" + (page.id === selected ? " selected" : "")}
+        style={{ paddingLeft: 8 + depth * 14 }}
+        onClick={() => onSelect(page.id)}
+      >
+        <button
+          className="disclosure"
+          aria-label={open ? "Collapse" : "Expand"}
+          style={{ visibility: kids.length ? "visible" : "hidden" }}
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen(!open);
+          }}
+        >
+          {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+        </button>
+        <span className={"tree-title" + (page.title ? "" : " untitled")}>{page.title || "Untitled"}</span>
+        <button
+          className="icon-button add-child"
+          title="Add a page inside"
+          aria-label="Add a page inside"
+          onClick={(e) => {
+            e.stopPropagation();
+            onCreate(page.id);
+          }}
+        >
+          <Plus size={14} />
+        </button>
+      </div>
+      {open && kids.length > 0 && (
+        <ul className="tree-level" role="group">
+          {kids.map((kid) => (
+            <TreeItem
+              key={kid.id}
+              page={kid}
+              children={children}
+              depth={depth + 1}
+              selected={selected}
+              onSelect={onSelect}
+              onCreate={onCreate}
+            />
+          ))}
+        </ul>
+      )}
+    </li>
+  );
+}

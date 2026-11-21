@@ -9,6 +9,7 @@
 //! guarantees the test suite checks.
 
 pub mod clock;
+pub mod conflicts;
 mod engine;
 mod error;
 pub mod git;
@@ -19,7 +20,7 @@ pub mod text_merge;
 pub mod workspace;
 
 pub use clock::{Clock, ManualClock, SystemClock};
-pub use engine::{SyncConfig, SyncEngine, SyncReport};
+pub use engine::{OTHER_CHANGES_LABEL, PageWrite, SyncConfig, SyncEngine, SyncReport};
 pub use error::{Error, Result};
 pub use git::{CliGit, GitBackend};
 pub use merge::{Resolution, ResolvedConflict};

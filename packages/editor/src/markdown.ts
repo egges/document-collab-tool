@@ -63,3 +63,59 @@ export function withoutEmptyParagraphs(node: Node): Node {
   });
   return changed ? node.copy(Fragment.fromArray(children)) : node;
 }
+
+/** Whitespace Markdown drops at the end of a block (and that nobody can see). */
+const TRAILING_SPACE = /[ \t\u00a0]+$/;
+
+/**
+ * Removes spaces and line breaks at the end of every text block except code
+ * blocks. Typing "This is great. " leaves a trailing space for a moment;
+ * Markdown can't store it, and a line break at the end of a paragraph
+ * followed by a space would even be written as a stray backslash.
+ */
+export function withoutTrailingWhitespace(node: Node): Node {
+  if (node.isTextblock) return node.type.spec.code ? node : trimEnd(node);
+  if (node.isLeaf) return node;
+  let changed = false;
+  const children: Node[] = [];
+  node.forEach((child) => {
+    const trimmed = withoutTrailingWhitespace(child);
+    if (trimmed !== child) changed = true;
+    children.push(trimmed);
+  });
+  return changed ? node.copy(Fragment.fromArray(children)) : node;
+}
+
+function trimEnd(block: Node): Node {
+  const children: Node[] = [];
+  block.forEach((child) => children.push(child));
+  const before = children.length;
+  let lastText: string | undefined;
+  for (;;) {
+    const last = children.at(-1);
+    if (!last) break;
+    if (last.type.name === "hardbreak") {
+      children.pop();
+      continue;
+    }
+    if (last.isText) {
+      const text = last.text!.replace(TRAILING_SPACE, "");
+      if (text === last.text) break;
+      children.pop();
+      if (text) {
+        lastText = text;
+        children.push(block.type.schema.text(text, last.marks));
+        break;
+      }
+      continue;
+    }
+    break;
+  }
+  const changed = children.length !== before || lastText !== undefined;
+  return changed ? block.copy(Fragment.fromArray(children)) : block;
+}
+
+/** The document as it's written: invisible trailing whitespace and empty paragraphs removed. */
+export function prepareForSave(doc: Node): Node {
+  return withoutEmptyParagraphs(withoutTrailingWhitespace(doc));
+}

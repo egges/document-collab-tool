@@ -45,6 +45,10 @@ pub enum Error {
         source: std::io::Error,
     },
 
+    /// A conflict block to resolve doesn't exist (any more).
+    #[error(transparent)]
+    Resolve(#[from] crate::conflicts::ResolveError),
+
     /// Raised by test doubles and other custom [`crate::GitBackend`]s.
     #[error("{0}")]
     Other(String),
