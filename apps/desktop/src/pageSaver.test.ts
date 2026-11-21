@@ -149,7 +149,12 @@ describe("PageSaver", () => {
     editor.refuse = true;
     await saver.flush();
     expect(disk.writes).toEqual([]);
-    expect(events[0]).toMatchObject({ kind: "refused" });
+    expect(events[0]).toMatchObject({ kind: "problem" });
+    // Once the content can be saved again, it is.
+    editor.refuse = false;
+    await saver.flush();
+    expect(disk.body).toBe("a\nb\n");
+    expect(events.at(-1)).toEqual({ kind: "saved" });
   });
 
   test("applies a version that arrived before the editor was ready", async () => {
@@ -164,21 +169,28 @@ describe("PageSaver", () => {
     expect(disk.writes[0].base).toBe("a\nnewer\n");
   });
 
-  test("reports write errors and keeps going", async () => {
-    const events: SaverEvent[] = [];
-    let fail = true;
-    const write = async (): Promise<WriteResult> => {
-      if (fail) throw "disk full";
-      return { status: "written", conflicts: [] };
-    };
-    const editor = new FakeEditor("a\n");
-    const saver = new PageSaver({ base: "a\n", write, onEvent: (e) => events.push(e) });
-    saver.attach(editor);
-    editor.type("b\n");
-    await saver.flush();
-    expect(events).toEqual([{ kind: "error", message: "disk full" }]);
-    fail = false;
-    await saver.flush();
-    expect(events.at(-1)).toEqual({ kind: "conflicts", conflicts: [] });
+  test("retries a failed write by itself", async () => {
+    vi.useFakeTimers();
+    try {
+      const events: SaverEvent[] = [];
+      let failures = 1;
+      const writes: string[] = [];
+      const write = async (_base: string, body: string): Promise<WriteResult> => {
+        if (failures-- > 0) throw "disk full";
+        writes.push(body);
+        return { status: "written", conflicts: [] };
+      };
+      const editor = new FakeEditor("a\n");
+      const saver = new PageSaver({ base: "a\n", write, onEvent: (e) => events.push(e), retryDelay: 100 });
+      saver.attach(editor);
+      editor.type("b\n");
+      await saver.flush();
+      expect(events).toEqual([{ kind: "problem", message: "disk full" }]);
+      await vi.advanceTimersByTimeAsync(100);
+      expect(writes).toEqual(["a\nb\n"]);
+      expect(events.at(-1)).toEqual({ kind: "saved" });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

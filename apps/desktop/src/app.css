@@ -318,27 +318,8 @@ input {
   flex: none;
 }
 
-.dot.ok {
-  background: var(--ok);
-}
-
 .dot.warn {
   background: var(--warn);
-}
-
-.dot.error {
-  background: var(--error);
-}
-
-.dot.busy {
-  background: var(--accent);
-  animation: pulse 1s ease-in-out infinite alternate;
-}
-
-@keyframes pulse {
-  to {
-    opacity: 0.3;
-  }
 }
 
 .sync-panel {
@@ -367,12 +348,8 @@ input {
   word-break: break-word;
 }
 
-.sync-message.error {
-  color: var(--error);
-}
-
-.sync-message.warn {
-  color: var(--warn);
+.sync-message {
+  color: var(--muted);
 }
 
 .field-label {
@@ -464,6 +441,12 @@ input {
   outline: none;
 }
 
+.save-problem {
+  font-size: 12px;
+  color: var(--muted);
+  white-space: nowrap;
+}
+
 .page-title::placeholder {
   color: var(--muted);
   opacity: 0.6;
@@ -472,17 +455,16 @@ input {
 /* ---- conflicts ------------------------------------------------------------ */
 
 .conflicts {
-  border: 1px solid var(--conflict);
-  background: var(--conflict-bg);
+  border: 1px solid var(--border);
+  background: var(--sidebar-bg);
   border-radius: 10px;
   padding: 14px 16px;
   margin-bottom: 24px;
 }
 
 .conflicts h2 {
-  font-size: 15px;
+  font-size: 14px;
   margin: 0 0 2px;
-  color: var(--conflict);
 }
 
 .conflicts h3 {
@@ -549,7 +531,7 @@ input {
 }
 
 .page-editor span[data-type="html"][data-value^="<!-- sync-conflict:start"]::before {
-  content: "Conflict: both versions below";
+  content: "Two versions";
 }
 
 .page-editor span[data-type="html"][data-value^="<!-- sync-conflict:version"]::before {
@@ -557,5 +539,5 @@ input {
 }
 
 .page-editor span[data-type="html"][data-value^="<!-- sync-conflict:end"]::before {
-  content: "End of conflict";
+  content: "End";
 }

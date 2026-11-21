@@ -16,7 +16,7 @@ import type { Node } from "@milkdown/kit/prose/model";
 import type { EditorView } from "@milkdown/kit/prose/view";
 import { SaveRefusedError, findLostContent } from "./check.ts";
 import { type Commands, createCommands } from "./commands.ts";
-import { configureHouseStyle, joinPage, splitFrontMatter, withoutEmptyParagraphs } from "./markdown.ts";
+import { configureHouseStyle, joinPage, prepareForSave, splitFrontMatter } from "./markdown.ts";
 
 export interface PageEditorOptions {
   /** Element the editor is mounted in. */
@@ -120,7 +120,7 @@ export async function createPageEditor(options: PageEditorOptions): Promise<Page
     save() {
       const doc = view.state.doc;
       if (doc.eq(baseline!)) return null;
-      const out = serialize(withoutEmptyParagraphs(doc));
+      const out = serialize(prepareForSave(doc));
       const lost = findLostContent(doc, parse(out));
       if (lost) throw new SaveRefusedError(lost);
       const markdown = joinPage(frontMatter, out);
@@ -163,7 +163,7 @@ export async function formatPage(markdown: string): Promise<string> {
   try {
     return editor.action((ctx) => {
       const doc = ctx.get(parserCtx)(body);
-      const out = ctx.get(serializerCtx)(withoutEmptyParagraphs(doc));
+      const out = ctx.get(serializerCtx)(prepareForSave(doc));
       const lost = findLostContent(doc, ctx.get(parserCtx)(out));
       if (lost) throw new SaveRefusedError(lost);
       return joinPage(frontMatter, out);

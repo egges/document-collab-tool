@@ -13,7 +13,10 @@ export function visibleContent(doc: Node): string[] {
   const out: string[] = [];
   doc.descendants((node) => {
     if (node.isTextblock) {
-      const text = node.textBetween(0, node.content.size, "\n", describeAtom);
+      let text = node.textBetween(0, node.content.size, "\n", describeAtom);
+      // Spaces and line breaks at the end of a block don't show, and Markdown
+      // drops them (see withoutTrailingWhitespace). Code keeps them.
+      if (!node.type.spec.code) text = text.replace(INVISIBLE_END, "");
       // An empty paragraph shows nothing, and isn't saved (see withoutEmptyParagraphs).
       if (text !== "" || node.type.name !== "paragraph") out.push(`${node.type.name}: ${text}`);
       return false;
@@ -26,6 +29,8 @@ export function visibleContent(doc: Node): string[] {
   });
   return out;
 }
+
+const INVISIBLE_END = /(?:[ \t\u00a0]|\[hardbreak [^\]]*\])+$/;
 
 function describeAtom(node: Node): string {
   return `[${node.type.name} ${JSON.stringify(node.attrs)}]`;

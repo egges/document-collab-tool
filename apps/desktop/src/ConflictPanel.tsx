@@ -18,22 +18,21 @@ export function ConflictPanel({
   return (
     <section className="conflicts" aria-label="Conflicts">
       <h2>
-        {conflicts.length === 1 ? "This page has a conflict" : `This page has ${conflicts.length} conflicts`}
+        {conflicts.length === 1 ? "Edited in two places" : `${conflicts.length} parts were edited in two places`}
       </h2>
       <p className="muted">
-        The same lines were changed in two places before they synced, so both versions were kept. Choose one, or edit
-        the page below to combine them.
+        Both versions are kept. Pick one, or combine them in the page below.
       </p>
       {conflicts.map((conflict, i) => (
         <div className="conflict" key={i}>
-          {conflicts.length > 1 && <h3>Conflict {i + 1}</h3>}
+          {conflicts.length > 1 && <h3>Part {i + 1}</h3>}
           <div className="versions">
             {conflict.versions.map((version, v) => (
               <div className="version" key={v}>
                 <div className="version-label">{version.label}</div>
                 <pre className="version-text">{version.text || <em className="muted">(deleted)</em>}</pre>
                 <button className="button" disabled={busy} onClick={() => onKeep(i, v)}>
-                  Keep this version
+                  Keep this one
                 </button>
               </div>
             ))}

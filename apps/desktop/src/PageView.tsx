@@ -42,6 +42,14 @@ function LoadedPage({ id, initial, diskVersion, onRenamed, onDeleted, onError, r
   const [title, setTitle] = useState(initial.title);
   const [conflicts, setConflicts] = useState<Conflict[]>(initial.conflicts);
   const [notice, setNotice] = useState<string | null>(null);
+  // A save problem the saver is retrying. Shown only if it lasts.
+  const [problem, setProblem] = useState<string | null>(null);
+  const [showProblem, setShowProblem] = useState(false);
+  useEffect(() => {
+    if (!problem) return setShowProblem(false);
+    const timer = setTimeout(() => setShowProblem(true), 5000);
+    return () => clearTimeout(timer);
+  }, [problem]);
   const [busy, setBusy] = useState(false);
   const titleSaved = useRef(initial.title);
   const titleInput = useRef<HTMLInputElement>(null);
@@ -59,12 +67,12 @@ function LoadedPage({ id, initial, diskVersion, onRenamed, onDeleted, onError, r
             case "gone":
               setNotice("This page was deleted on another device. Your latest edits weren't saved.");
               break;
-            case "refused":
-              // A bug in the editor, not something the user did: keep the file as it was.
-              onError(`Not saved, because saving would have lost part of the page. ${event.message}`);
+            case "saved":
+              setProblem(null);
               break;
-            case "error":
-              onError(event.message);
+            case "problem":
+              console.warn("save problem, retrying:", event.message);
+              setProblem((now) => now ?? event.message);
               break;
           }
         },
@@ -165,6 +173,11 @@ function LoadedPage({ id, initial, diskVersion, onRenamed, onDeleted, onError, r
             }
           }}
         />
+        {showProblem && (
+          <span className="save-problem" title={problem ?? undefined}>
+            Not saved yet
+          </span>
+        )}
         <button className="link danger" onClick={() => void remove()}>
           Delete
         </button>

@@ -9,19 +9,24 @@ function ago(ms: number, now: number): string {
   return new Date(ms).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
 }
 
+/**
+ * Sync should go unnoticed: a calm "Synced" while all is well (including
+ * during the sync every 45 seconds), and a coloured dot only when changes
+ * aren't reaching other devices.
+ */
 function describe(status: SyncStatus | null, workspace: WorkspaceInfo, now: number): [string, string] {
-  if (!status) return ["", workspace.remote ? "Starting…" : "Not syncing"];
+  const synced = status?.lastSynced ? `Synced ${ago(status.lastSynced, now)}` : "Synced";
+  if (!status) return ["", workspace.remote ? "Synced" : "Only on this device"];
   switch (status.state) {
     case "localOnly":
-      return ["local", "Not syncing: this device only"];
+      return ["", "Only on this device"];
     case "syncing":
-      return ["busy", "Syncing…"];
     case "synced":
-      return ["ok", status.lastSynced ? `Synced ${ago(status.lastSynced, now)}` : "Synced"];
+      return ["", synced];
     case "offline":
-      return ["warn", "Offline: changes are saved here"];
+      return ["warn", "Offline"];
     case "error":
-      return ["error", "Sync problem"];
+      return ["warn", "Sync paused"];
   }
 }
 
@@ -51,7 +56,11 @@ export function SyncStatusBar({
     <div className="sync">
       {open && (
         <div className="sync-panel">
-          {status?.message && <p className={"sync-message " + tone}>{status.message}</p>}
+          {status?.state === "offline" && (
+            <p>Changes are saved on this device and sync when the connection is back.</p>
+          )}
+          {status?.state === "error" && <p>Changes are saved on this device. Syncing will try again shortly.</p>}
+          {status?.message && <p className="sync-message">{status.message}</p>}
           {status?.conflicts ? (
             <p className="muted">
               The last sync kept both versions of {status.conflicts} edit{status.conflicts === 1 ? "" : "s"}. Pages with

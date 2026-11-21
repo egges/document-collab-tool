@@ -19,11 +19,16 @@ export interface EditorLike {
 export type SaverEvent =
   /** The conflict blocks in the page, after every write or reload. */
   | { kind: "conflicts"; conflicts: Conflict[] }
+  /** Everything typed so far is written. Clears an earlier problem. */
+  | { kind: "saved" }
   /** Another device deleted the page. */
   | { kind: "gone" }
-  /** The editor refused to save because the result would lose content. */
-  | { kind: "refused"; message: string }
-  | { kind: "error"; message: string };
+  /**
+   * The editor refused to save because the result would lose content, or
+   * the write failed. The saver tries again by itself (on the next change,
+   * or after `retryDelay`), so this is for a quiet indicator, not an alert.
+   */
+  | { kind: "problem"; message: string };
 
 export interface PageSaverOptions {
   /** The body as it was read from disk. */
@@ -32,6 +37,8 @@ export interface PageSaverOptions {
   onEvent: (event: SaverEvent) => void;
   /** How long after the last change to save. */
   delay?: number;
+  /** How long to wait before trying a failed write again. */
+  retryDelay?: number;
 }
 
 export class PageSaver {
@@ -42,10 +49,12 @@ export class PageSaver {
   private queue: Promise<void> = Promise.resolve();
   private gone = false;
   private readonly delay: number;
+  private readonly retryDelay: number;
 
   constructor(private readonly options: PageSaverOptions) {
     this.base = options.base;
     this.delay = options.delay ?? 600;
+    this.retryDelay = options.retryDelay ?? 3000;
   }
 
   /** A newer version that arrived before the editor existed. */
@@ -60,12 +69,12 @@ export class PageSaver {
   }
 
   /** The user changed the page: save soon. */
-  changed() {
+  changed(delay = this.delay) {
     if (this.timer) clearTimeout(this.timer);
     this.timer = setTimeout(() => {
       this.timer = null;
       void this.flush();
-    }, this.delay);
+    }, delay);
   }
 
   /** Save now. Resolves once everything changed so far is written. */
@@ -116,7 +125,8 @@ export class PageSaver {
 
   private enqueue(task: () => Promise<void>): Promise<void> {
     const run = this.queue.then(task).catch((e: unknown) => {
-      this.options.onEvent({ kind: "error", message: e instanceof Error ? e.message : String(e) });
+      this.options.onEvent({ kind: "problem", message: e instanceof Error ? e.message : String(e) });
+      this.changed(this.retryDelay);
     });
     this.queue = run;
     return run;
@@ -128,7 +138,8 @@ export class PageSaver {
       return editor.save();
     } catch (e) {
       if (e instanceof Error && e.name === "SaveRefusedError") {
-        this.options.onEvent({ kind: "refused", message: e.message });
+        // Retried on the next change; the file on disk stays as it was.
+        this.options.onEvent({ kind: "problem", message: e.message });
         return "refused";
       }
       throw e;
@@ -147,9 +158,11 @@ export class PageSaver {
         this.base = body;
         editor.markSaved();
         this.options.onEvent({ kind: "conflicts", conflicts: result.conflicts });
+        this.options.onEvent({ kind: "saved" });
         break;
       case "merged":
         editor.markSaved(); // the editor's content is now `body`'s, saved
+        this.options.onEvent({ kind: "saved" });
         if (this.trySave(editor) === null) {
           this.show(editor, result.page);
         } else {
