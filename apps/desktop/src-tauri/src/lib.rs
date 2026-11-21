@@ -4,6 +4,7 @@
 mod commands;
 mod devlog;
 mod git;
+mod locations;
 mod search;
 mod session;
 mod tree;
@@ -44,6 +45,9 @@ pub fn run() {
             commands::restore_workspace,
             commands::open_workspace,
             commands::clone_workspace,
+            commands::create_workspace,
+            commands::join_workspace,
+            commands::show_workspace_folder,
             commands::close_workspace,
             commands::set_remote,
             commands::sync_status,

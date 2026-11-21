@@ -109,6 +109,146 @@ The engine only talks to git through the `GitBackend` trait, which has about
 20 small operations. An embedded backend such as gitoxide could replace
 `CliGit` later and be verified by the same test suite.
 
+## Where workspaces live and what they sync with
+
+### The local copy
+
+Each device keeps its own working copy of a workspace. Unless the user picks
+a folder, it goes in the app's local data folder:
+
+| OS | Folder |
+|---|---|
+| macOS | `~/Library/Application Support/<app>/workspaces/<name>` |
+| Windows | `%LOCALAPPDATA%\<app>\workspaces\<name>` |
+| Linux | `~/.local/share/<app>/workspaces/<name>` |
+
+Not `~/Documents`: on many Macs iCloud syncs it ("Desktop & Documents
+Folders"), and on Windows OneDrive often does, which would put a working copy
+with `.git` inside a cloud folder (see below). The app's data folder is never
+synced, never triggers a macOS permission prompt, and Time Machine and File
+History still back it up. Not Windows' Roaming folder either: roaming profiles
+copy it between machines.
+
+The files stay one click away: "Show in Finder" (Explorer, Files) in the sync
+panel, and the folder path there opens it too. Users who want control can
+choose a location when creating or joining a workspace, or open any folder
+that holds one. Folder names come from the workspace name, made safe for every
+platform; a name that's taken gets a number ("My Notes 2"). The code is in
+`apps/desktop/src-tauri/src/locations.rs`.
+
+Still to build: moving a workspace from settings, a list of known workspaces
+in the app's `settings.json` (a workspace switcher, and "Locate…" when a
+folder has gone), and a check that offers a safe setup when the chosen
+location is inside a cloud folder.
+
+### Never a working copy inside a cloud folder
+
+Putting the workspace in Dropbox, iCloud Drive or OneDrive looks like the
+obvious way to sync, and it breaks:
+
+- Those services copy files one by one, in no particular order. Git expects
+  its index, refs and objects to change together. A half-copied index, or a
+  ref that arrives before its objects, corrupts the repository; two devices
+  writing at once leave files like `index (conflicted copy)`.
+- Two sync systems edit the same files. Dropbox replaces `page.md` while the
+  engine merges it, and the conflict rules above stop applying.
+- iCloud's "Optimize Mac Storage" removes local copies of files it thinks are
+  unused, so git and the file watcher see files go missing.
+- `.docsync/`, which must stay on one device, would sync too.
+
+### Sync targets
+
+Every target is a git remote, so the engine is the same for all of them:
+
+| Target | For | Remote |
+|---|---|---|
+| None | One device | No remote. Adding one later pushes the whole history. |
+| Cloud folder | Individuals, small teams on a shared folder | A bare repo in the folder, e.g. `~/Dropbox/My Notes.docsync`, as a `file://` remote |
+| GitHub | People with GitHub accounts | A private repo the app creates after GitHub sign-in |
+| Git URL | Developers | Any URL, under "Advanced" |
+| Hosted (later) | Teams without GitHub | Our own git-over-HTTPS service with email accounts |
+
+In the app this is one setting, `none | folder | github | git_url | hosted`,
+that can be changed at any time. The status bar names it ("Synced via iCloud
+Drive") rather than anything about git.
+
+### Cloud folder remotes
+
+A cloud folder only carries git objects, which are named by their content and
+never change, so they survive being copied in any order. The refs are the
+problem: two devices pushing at about the same time would both write
+`refs/heads/main`, and the push retry above can't help because the other
+device's push arrives seconds later. So a folder remote follows the same rule
+as the file layout, one writer per file:
+
+- **Each device pushes only to its own ref,**
+  `refs/heads/devices/<device-id>`. Syncing fetches every device's ref,
+  merges them locally with the usual `merge-tree` path, and pushes the result
+  to this device's ref. No file in the shared repo has two writers.
+- **The shared repo is never repacked.** `gc.auto` and ref packing are off,
+  so git never rewrites a shared file.
+- **The app watches the shared repo's `refs/`** and syncs as soon as another
+  device's ref changes, instead of waiting for the next timed sync.
+- **iCloud may not have downloaded the repo yet.** Ask it to (through
+  `NSFileCoordinator`, or `brctl download` as a fallback); if it can't, treat
+  it like being offline.
+
+The cost is merging N device refs instead of one remote branch. The scenario
+tests and the simulation need a folder-remote variant with delayed, unordered
+copying to prove it converges. GitHub and other git hosts keep the single
+`main` branch.
+
+### Setting it up
+
+Onboarding asks one question, "Where should your notes sync?":
+
+1. **Only on this device.**
+2. **iCloud Drive, Dropbox, OneDrive or Google Drive**, showing only the ones
+   installed (`~/Library/Mobile Documents/com~apple~CloudDocs`,
+   `~/Library/CloudStorage/*`, Dropbox's `info.json`, and the Windows
+   equivalents). One click creates `<name>.docsync` there.
+3. **GitHub:** sign in with the device flow; the app creates a private repo.
+   "Any Git URL" sits under "Advanced".
+
+Joining on another device needs no typing for cloud folders: the app looks for
+`*.docsync` in those folders and offers "Found **My Notes** in your iCloud
+Drive: open it?" If a user opens or creates a workspace inside a cloud folder,
+the app offers one button to set it up safely: move the files to the local
+folder and create the bare repo next to where they were.
+
+### Sharing with other people
+
+Git hosts grant access per repository, so **a workspace is the unit of
+sharing**: everyone with access sees every page. Each target shares in its
+own way, behind one "Share" button:
+
+- **Cloud folder:** the provider's own sharing (Dropbox shared folders,
+  iCloud Drive folder sharing via `NSSharingService`, OneDrive). Once someone
+  accepts, the folder appears on their device and the `*.docsync` scan finds
+  it. Per-device refs keep this safe however many people join. Anyone with
+  access can also damage the shared repo, so the app should offer "restore the
+  shared repo from this device"; every device has the full history.
+- **GitHub:** the app invites by username
+  (`PUT /repos/{owner}/{repo}/collaborators/{username}`, with "can view"
+  mapped to read access), and on the invitee's device lists and accepts
+  pending invitations (`GET /user/repository_invitations`) before cloning.
+  Teams use an organization, which also allows inviting by email. Everyone
+  needs a GitHub account.
+- **Hosted (later):** invites by email or link, with owner, editor and viewer
+  roles. It is a git server over HTTPS with our own sign-in in front, so the
+  engine doesn't change; the token reaches git through
+  `CliGit::with_config`.
+
+Limits that follow from the git model:
+
+- No per-page permissions. Sharing one page means a separate workspace, or
+  checks on the hosted service's side.
+- Read-only access needs a host that enforces it. On a shared folder, anyone
+  who can read can usually write.
+- Commits should record the person as well as the device, so conflict blocks
+  and history say "Anna (Laptop)" rather than just "Laptop".
+- Removing someone stops future syncs; they keep the copy they have.
+
 ## What the tests guarantee
 
 Run them with `cargo test`. To use a specific git binary, set

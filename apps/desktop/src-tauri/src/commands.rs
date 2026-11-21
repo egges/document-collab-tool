@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::devlog::{self, Entry, Level};
+use crate::locations;
 use crate::search::{self, TextMatch};
 use crate::session::{Session, WorkspaceInfo};
 use crate::tree::{self, PageSummary};
@@ -167,6 +168,72 @@ pub async fn clone_workspace(
     })
     .await?;
     Ok(install(&app, &state, session))
+}
+
+/// The folder new workspaces go in unless the user picks one; see `locations`.
+fn workspaces_dir(app: &AppHandle) -> CmdResult<PathBuf> {
+    app.path()
+        .app_local_data_dir()
+        .map(|d| d.join("workspaces"))
+        .map_err(|e| format!("Can't find the app's data folder: {e}"))
+}
+
+/// Run `make` on a new folder; remove the folder again if that fails, so a
+/// failed attempt doesn't leave "My Notes" behind and push the next try to
+/// "My Notes 2".
+fn in_new_folder(
+    path: PathBuf,
+    make: impl FnOnce(&std::path::Path) -> CmdResult<Session>,
+) -> CmdResult<Session> {
+    let result = make(&path);
+    if result.is_err() && path.exists() {
+        let _ = std::fs::remove_dir_all(&path);
+    }
+    result
+}
+
+/// Create a workspace called `name` in the default location.
+#[tauri::command]
+pub async fn create_workspace(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    name: String,
+) -> CmdResult<WorkspaceInfo> {
+    let path = locations::new_workspace_dir(&workspaces_dir(&app)?, &name);
+    let events = WindowEvents(app.clone());
+    let session = blocking("create_workspace", move || {
+        in_new_folder(path, |p| Session::open_or_create(p, events))
+    })
+    .await?;
+    Ok(install(&app, &state, session))
+}
+
+/// Join the workspace at `url`, keeping this device's copy in the default
+/// location.
+#[tauri::command]
+pub async fn join_workspace(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    url: String,
+) -> CmdResult<WorkspaceInfo> {
+    let url = url.trim().to_string();
+    let path = locations::new_workspace_dir(&workspaces_dir(&app)?, &locations::name_from_url(&url));
+    let events = WindowEvents(app.clone());
+    let session = blocking("join_workspace", move || {
+        in_new_folder(path, |p| Session::clone_remote(&url, p, events))
+    })
+    .await?;
+    Ok(install(&app, &state, session))
+}
+
+/// Show the open workspace's folder in Finder, Explorer or the file manager.
+#[tauri::command]
+pub async fn show_workspace_folder(state: State<'_, AppState>) -> CmdResult<()> {
+    let (engine, _) = state.engine()?;
+    blocking("show_workspace_folder", move || {
+        tauri_plugin_opener::reveal_item_in_dir(engine.root()).map_err(text)
+    })
+    .await
 }
 
 #[tauri::command]

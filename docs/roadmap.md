@@ -33,6 +33,21 @@ straightforward building.
       non-developers never have to set up a remote themselves.
 - [x] **Orphaned pages.** The app shows pages whose parent was deleted at the
       top level.
+- [x] **Default location.** New and joined workspaces go in the app's local
+      data folder unless the user picks one, and "Show in Finder" reveals it
+      ([sync-design.md](sync-design.md#the-local-copy)).
+- [ ] **Workspace list and moving.** Known workspaces in `settings.json`, a
+      switcher, "Locate…" for a missing folder, and "Move…" in settings.
+- [ ] **Cloud folder remotes.** A bare repo in iCloud Drive, Dropbox or
+      OneDrive with one ref per device, tested with delayed, unordered
+      copying ([sync-design.md](sync-design.md#cloud-folder-remotes)).
+- [ ] **Sync setup.** One "Where should your notes sync?" choice in
+      onboarding and settings, detecting installed cloud folders, finding
+      `*.docsync` workspaces to join, and a safe setup when a workspace sits
+      inside a cloud folder.
+- [ ] **Sharing.** A "Share" button: the provider's share sheet for cloud
+      folders, invite and accept for GitHub; commits record the person, not
+      just the device.
 
 ## 3. Desktop app (the bulk of the work)
 

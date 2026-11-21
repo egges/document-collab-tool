@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
-import { LogOut, RefreshCw } from "lucide-react";
+import { FolderOpen, LogOut, RefreshCw } from "lucide-react";
 import { type SyncStatus, type WorkspaceInfo, api } from "./api.ts";
+import { showInFolderLabel } from "./fileManager.ts";
 import { tip } from "./shortcuts.ts";
 
 function ago(ms: number, now: number): string {
@@ -99,7 +100,11 @@ export function SyncStatusBar({
             <dt>This device</dt>
             <dd>{workspace.device}</dd>
             <dt>Folder</dt>
-            <dd title={workspace.path}>{workspace.path}</dd>
+            <dd title={workspace.path}>
+              <button type="button" className="link folder-path" onClick={() => void api.showWorkspaceFolder()}>
+                {workspace.path}
+              </button>
+            </dd>
           </dl>
           <div className="row">
             <button
@@ -110,6 +115,14 @@ export function SyncStatusBar({
               onClick={() => void api.syncNow()}
             >
               <RefreshCw size={15} />
+            </button>
+            <button
+              className="icon-button"
+              aria-label={showInFolderLabel()}
+              title={showInFolderLabel()}
+              onClick={() => void api.showWorkspaceFolder()}
+            >
+              <FolderOpen size={15} />
             </button>
             <span className="spacer" />
             <button

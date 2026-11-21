@@ -63,6 +63,11 @@ export const api = {
   restoreWorkspace: () => invoke<WorkspaceInfo | null>("restore_workspace"),
   openWorkspace: (path: string) => invoke<WorkspaceInfo>("open_workspace", { path }),
   cloneWorkspace: (url: string, path: string) => invoke<WorkspaceInfo>("clone_workspace", { url, path }),
+  /** A new workspace in the app's own data folder. */
+  createWorkspace: (name: string) => invoke<WorkspaceInfo>("create_workspace", { name }),
+  /** Join from `url`, keeping this device's copy in the app's own data folder. */
+  joinWorkspace: (url: string) => invoke<WorkspaceInfo>("join_workspace", { url }),
+  showWorkspaceFolder: () => invoke<void>("show_workspace_folder"),
   closeWorkspace: () => invoke<void>("close_workspace"),
   setRemote: (url: string | null) => invoke<WorkspaceInfo>("set_remote", { url }),
   syncStatus: () => invoke<SyncStatus | null>("sync_status"),

@@ -222,6 +222,16 @@ kbd {
   margin: 0 0 12px;
 }
 
+.card .welcome-alt {
+  margin: 8px 0 0;
+}
+
+.link:disabled {
+  opacity: 0.5;
+  cursor: default;
+  text-decoration: none;
+}
+
 /* ---- layout ------------------------------------------------------------ */
 
 .layout {
@@ -508,6 +518,16 @@ body.resizing {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.facts .folder-path {
+  display: block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
+  font-size: inherit;
 }
 
 /* ---- main ---------------------------------------------------------------- */
