@@ -19,16 +19,20 @@ straightforward building.
 
 ## 2. Finish the sync layer for real-world use
 
-- [ ] **When to sync.** Commit shortly after each edit, sync every 30–60
-      seconds and whenever the app gains focus, and watch for files changed
-      outside the app.
-- [ ] **Resolving conflict blocks.** A small function that keeps one version
-      of a conflict block, so the editor and AI agents resolve it the same way.
+- [x] **When to sync.** The app commits 2 seconds after the last edit, syncs
+      every 45 seconds and when the window gains focus, and watches the folder
+      for files changed outside the app (`apps/desktop/src-tauri/src/worker.rs`).
+      Saving an open page merges with changes made meanwhile instead of
+      overwriting them (`SyncEngine::write_page_body`).
+- [x] **Resolving conflict blocks.** `docsync::conflicts` finds conflict
+      blocks and keeps one version, so the editor and AI agents resolve them
+      the same way.
 - [ ] **Signing in.** GitHub sign-in, with the token stored in the system
       keychain and passed to Git through `CliGit::with_config`. A "create a
       private repo for me" onboarding step using the GitHub API, so
       non-developers never have to set up a remote themselves.
-- [ ] **Orphaned pages.** Show pages whose parent was deleted at the top level.
+- [x] **Orphaned pages.** The app shows pages whose parent was deleted at the
+      top level.
 
 ## 3. Desktop app (the bulk of the work)
 
@@ -49,10 +53,14 @@ straightforward building.
       a link by clicking it.
 - [ ] **Importer.** Move front matter into `meta.json` before a page reaches
       the editor.
-- [ ] **App shell.** Tauri 2 + React, calling `docsync` directly from the Rust
-      side.
-- [ ] **Pages and databases.** A page tree, a page view, a database table
-      view, and the conflict block as a UI component.
+- [x] **App shell** (`apps/desktop`). Tauri 2 + React, calling `docsync`
+      directly from the Rust side. Opens, creates or joins a workspace and sets
+      the remote this device syncs with.
+- [x] **Pages.** A page tree, a page view with the editor, and conflict blocks
+      shown above the page with "keep this version".
+- [ ] **Databases.** A database table view.
+- [ ] **Conflict markers in the editor.** They show as labelled lines; a
+      proper block with each version's device name would be clearer.
 - [ ] **Bundled Git.** Ship Git with the app for each platform.
 
 ## 4. Search and AI

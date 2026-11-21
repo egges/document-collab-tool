@@ -22,7 +22,13 @@ saving a page only changes the lines someone edited. See
 [packages/editor/README.md](packages/editor/README.md); try it with
 `cd packages/editor && npm install && npm run dev`.
 
-Requires Rust 1.89+ and git 2.43+ (and Node 24+ for the editor). The desktop app will bundle its own git.
+The third is the **desktop app** (`apps/desktop`): Tauri 2 + React, with a
+page tree, the editor, conflict resolution and background sync. See
+[apps/desktop/README.md](apps/desktop/README.md); run it with
+`cd apps/desktop && npm install && npm run tauri dev`.
+
+Requires Rust 1.89+ and git 2.43+ (Rust 1.90+ and Node 24+ for the app and
+the editor). The desktop app will bundle its own git.
 
 ## Next
 
