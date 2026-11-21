@@ -43,6 +43,16 @@ export function ancestry(pages: PageSummary[], id: string): string[] {
   return titles;
 }
 
+/** A page and its ancestors, outermost first: the breadcrumb in the title bar. */
+export function trail(pages: PageSummary[], id: string): PageSummary[] {
+  const byId = new Map(pages.map((p) => [p.id, p]));
+  const out: PageSummary[] = [];
+  for (let page = byId.get(id); page && out.length < 20; page = page.parent ? byId.get(page.parent) : undefined) {
+    out.unshift(page);
+  }
+  return out;
+}
+
 /** Pages matching a search, best first: title starts with it, then a word does, then it appears anywhere. */
 export function search(pages: PageSummary[], query: string): PageSummary[] {
   const q = query.trim().toLowerCase();

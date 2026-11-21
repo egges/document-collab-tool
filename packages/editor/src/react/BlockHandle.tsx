@@ -124,6 +124,54 @@ function handlePosition(view: EditorView, container: HTMLElement, block: Block) 
   return { left: left - HANDLE_WIDTH - box.left, top: firstLineMiddle(element) - HANDLE_HEIGHT / 2 - box.top };
 }
 
+/** A copy of a block that follows the pointer while it's dragged, as in Notion. */
+interface Ghost {
+  element: HTMLElement;
+  /** Where the pointer is from the copy's top left. */
+  dx: number;
+  dy: number;
+}
+
+/**
+ * Copies the block's element into a faded box that follows the pointer.
+ * Inside the editor's container, so the page's styles apply; a list item
+ * gets a copy of its list around it, so it keeps its bullet or number.
+ */
+function createGhost(view: EditorView, container: HTMLElement, block: Block, x: number, y: number): Ghost | null {
+  const element = blockElement(view, block);
+  if (!element) return null;
+  const rect = element.getBoundingClientRect();
+  let copy = element.cloneNode(true) as HTMLElement;
+  copy.classList.remove("page-block-dragging", "ProseMirror-selectednode");
+  let left = rect.left;
+  const list = element.parentElement;
+  if (block.node.type.name === "list_item" && list && /^(UL|OL)$/.test(list.tagName)) {
+    const wrapper = list.cloneNode(false) as HTMLElement;
+    if (wrapper instanceof HTMLOListElement) {
+      wrapper.start = (Number(list.getAttribute("start")) || 1) + [...list.children].indexOf(element);
+    }
+    wrapper.append(copy);
+    copy = wrapper;
+    left -= parseFloat(getComputedStyle(list).paddingLeft) || 0;
+  }
+  const content = document.createElement("div");
+  content.className = "ProseMirror";
+  content.append(copy);
+  const ghost = document.createElement("div");
+  ghost.className = "page-block-ghost";
+  ghost.setAttribute("aria-hidden", "true");
+  ghost.style.width = `${rect.right - left}px`;
+  ghost.append(content);
+  container.append(ghost);
+  const result = { element: ghost, dx: x - left, dy: y - rect.top };
+  moveGhost(result, x, y);
+  return result;
+}
+
+function moveGhost(ghost: Ghost, x: number, y: number) {
+  ghost.element.style.transform = `translate(${x - ghost.dx}px, ${y - ghost.dy}px)`;
+}
+
 /** The element that scrolls the page, for scrolling while dragging near its edges. */
 function scrollParent(element: HTMLElement): HTMLElement {
   for (let el: HTMLElement | null = element.parentElement; el; el = el.parentElement) {
@@ -149,6 +197,9 @@ export function BlockHandle({ editor, container }: {
   const [dragging, setDraggingState] = useState(false);
   const drag = useRef<Drag | null>(null);
   const pointer = useRef({ x: 0, y: 0 });
+  const ghost = useRef<Ghost | null>(null);
+  // Never leave a copy behind (the page closed mid-drag).
+  useEffect(() => () => ghost.current?.element.remove(), []);
   const frozen = menuOpen || dragging;
   const frozenRef = useRef(frozen);
   frozenRef.current = frozen;
@@ -232,6 +283,8 @@ export function BlockHandle({ editor, container }: {
     const current = drag.current;
     drag.current = null;
     if (!current) return;
+    ghost.current?.element.remove();
+    ghost.current = null;
     if (current.started) {
       view.dispatch(setDragging(view.state.tr, null));
       setDraggingState(false);
@@ -260,10 +313,13 @@ export function BlockHandle({ editor, container }: {
     if (!current.started) {
       if (Math.hypot(event.clientX - current.startX, event.clientY - current.startY) < DRAG_THRESHOLD) return;
       current.started = true;
+      // Copy it before it's faded.
+      if (container.current) ghost.current = createGhost(view, container.current, current.block, event.clientX, event.clientY);
       setMenuOpen(false);
       setDraggingState(true);
       view.dispatch(setDragging(view.state.tr, current.block.pos));
     }
+    if (ghost.current) moveGhost(ghost.current, event.clientX, event.clientY);
     updateDrop();
   };
 

@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { ancestry, displayOrder, search } from "./pageTree.ts";
+import { ancestry, displayOrder, search, trail } from "./pageTree.ts";
 
 const pages = [
   { id: "a", title: "Alpha", parent: null },
@@ -21,4 +21,10 @@ test("search ranks title starts, then word starts, then anywhere", () => {
   expect(search(pages, "pla").map((p) => p.id)).toEqual(["a1", "b"]);
   expect(search(pages, "unc").map((p) => p.id)).toEqual(["a1x"]);
   expect(search(pages, "").length).toBe(4);
+});
+
+test("the trail is the page with its ancestors, outermost first", () => {
+  expect(trail(pages, "a1x").map((p) => p.id)).toEqual(["a", "a1", "a1x"]);
+  expect(trail(pages, "b").map((p) => p.id)).toEqual(["b"]);
+  expect(trail(pages, "missing")).toEqual([]);
 });
