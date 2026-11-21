@@ -22,7 +22,6 @@ interface SidebarProps {
   width: number;
   hidden: boolean;
   onResize: (width: number) => void;
-  onHide: () => void;
   /** Set when the developer panel is available. */
   onOpenDevPanel?: () => void;
 }
@@ -32,66 +31,72 @@ export function Sidebar(props: SidebarProps) {
   const children = useMemo(() => childrenOf(pages), [pages]);
 
   return (
-    <aside className="sidebar" hidden={props.hidden}>
-      <SidebarTitleBar onHide={props.onHide} />
-      <button className="sidebar-search" title={tip("Search", "search")} onClick={props.onSearch}>
-        <Search size={14} aria-hidden />
-        <span>Search</span>
-        <kbd>{keysLabel(SHORTCUTS.search.keys)}</kbd>
-      </button>
-      <div className="sidebar-header">
-        <WorkspaceName workspace={workspace} onRenamed={props.onWorkspaceChange} onError={props.onError} />
-        <button className="icon-button" title={tip("New page", "newPage")} aria-label="New page" onClick={() => props.onCreate(null)}>
-          <Plus size={16} />
-        </button>
-      </div>
-      <nav className="tree" aria-label="Pages">
-        <ul className="tree-level" role="tree">
-          {(children.get(null) ?? []).map((page) => (
-            <TreeItem
-              key={page.id}
-              page={page}
-              children={children}
-              depth={0}
-              selected={selected}
-              onSelect={props.onSelect}
-              onCreate={props.onCreate}
-            />
-          ))}
-        </ul>
-        {pages.length === 0 && <p className="muted tree-empty">No pages yet.</p>}
-      </nav>
-      <div className="sidebar-footer">
-        <SyncStatusBar
-        workspace={workspace}
-        status={status}
-        onWorkspaceChange={props.onWorkspaceChange}
-        onSetRemote={async (url) => {
-          try {
-            props.onWorkspaceChange(await api.setRemote(url));
-          } catch (e) {
-            props.onError(errorText(e));
-          }
-        }}
-        />
-        <button
-          className="icon-button"
-          title={tip("Keyboard shortcuts", "showShortcuts")}
-          aria-label="Keyboard shortcuts"
-          onClick={props.onShowShortcuts}
-        >
-          <Keyboard size={15} />
-        </button>
-        {props.onOpenDevPanel && (
-          <button
-            className="icon-button"
-            title={tip("Developer log", "toggleDevPanel")}
-            aria-label="Developer log"
-            onClick={props.onOpenDevPanel}
-          >
-            <SquareTerminal size={15} />
+    // Hidden, it stays in the page (so it can slide closed and open) but
+    // can't be clicked or tabbed into.
+    <aside className="sidebar" inert={props.hidden} aria-hidden={props.hidden || undefined}>
+      <div className="sidebar-clip">
+        <div className="sidebar-content" style={{ width: props.width }}>
+          <SidebarTitleBar />
+          <button className="sidebar-search" title={tip("Search", "search")} onClick={props.onSearch}>
+            <Search size={14} aria-hidden />
+            <span>Search</span>
+            <kbd>{keysLabel(SHORTCUTS.search.keys)}</kbd>
           </button>
-        )}
+          <div className="sidebar-header">
+            <WorkspaceName workspace={workspace} onRenamed={props.onWorkspaceChange} onError={props.onError} />
+            <button className="icon-button" title={tip("New page", "newPage")} aria-label="New page" onClick={() => props.onCreate(null)}>
+              <Plus size={16} />
+            </button>
+          </div>
+          <nav className="tree" aria-label="Pages">
+            <ul className="tree-level" role="tree">
+              {(children.get(null) ?? []).map((page) => (
+                <TreeItem
+                  key={page.id}
+                  page={page}
+                  children={children}
+                  depth={0}
+                  selected={selected}
+                  onSelect={props.onSelect}
+                  onCreate={props.onCreate}
+                />
+              ))}
+            </ul>
+            {pages.length === 0 && <p className="muted tree-empty">No pages yet.</p>}
+          </nav>
+          <div className="sidebar-footer">
+            <SyncStatusBar
+              workspace={workspace}
+              status={status}
+              onWorkspaceChange={props.onWorkspaceChange}
+              onSetRemote={async (url) => {
+                try {
+                  props.onWorkspaceChange(await api.setRemote(url));
+                } catch (e) {
+                  props.onError(errorText(e));
+                }
+              }}
+            />
+            <button
+              className="icon-button"
+              title={tip("Keyboard shortcuts", "showShortcuts")}
+              aria-label="Keyboard shortcuts"
+              onClick={props.onShowShortcuts}
+            >
+              <Keyboard size={15} />
+            </button>
+            {props.onOpenDevPanel && (
+              <button
+                className="icon-button"
+                title={tip("Developer log", "toggleDevPanel")}
+                aria-label="Developer log"
+                onClick={props.onOpenDevPanel}
+              >
+                <SquareTerminal size={15} />
+              </button>
+            )}
+          </div>
+        </div>
       </div>
       <Resizer width={props.width} onResize={props.onResize} />
     </aside>

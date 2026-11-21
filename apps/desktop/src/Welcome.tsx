@@ -34,7 +34,7 @@ export function Welcome({ onOpened }: { onOpened: (w: WorkspaceInfo) => void }) 
   return (
     <div className="welcome">
       {/* No title bar here: the top of the window still moves it. */}
-      <div className="window-drag" data-tauri-drag-region />
+      <div className="window-drag" data-window-drag />
       <h1>Your workspace</h1>
       <p className="muted">Pages are Markdown files in a folder, kept in sync between your devices with Git.</p>
 

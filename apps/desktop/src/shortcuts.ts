@@ -13,6 +13,10 @@ export const SHORTCUTS = {
   deletePage: { keys: "mod+shift+backspace", label: "Delete page" },
   syncNow: { keys: "mod+s", label: "Save and sync now" },
   showShortcuts: { keys: "mod+/", label: "Keyboard shortcuts" },
+  // Handled in zoom.ts, which also takes ⌘= and the number pad.
+  zoomIn: { keys: "mod+plus", label: "Zoom in" },
+  zoomOut: { keys: "mod+minus", label: "Zoom out" },
+  resetZoom: { keys: "mod+0", label: "Actual size" },
   toggleDevPanel: { keys: "mod+j", label: "Developer log" },
   toggleDevPanelSize: { keys: "mod+shift+j", label: "Developer log: fill the window" },
   copyLog: { keys: "mod+shift+c", label: "Developer log: copy" },
@@ -87,6 +91,8 @@ const MAC_SYMBOLS: Record<string, string> = {
   enter: "↩",
   tab: "⇥",
   home: "Home",
+  plus: "+",
+  minus: "−",
 };
 
 const OTHER_NAMES: Record<string, string> = {
@@ -100,6 +106,8 @@ const OTHER_NAMES: Record<string, string> = {
   enter: "Enter",
   tab: "Tab",
   home: "Home",
+  plus: "Plus",
+  minus: "Minus",
 };
 
 /** How to show a combination: "⌘⇧J" on macOS, "Ctrl+Shift+J" elsewhere. */

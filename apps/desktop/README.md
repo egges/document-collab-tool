@@ -27,11 +27,15 @@ step). On Linux, install
   show at the top level), a title, and the editor. Create, rename and delete
   pages. Drag the sidebar's edge to resize it (double-click resets it); its
   width and whether it's shown are kept per device.
-- **Title bar.** The app draws its own (`src/TitleBar.tsx`): over the
-  sidebar, the button to hide it; over the page, where the page sits in the
-  tree (click a level to open it) and Delete. Empty parts move the window.
+- **Title bar.** The app draws its own (`src/TitleBar.tsx`): the sidebar
+  button, always in the same spot (the sidebar slides open and closed);
+  over the page, where the page sits in the tree (click a level to open it)
+  and Delete. Empty parts move the window and double-clicking zooms it
+  (`src/windowChrome.ts`, which calls Tauri's window API itself).
   On macOS the window's own buttons sit in its corner
-  (`src-tauri/tauri.macos.conf.json`, `src/windowChrome.ts`); on Windows and
+  (`src-tauri/tauri.macos.conf.json`, `src/windowChrome.ts`). Zooming
+  (⌘+ / ⌘−, `src/zoom.ts`) scales the bar's icons and text but not its
+  height, so they stay centred on those buttons; on Windows and
   Linux the system title bar stays above it for now.
 - **Search** (⌘K). Finds pages by title and by the text the editor shows,
   without Markdown syntax or link addresses (`src-tauri/src/search.rs`, a

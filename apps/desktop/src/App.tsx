@@ -13,7 +13,7 @@ import { inCodeBlock, useShortcuts } from "./shortcuts.ts";
 import { ShortcutsHelp } from "./ShortcutsHelp.tsx";
 import { Sidebar } from "./Sidebar.tsx";
 import { useSidebarLayout } from "./sidebarLayout.ts";
-import { PageTitleBar } from "./TitleBar.tsx";
+import { PageTitleBar, SidebarToggle } from "./TitleBar.tsx";
 import { Welcome } from "./Welcome.tsx";
 
 export function App() {
@@ -155,7 +155,7 @@ function WorkspaceView({ workspace, onChange }: { workspace: WorkspaceInfo; onCh
   return (
     <div
       className={"layout" + (sidebar.hidden ? " sidebar-hidden" : "")}
-      style={{ gridTemplateColumns: sidebar.hidden ? "1fr" : `${sidebar.width}px 1fr` }}
+      style={{ gridTemplateColumns: `${sidebar.hidden ? 0 : sidebar.width}px 1fr` }}
     >
       <Sidebar
         workspace={workspace}
@@ -171,7 +171,6 @@ function WorkspaceView({ workspace, onChange }: { workspace: WorkspaceInfo; onCh
         width={sidebar.width}
         hidden={sidebar.hidden}
         onResize={sidebar.setWidth}
-        onHide={sidebar.toggle}
         onOpenDevPanel={dev.enabled ? dev.toggle : undefined}
       />
       <main className="main">
@@ -179,7 +178,6 @@ function WorkspaceView({ workspace, onChange }: { workspace: WorkspaceInfo; onCh
           trail={selected ? trail(pages, selected) : []}
           draftTitle={draftTitle && draftTitle.id === selected ? draftTitle.title : null}
           sidebarHidden={sidebar.hidden}
-          onShowSidebar={sidebar.toggle}
           onSearch={() => setDialog("search")}
           onSelect={(id) => id !== selected && void select(id)}
           onDelete={selected ? () => void page.current?.remove() : undefined}
@@ -219,6 +217,7 @@ function WorkspaceView({ workspace, onChange }: { workspace: WorkspaceInfo; onCh
           )}
         </div>
       </main>
+      <SidebarToggle hidden={sidebar.hidden} onToggle={sidebar.toggle} />
       {dev.open && <DevPanel maximized={dev.maximized} onToggleSize={dev.toggleSize} onClose={dev.toggle} />}
       {dialog === "search" && <Search pages={pages} onAction={runSearch} onClose={() => setDialog(null)} />}
       {dialog === "shortcuts" && <ShortcutsHelp devPanel={dev.enabled} onClose={() => setDialog(null)} />}
