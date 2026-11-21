@@ -67,11 +67,41 @@ export const api = {
     invoke<Page>("resolve_conflict", { id, index, keep }),
 };
 
+export type LogLevel = "debug" | "info" | "warn" | "error";
+
+export interface LogEntry {
+  id: number;
+  /** Milliseconds since the Unix epoch. */
+  time: number;
+  level: LogLevel;
+  source: string;
+  message: string;
+}
+
+export interface DevInfo {
+  /** Whether the developer panel is available (debug builds, or DOCSYNC_DEV=1). */
+  enabled: boolean;
+  version: string;
+  debugBuild: boolean;
+  os: string;
+  git: string | null;
+  workspace: WorkspaceInfo | null;
+}
+
+export const devApi = {
+  info: () => invoke<DevInfo>("dev_info"),
+  entries: () => invoke<LogEntry[]>("dev_log_entries"),
+  clear: () => invoke<void>("dev_log_clear"),
+  add: (level: LogLevel, source: string, message: string) => invoke<void>("dev_log_add", { level, source, message }),
+};
+
 export const events = {
   onSyncStatus: (handler: (status: SyncStatus) => void): Promise<UnlistenFn> =>
     listen<SyncStatus>("sync-status", (e) => handler(e.payload)),
   /** Files changed on disk: a sync pulled changes in, or another program edited them. */
   onWorkspaceChanged: (handler: () => void): Promise<UnlistenFn> => listen("workspace-changed", () => handler()),
+  onDevLog: (handler: (entry: LogEntry) => void): Promise<UnlistenFn> =>
+    listen<LogEntry>("dev-log", (e) => handler(e.payload)),
 };
 
 /** Tauri rejects with the Rust error string. */

@@ -10,7 +10,7 @@ mod cli;
 use std::fmt;
 use std::path::Path;
 
-pub use cli::CliGit;
+pub use cli::{CliGit, GitCall};
 
 use crate::Result;
 

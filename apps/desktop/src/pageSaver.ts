@@ -39,6 +39,8 @@ export interface PageSaverOptions {
   delay?: number;
   /** How long to wait before trying a failed write again. */
   retryDelay?: number;
+  /** For the developer log. Gets sizes and decisions, never page text. */
+  log?: (message: string) => void;
 }
 
 export class PageSaver {
@@ -50,11 +52,13 @@ export class PageSaver {
   private gone = false;
   private readonly delay: number;
   private readonly retryDelay: number;
+  private readonly log: (message: string) => void;
 
   constructor(private readonly options: PageSaverOptions) {
     this.base = options.base;
     this.delay = options.delay ?? 600;
     this.retryDelay = options.retryDelay ?? 3000;
+    this.log = options.log ?? (() => {});
   }
 
   /** A newer version that arrived before the editor existed. */
@@ -63,6 +67,7 @@ export class PageSaver {
   attach(editor: EditorLike | null) {
     this.editor = editor;
     if (editor && this.waiting) {
+      this.log("Editor ready: showing the newer version that arrived while it loaded");
       this.show(editor, this.waiting);
       this.waiting = null;
     }
@@ -89,8 +94,12 @@ export class PageSaver {
   /** The file changed on disk. Show the new version unless the user has unsaved edits, which get merged with it instead. */
   refresh(page: Page): Promise<void> {
     return this.enqueue(async () => {
-      if (page.body === this.base) return;
+      if (page.body === this.base) {
+        this.log("File changed on disk, but this page is the same; nothing to do");
+        return;
+      }
       if (!this.editor) {
+        this.log("Page changed on disk before the editor was ready; will show it once ready");
         this.waiting = page;
         return;
       }
@@ -101,9 +110,10 @@ export class PageSaver {
       const editor = this.editor;
       if (!editor || this.gone || this.base !== before) return;
       if (this.trySave(editor) === null) {
+        this.log(`Page changed on disk; no unsaved edits, so showing the new version (${page.body.length} chars)`);
         this.show(editor, page);
       } else {
-        // Typed while we were saving: the next save merges with the new file.
+        this.log("Page changed on disk while typing; the next save merges the two");
         this.changed();
       }
     });
@@ -125,7 +135,9 @@ export class PageSaver {
 
   private enqueue(task: () => Promise<void>): Promise<void> {
     const run = this.queue.then(task).catch((e: unknown) => {
-      this.options.onEvent({ kind: "problem", message: e instanceof Error ? e.message : String(e) });
+      const message = e instanceof Error ? e.message : String(e);
+      this.log(`Save failed, retrying in ${this.retryDelay} ms: ${message}`);
+      this.options.onEvent({ kind: "problem", message });
       this.changed(this.retryDelay);
     });
     this.queue = run;
@@ -139,6 +151,7 @@ export class PageSaver {
     } catch (e) {
       if (e instanceof Error && e.name === "SaveRefusedError") {
         // Retried on the next change; the file on disk stays as it was.
+        this.log(`Editor refused to save (will retry on the next change): ${e.message}`);
         this.options.onEvent({ kind: "problem", message: e.message });
         return "refused";
       }
@@ -152,6 +165,7 @@ export class PageSaver {
     const body = this.trySave(editor);
     if (body === null || body === "refused") return;
 
+    this.log(`Saving ${body.length} chars (started from a version of ${this.base.length} chars)`);
     const result = await this.options.write(this.base, body);
     switch (result.status) {
       case "written":
@@ -164,8 +178,10 @@ export class PageSaver {
         editor.markSaved(); // the editor's content is now `body`'s, saved
         this.options.onEvent({ kind: "saved" });
         if (this.trySave(editor) === null) {
+          this.log(`Saved, merged with changes on disk; showing the merged page (${result.page.conflicts.length} conflicts)`);
           this.show(editor, result.page);
         } else {
+          this.log("Saved, merged with changes on disk; typed meanwhile, so merging again next save");
           // The user typed during the write. Keep their edits: the editor's
           // content now derives from `body`, so the next save merges it with
           // the merged file on disk, and then shows the result.
@@ -174,6 +190,7 @@ export class PageSaver {
         }
         break;
       case "gone":
+        this.log("Page was deleted elsewhere; stopped saving it");
         this.gone = true;
         this.options.onEvent({ kind: "gone" });
         break;

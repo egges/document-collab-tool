@@ -11,6 +11,8 @@ interface SidebarProps {
   onCreate: (parent: string | null) => void;
   onWorkspaceChange: (w: WorkspaceInfo | null) => void;
   onError: (message: string) => void;
+  /** Set when the developer panel is available. */
+  onOpenDevPanel?: () => void;
 }
 
 export function Sidebar(props: SidebarProps) {
@@ -51,6 +53,11 @@ export function Sidebar(props: SidebarProps) {
         </ul>
         {pages.length === 0 && <p className="muted tree-empty">No pages yet.</p>}
       </nav>
+      {props.onOpenDevPanel && (
+        <button className="dev-button" title="Developer log (⌘⇧D / Ctrl+Shift+D)" onClick={props.onOpenDevPanel}>
+          Developer log
+        </button>
+      )}
       <SyncStatusBar
         workspace={workspace}
         status={status}

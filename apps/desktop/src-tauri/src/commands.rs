@@ -10,6 +10,7 @@ use docsync::{PageWrite, SyncEngine, Workspace};
 use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
+use crate::devlog::{self, Entry, Level};
 use crate::session::{Session, WorkspaceInfo};
 use crate::tree::{self, PageSummary};
 use crate::worker::{Events, SyncStatus};
@@ -51,10 +52,19 @@ impl Events for WindowEvents {
     }
 }
 
-async fn blocking<T: Send + 'static>(f: impl FnOnce() -> CmdResult<T> + Send + 'static) -> CmdResult<T> {
-    tauri::async_runtime::spawn_blocking(f)
+/// Run `f` on a blocking thread; a failure goes to the developer log too.
+async fn blocking<T: Send + 'static>(
+    command: &'static str,
+    f: impl FnOnce() -> CmdResult<T> + Send + 'static,
+) -> CmdResult<T> {
+    let result = tauri::async_runtime::spawn_blocking(f)
         .await
-        .map_err(|e| e.to_string())?
+        .map_err(|e| e.to_string())
+        .and_then(|r| r);
+    if let Err(e) = &result {
+        devlog::error("app", format!("{command} failed: {e}"));
+    }
+    result
 }
 
 fn text<E: ToString>(e: E) -> String {
@@ -119,7 +129,11 @@ pub async fn restore_workspace(
         return Ok(None);
     }
     let events = WindowEvents(app.clone());
-    match blocking(move || Session::open_or_create(&path, events)).await {
+    match blocking("restore_workspace", move || {
+        Session::open_or_create(&path, events)
+    })
+    .await
+    {
         Ok(session) => Ok(Some(install(&app, &state, session))),
         Err(e) => {
             eprintln!("couldn't reopen the last workspace: {e}");
@@ -135,7 +149,7 @@ pub async fn open_workspace(
     path: PathBuf,
 ) -> CmdResult<WorkspaceInfo> {
     let events = WindowEvents(app.clone());
-    let session = blocking(move || Session::open_or_create(&path, events)).await?;
+    let session = blocking("open_workspace", move || Session::open_or_create(&path, events)).await?;
     Ok(install(&app, &state, session))
 }
 
@@ -147,7 +161,10 @@ pub async fn clone_workspace(
     path: PathBuf,
 ) -> CmdResult<WorkspaceInfo> {
     let events = WindowEvents(app.clone());
-    let session = blocking(move || Session::clone_remote(url.trim(), &path, events)).await?;
+    let session = blocking("clone_workspace", move || {
+        Session::clone_remote(url.trim(), &path, events)
+    })
+    .await?;
     Ok(install(&app, &state, session))
 }
 
@@ -237,13 +254,19 @@ fn read_page_from(ws: &Workspace, id: &str) -> CmdResult<Page> {
 #[tauri::command]
 pub async fn list_pages(state: State<'_, AppState>) -> CmdResult<Vec<PageSummary>> {
     let (engine, _) = state.engine()?;
-    blocking(move || tree::list_pages(&Workspace::new(engine.root())).map_err(text)).await
+    blocking("list_pages", move || {
+        tree::list_pages(&Workspace::new(engine.root())).map_err(text)
+    })
+    .await
 }
 
 #[tauri::command]
 pub async fn read_page(state: State<'_, AppState>, id: String) -> CmdResult<Page> {
     let (engine, _) = state.engine()?;
-    blocking(move || read_page_from(&Workspace::new(engine.root()), &id)).await
+    blocking("read_page", move || {
+        read_page_from(&Workspace::new(engine.root()), &id)
+    })
+    .await
 }
 
 #[derive(Debug, Serialize)]
@@ -269,9 +292,19 @@ pub async fn write_page(
     body: String,
 ) -> CmdResult<WriteResult> {
     let (engine, edited) = state.engine()?;
-    blocking(move || {
+    blocking("write_page", move || {
         let write = engine.write_page_body(&id, &base, &body).map_err(text)?;
         edited();
+        match &write {
+            PageWrite::Written => devlog::debug("save", format!("Wrote page {id} ({} chars)", body.len())),
+            PageWrite::Merged { conflicts, .. } => devlog::info(
+                "save",
+                format!("Page {id} changed on disk since it was opened: merged both ({conflicts} conflicts)"),
+            ),
+            PageWrite::PageGone => {
+                devlog::warn("save", format!("Page {id} was deleted elsewhere; not written"))
+            }
+        }
         Ok(match write {
             PageWrite::Written => WriteResult::Written {
                 conflicts: conflicts_in(&body),
@@ -292,10 +325,11 @@ pub async fn create_page(
     parent: Option<String>,
 ) -> CmdResult<String> {
     let (engine, edited) = state.engine()?;
-    blocking(move || {
+    blocking("create_page", move || {
         let id = Workspace::new(engine.root())
             .create_page(&title, parent.as_deref())
             .map_err(text)?;
+        devlog::info("app", format!("Created page {id}"));
         edited();
         Ok(id)
     })
@@ -305,10 +339,11 @@ pub async fn create_page(
 #[tauri::command]
 pub async fn rename_page(state: State<'_, AppState>, id: String, title: String) -> CmdResult<()> {
     let (engine, edited) = state.engine()?;
-    blocking(move || {
+    blocking("rename_page", move || {
         Workspace::new(engine.root())
             .set_title(&id, &title)
             .map_err(text)?;
+        devlog::debug("app", format!("Renamed page {id}"));
         edited();
         Ok(())
     })
@@ -319,8 +354,9 @@ pub async fn rename_page(state: State<'_, AppState>, id: String, title: String) 
 #[tauri::command]
 pub async fn delete_page(state: State<'_, AppState>, id: String) -> CmdResult<()> {
     let (engine, edited) = state.engine()?;
-    blocking(move || {
+    blocking("delete_page", move || {
         Workspace::new(engine.root()).delete_page(&id).map_err(text)?;
+        devlog::info("app", format!("Deleted page {id}"));
         edited();
         Ok(())
     })
@@ -336,10 +372,59 @@ pub async fn resolve_conflict(
     keep: usize,
 ) -> CmdResult<Page> {
     let (engine, edited) = state.engine()?;
-    blocking(move || {
+    blocking("resolve_conflict", move || {
         engine.resolve_page_conflict(&id, index, keep).map_err(text)?;
+        devlog::info(
+            "app",
+            format!("Resolved conflict {index} on page {id}: kept version {keep}"),
+        );
         edited();
         read_page_from(&Workspace::new(engine.root()), &id)
     })
     .await
+}
+
+// ---- developer panel ---------------------------------------------------------
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DevInfo {
+    /// Whether the developer panel is available (debug builds, or DOCSYNC_DEV=1).
+    enabled: bool,
+    version: String,
+    debug_build: bool,
+    os: String,
+    git: Option<String>,
+    workspace: Option<WorkspaceInfo>,
+}
+
+#[tauri::command]
+pub async fn dev_info(app: AppHandle, state: State<'_, AppState>) -> CmdResult<DevInfo> {
+    let workspace = state.session.lock().unwrap().as_ref().map(|s| s.info().clone());
+    Ok(DevInfo {
+        enabled: devlog::enabled(),
+        version: app.package_info().version.to_string(),
+        debug_build: cfg!(debug_assertions),
+        os: format!("{} {}", std::env::consts::OS, std::env::consts::ARCH),
+        git: crate::git::description(),
+        workspace,
+    })
+}
+
+#[tauri::command]
+pub async fn dev_log_entries() -> CmdResult<Vec<Entry>> {
+    Ok(devlog::entries())
+}
+
+#[tauri::command]
+pub async fn dev_log_clear() -> CmdResult<()> {
+    devlog::clear();
+    Ok(())
+}
+
+/// An entry from the window (saves, reloads, errors it showed).
+#[tauri::command]
+pub async fn dev_log_add(level: Level, source: String, message: String) -> CmdResult<()> {
+    devlog::log(level, &source, message);
+    Ok(())
 }

@@ -4,6 +4,7 @@ import { PageEditorView } from "@document-collab-tool/editor/react";
 import { type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { type Conflict, type Page, api, errorText } from "./api.ts";
 import { ConflictPanel } from "./ConflictPanel.tsx";
+import { log } from "./devlog.ts";
 import { PageSaver } from "./pageSaver.ts";
 
 export interface PageViewHandle {
@@ -59,19 +60,20 @@ function LoadedPage({ id, initial, diskVersion, onRenamed, onDeleted, onError, r
       new PageSaver({
         base: initial.body,
         write: (base, body) => api.writePage(id, base, body),
+        log: (message) => log("debug", "save", `Page ${id}: ${message}`),
         onEvent: (event) => {
           switch (event.kind) {
             case "conflicts":
               setConflicts(event.conflicts);
               break;
             case "gone":
+              log("warn", "save", `Page ${id} was deleted on another device while open`);
               setNotice("This page was deleted on another device. Your latest edits weren't saved.");
               break;
             case "saved":
               setProblem(null);
               break;
             case "problem":
-              console.warn("save problem, retrying:", event.message);
               setProblem((now) => now ?? event.message);
               break;
           }
@@ -96,6 +98,10 @@ function LoadedPage({ id, initial, diskVersion, onRenamed, onDeleted, onError, r
       await Promise.all([saver.flush(), saveTitle()]);
     },
   }));
+
+  useEffect(() => {
+    log("info", "ui", `Opened page ${id} (${initial.body.length} chars, ${initial.conflicts.length} conflicts)`);
+  }, [id, initial]);
 
   // Save edits when leaving the page.
   useEffect(() => () => void saver.flush(), [saver]);

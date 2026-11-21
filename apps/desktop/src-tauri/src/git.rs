@@ -2,7 +2,42 @@
 
 use std::path::PathBuf;
 
+use std::sync::Mutex;
+
 use docsync::CliGit;
+use docsync::git::GitCall;
+
+use crate::devlog;
+
+/// The git in use, e.g. "/opt/homebrew/bin/git 2.56.1", for the developer panel.
+static DESCRIPTION: Mutex<Option<String>> = Mutex::new(None);
+
+pub fn description() -> Option<String> {
+    DESCRIPTION.lock().unwrap().clone()
+}
+
+/// Every git command goes to the developer log. Successful ones are debug
+/// entries (a sync runs about ten); failures say why. Some failures are
+/// normal, such as `rev-parse` on a branch that doesn't exist yet.
+fn trace(call: &GitCall) {
+    let command = format!("git {}", call.args.join(" "));
+    let ms = call.duration.as_millis();
+    match call.exit_code {
+        Some(0) => devlog::debug("git", format!("{command} ({ms} ms)")),
+        code => devlog::info(
+            "git",
+            format!(
+                "{command} → exit {} ({ms} ms){}",
+                code.map_or("?".to_string(), |c| c.to_string()),
+                if call.stderr.is_empty() {
+                    String::new()
+                } else {
+                    format!(": {}", devlog::short(&call.stderr, 400))
+                }
+            ),
+        ),
+    }
+}
 
 /// Places to look, in order. An app started from the Finder or Start menu
 /// doesn't get the shell's `PATH`, so common install locations are listed
@@ -43,7 +78,12 @@ pub fn find_git() -> Result<CliGit, String> {
                 git.with_config(*key, *value)
             });
         match git.check_version() {
-            Ok(_) => return Ok(git),
+            Ok(version) => {
+                let description = format!("{} {version}", path.display());
+                devlog::info("app", format!("Using git: {description}"));
+                *DESCRIPTION.lock().unwrap() = Some(description);
+                return Ok(git.with_tracer(trace));
+            }
             Err(e @ docsync::Error::UnsupportedGitVersion { .. }) => {
                 problems.push(format!("{}: {e}", path.display()));
             }
@@ -58,5 +98,6 @@ pub fn find_git() -> Result<CliGit, String> {
         message.push_str("\n- ");
         message.push_str(&problem);
     }
+    devlog::error("app", &message);
     Err(message)
 }

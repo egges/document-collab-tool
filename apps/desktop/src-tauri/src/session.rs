@@ -8,6 +8,7 @@ use docsync::{SyncConfig, SyncEngine, SystemClock, layout};
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 
+use crate::devlog;
 use crate::worker::{Events, SyncWorker, Timing};
 
 /// Per-device settings, in `.docsync/app.json` (never synced).
@@ -47,8 +48,10 @@ impl Session {
                     path.display()
                 ));
             }
+            devlog::info("app", format!("Opening workspace {}", path.display()));
             SyncEngine::open(git, path, config, clock)
         } else if is_empty_dir(path)? {
+            devlog::info("app", format!("Creating a workspace in {}", path.display()));
             SyncEngine::init(git, path, config, clock)
         } else {
             return Err(format!(
@@ -57,7 +60,10 @@ impl Session {
                 path.display()
             ));
         }
-        .map_err(|e| e.to_string())?;
+        .map_err(|e| {
+            devlog::error("app", format!("Couldn't open {}: {e}", path.display()));
+            e.to_string()
+        })?;
         Self::start(engine, events)
     }
 
@@ -68,6 +74,7 @@ impl Session {
             return Err(format!("{} isn't empty. Choose an empty folder.", path.display()));
         }
         let git = Arc::new(crate::git::find_git()?);
+        devlog::info("app", format!("Joining {url} in {}", path.display()));
         let engine = SyncEngine::clone_remote(
             git,
             url,
@@ -96,6 +103,14 @@ impl Session {
         if let Some(url) = &settings.remote {
             engine.set_remote(url).map_err(|e| e.to_string())?;
         }
+        devlog::info(
+            "app",
+            format!(
+                "Workspace open as \"{}\", remote: {}",
+                engine.config().device_name,
+                settings.remote.as_deref().unwrap_or("none")
+            ),
+        );
         let info = WorkspaceInfo {
             path: root.display().to_string(),
             name: root
@@ -123,7 +138,7 @@ impl Session {
             }
         })
         .and_then(|mut w| w.watch(&root, RecursiveMode::Recursive).map(|()| w))
-        .map_err(|e| eprintln!("not watching {}: {e}", root.display()))
+        .map_err(|e| devlog::warn("watch", format!("Not watching {}: {e}", root.display())))
         .ok();
 
         Ok(Self {
@@ -145,6 +160,10 @@ impl Session {
             self.engine.set_remote(url).map_err(|e| e.to_string())?;
         }
         save_device_settings(self.engine.root(), &DeviceSettings { remote: url.clone() })?;
+        devlog::info(
+            "app",
+            format!("Remote set to {}", url.as_deref().unwrap_or("none")),
+        );
         self.worker.set_has_remote(url.is_some());
         self.info.remote = url;
         Ok(())

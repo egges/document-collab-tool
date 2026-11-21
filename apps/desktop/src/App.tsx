@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { type PageSummary, type SyncStatus, type WorkspaceInfo, api, errorText, events } from "./api.ts";
+import { DevPanel, useDevPanel } from "./DevPanel.tsx";
+import { log } from "./devlog.ts";
 import { PageView, type PageViewHandle } from "./PageView.tsx";
 import { Sidebar } from "./Sidebar.tsx";
 import { Welcome } from "./Welcome.tsx";
@@ -24,7 +26,12 @@ function WorkspaceView({ workspace, onChange }: { workspace: WorkspaceInfo; onCh
   const [pages, setPages] = useState<PageSummary[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   const [status, setStatus] = useState<SyncStatus | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setErrorState] = useState<string | null>(null);
+  const setError = useCallback((message: string | null) => {
+    if (message) log("error", "ui", `Shown to the user: ${message}`);
+    setErrorState(message);
+  }, []);
+  const dev = useDevPanel();
   // Bumped when files change on disk, so the open page rereads its file.
   const [diskVersion, setDiskVersion] = useState(0);
   const page = useRef<PageViewHandle>(null);
@@ -35,13 +42,14 @@ function WorkspaceView({ workspace, onChange }: { workspace: WorkspaceInfo; onCh
     } catch (e) {
       setError(errorText(e));
     }
-  }, []);
+  }, [setError]);
 
   useEffect(() => {
     void reload();
     const unlisten = [
       events.onSyncStatus(setStatus),
       events.onWorkspaceChanged(() => {
+        log("debug", "ui", "Workspace changed on disk: reloading the page list and the open page");
         void reload();
         setDiskVersion((n) => n + 1);
       }),
@@ -49,7 +57,7 @@ function WorkspaceView({ workspace, onChange }: { workspace: WorkspaceInfo; onCh
     // The first sync may have reported before we listened.
     void Promise.all(unlisten).then(() => api.syncStatus().then((s) => s && setStatus((now) => now ?? s)));
     return () => unlisten.forEach((u) => void u.then((f) => f()));
-  }, [reload]);
+  }, [reload, setError]);
 
   // Save before the window goes away or loses focus (and so before a sync on refocus).
   useEffect(() => {
@@ -94,6 +102,7 @@ function WorkspaceView({ workspace, onChange }: { workspace: WorkspaceInfo; onCh
         onCreate={create}
         onWorkspaceChange={onChange}
         onError={setError}
+        onOpenDevPanel={dev.enabled ? dev.toggle : undefined}
       />
       <main className="main">
         {error && (
@@ -122,6 +131,7 @@ function WorkspaceView({ workspace, onChange }: { workspace: WorkspaceInfo; onCh
           </div>
         )}
       </main>
+      {dev.open && <DevPanel onClose={dev.toggle} />}
     </div>
   );
 }

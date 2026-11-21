@@ -44,5 +44,20 @@ step). On Linux, install
   built yet. Git never prompts: SSH runs in batch mode, so the host key must
   already be trusted and the key loaded in the agent.
 
+## Developer log
+
+Debug builds have a developer panel: press ⌘⇧D (Ctrl+Shift+D on Windows and
+Linux) or click "Developer log" at the bottom of the sidebar. It shows one
+live timeline of what the app did: every git command with its exit code,
+timing and error output, why each sync started and what it did, files
+changed on disk, and each save (written, merged with changes on disk,
+retried). Filter by source or level, or search. **Copy** puts the whole log
+on the clipboard with the app version, OS, git and workspace details, ready
+to paste into a bug report. The log never contains page text, only sizes and
+page ids.
+
+Release builds hide the panel. Set `DOCSYNC_DEV=1` to turn it on anyway.
+Debug builds also print every entry to the terminal.
+
 Not yet: GitHub sign-in, bundled Git, databases, the block handle, table
 controls, search, signing and updates. See the [roadmap](../../docs/roadmap.md).

@@ -20,6 +20,8 @@ use std::thread::JoinHandle;
 use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 
 use docsync::SyncEngine;
+
+use crate::devlog;
 use serde::Serialize;
 
 #[derive(Debug, Clone, Copy)]
@@ -147,7 +149,13 @@ impl SyncWorker {
     pub fn file_change_notifier(&self) -> impl Fn(&[&Path]) + Send + 'static + use<> {
         let tx = self.tx.clone();
         move |paths| {
-            if paths.iter().any(|p| is_workspace_file(p)) {
+            let relevant: Vec<String> = paths
+                .iter()
+                .filter(|p| is_workspace_file(p))
+                .map(|p| short_path(p))
+                .collect();
+            if !relevant.is_empty() {
+                devlog::debug("watch", format!("Changed on disk: {}", relevant.join(", ")));
                 let _ = tx.send(Msg::FilesChanged);
             }
         }
@@ -179,6 +187,12 @@ impl<E: Events> Events for Remembering<E> {
     }
 }
 
+/// The last three parts of a path, e.g. "pages/abc123/page.md".
+fn short_path(path: &Path) -> String {
+    let parts: Vec<_> = path.iter().map(|p| p.to_string_lossy()).collect();
+    parts[parts.len().saturating_sub(3)..].join("/")
+}
+
 /// Whether a changed path is workspace content rather than git's or our own
 /// bookkeeping.
 fn is_workspace_file(path: &Path) -> bool {
@@ -199,6 +213,8 @@ struct Loop<E> {
     commit_at: Option<Instant>,
     changed_at: Option<Instant>,
     sync_at: Instant,
+    /// Why the next sync happens, for the developer log.
+    sync_reason: &'static str,
     last_sync: Option<Instant>,
     last_synced: Option<u64>,
 }
@@ -213,6 +229,7 @@ impl<E: Events> Loop<E> {
             commit_at: None,
             changed_at: None,
             sync_at: Instant::now(),
+            sync_reason: "workspace opened",
             last_sync: None,
             last_synced: None,
         }
@@ -232,13 +249,19 @@ impl<E: Events> Loop<E> {
                     self.changed_at.get_or_insert(now + self.timing.change_delay);
                     self.commit_at = Some(now + self.timing.commit_delay);
                 }
-                Ok(Msg::SyncNow) => self.sync_at = now,
+                Ok(Msg::SyncNow) => {
+                    self.sync_at = now;
+                    self.sync_reason = "requested";
+                }
                 Ok(Msg::Focused) => {
                     if self
                         .last_sync
                         .is_none_or(|t| now - t >= self.timing.focus_min_gap)
                     {
                         self.sync_at = now;
+                        self.sync_reason = "window focused";
+                    } else {
+                        devlog::debug("sync", "Window focused; synced recently, so not syncing again");
                     }
                 }
                 Ok(Msg::Stop) | Err(RecvTimeoutError::Disconnected) => break,
@@ -248,6 +271,7 @@ impl<E: Events> Loop<E> {
             let now = Instant::now();
             if self.changed_at.is_some_and(|t| t <= now) {
                 self.changed_at = None;
+                devlog::debug("watch", "Files changed: telling the window to reload");
                 self.events.workspace_changed();
             }
             if self.sync_at <= now {
@@ -260,31 +284,62 @@ impl<E: Events> Loop<E> {
         if self.commit_at.is_some() {
             self.commit();
         }
+        devlog::info("sync", "Stopped the sync worker");
     }
 
     fn commit(&mut self) {
         self.commit_at = None;
-        if let Err(e) = self.engine.commit_local("Edit pages") {
-            self.report(SyncState::Error, Some(e.to_string()), 0);
+        match self.engine.commit_local("Edit pages") {
+            Ok(Some(commit)) => devlog::info("sync", format!("Committed edits ({})", commit.short())),
+            Ok(None) => devlog::debug("sync", "Nothing to commit"),
+            Err(e) => {
+                devlog::error("sync", format!("Commit failed: {e}"));
+                self.report(SyncState::Error, Some(e.to_string()), 0);
+            }
         }
     }
 
     fn sync(&mut self) {
+        let reason = std::mem::replace(&mut self.sync_reason, "interval");
         self.sync_at = Instant::now() + self.timing.sync_interval;
         self.last_sync = Some(Instant::now());
         if !self.has_remote.load(Ordering::SeqCst) {
+            devlog::debug("sync", format!("Sync skipped ({reason}): no remote set"));
             self.commit();
             self.report(SyncState::LocalOnly, None, 0);
             return;
         }
         self.commit_at = None; // sync commits first
         self.report(SyncState::Syncing, None, 0);
-        match self.engine.sync() {
+        devlog::info("sync", format!("Sync started ({reason})"));
+        let started = Instant::now();
+        let result = self.engine.sync();
+        let ms = started.elapsed().as_millis();
+        match result {
             Ok(report) if report.offline => {
+                devlog::warn(
+                    "sync",
+                    format!(
+                        "Offline after {ms} ms{}: {}",
+                        if report.committed {
+                            " (edits committed locally)"
+                        } else {
+                            ""
+                        },
+                        devlog::short(report.offline_reason.as_deref().unwrap_or("?"), 400)
+                    ),
+                );
                 let reason = report.offline_reason.as_deref().map(first_line);
                 self.report(SyncState::Offline, reason, 0);
             }
             Ok(report) => {
+                devlog::info("sync", format!("Sync done in {ms} ms: {}", describe(&report)));
+                for conflict in &report.conflicts {
+                    devlog::warn(
+                        "sync",
+                        format!("Resolved a conflict: {}: {}", conflict.path, conflict.resolution),
+                    );
+                }
                 self.last_synced = Some(now_ms());
                 self.report(SyncState::Synced, None, report.conflicts.len());
                 if report.fast_forwarded || report.merged {
@@ -293,7 +348,10 @@ impl<E: Events> Loop<E> {
                     self.events.workspace_changed();
                 }
             }
-            Err(e) => self.report(SyncState::Error, Some(e.to_string()), 0),
+            Err(e) => {
+                devlog::error("sync", format!("Sync failed after {ms} ms: {e}"));
+                self.report(SyncState::Error, Some(e.to_string()), 0);
+            }
         }
     }
 
@@ -304,6 +362,35 @@ impl<E: Events> Loop<E> {
             last_synced: self.last_synced,
             conflicts,
         });
+    }
+}
+
+/// What a sync did, e.g. "committed, merged, pushed".
+fn describe(report: &docsync::SyncReport) -> String {
+    let mut parts = Vec::new();
+    for (done, what) in [
+        (report.committed, "committed local edits"),
+        (report.fast_forwarded, "pulled changes"),
+        (report.merged, "merged changes"),
+        (report.pushed, "pushed"),
+    ] {
+        if done {
+            parts.push(what.to_string());
+        }
+    }
+    if !report.conflicts.is_empty() {
+        parts.push(format!("{} conflicts resolved", report.conflicts.len()));
+    }
+    if !report.removed_locks.is_empty() {
+        parts.push(format!(
+            "removed stale locks: {}",
+            report.removed_locks.join(", ")
+        ));
+    }
+    if parts.is_empty() {
+        "already up to date".into()
+    } else {
+        parts.join(", ")
     }
 }
 

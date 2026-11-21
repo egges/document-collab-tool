@@ -65,6 +65,30 @@ static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 pub struct CliGit {
     binary: PathBuf,
     extra_config: Vec<(String, String)>,
+    tracer: Option<Tracer>,
+}
+
+/// One git command, as reported to a [`CliGit::with_tracer`] callback.
+#[derive(Debug, Clone)]
+pub struct GitCall {
+    pub args: Vec<String>,
+    /// The exit code, or `None` when git couldn't be started or was killed.
+    pub exit_code: Option<i32>,
+    pub duration: std::time::Duration,
+    /// What git wrote to stderr (trimmed). Never contains stdin or config
+    /// values, so tokens passed through [`CliGit::with_config`] stay out.
+    pub stderr: String,
+}
+
+type TraceFn = dyn Fn(&GitCall) + Send + Sync;
+
+#[derive(Clone)]
+struct Tracer(std::sync::Arc<TraceFn>);
+
+impl std::fmt::Debug for Tracer {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Tracer")
+    }
 }
 
 impl CliGit {
@@ -72,6 +96,7 @@ impl CliGit {
         Self {
             binary: binary.into(),
             extra_config: Vec::new(),
+            tracer: None,
         }
     }
 
@@ -83,6 +108,12 @@ impl CliGit {
 
     pub fn with_config(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.extra_config.push((key.into(), value.into()));
+        self
+    }
+
+    /// Call `trace` after every git command, for a developer log.
+    pub fn with_tracer(mut self, trace: impl Fn(&GitCall) + Send + Sync + 'static) -> Self {
+        self.tracer = Some(Tracer(std::sync::Arc::new(trace)));
         self
     }
 
@@ -134,6 +165,31 @@ impl CliGit {
 
     /// Run a command and return its output whatever the exit status.
     fn exec(
+        &self,
+        repo: Option<&Path>,
+        args: &[&str],
+        stdin: Option<&[u8]>,
+        env: &[(&str, &str)],
+    ) -> Result<Output> {
+        let Some(tracer) = &self.tracer else {
+            return self.exec_untraced(repo, args, stdin, env);
+        };
+        let started = std::time::Instant::now();
+        let result = self.exec_untraced(repo, args, stdin, env);
+        let (exit_code, stderr) = match &result {
+            Ok(out) => (out.status.code(), stderr_of(out)),
+            Err(e) => (None, e.to_string()),
+        };
+        (tracer.0)(&GitCall {
+            args: args.iter().map(|a| a.to_string()).collect(),
+            exit_code,
+            duration: started.elapsed(),
+            stderr,
+        });
+        result
+    }
+
+    fn exec_untraced(
         &self,
         repo: Option<&Path>,
         args: &[&str],
@@ -637,6 +693,30 @@ impl GitBackend for CliGit {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn reports_every_command_to_the_tracer() {
+        let calls = std::sync::Arc::new(std::sync::Mutex::new(Vec::new()));
+        let seen = calls.clone();
+        let git = CliGit::from_path().with_tracer(move |call| seen.lock().unwrap().push(call.clone()));
+        git.version().unwrap();
+        let dir = std::env::temp_dir();
+        // Fails inside git (no such directory); resolve() reports that as "not found".
+        assert_eq!(
+            git.resolve(&dir.join("not-a-repo-docsync-test"), "HEAD").unwrap(),
+            None
+        );
+
+        let calls = calls.lock().unwrap();
+        assert_eq!(calls.len(), 2);
+        assert_eq!(calls[0].args, ["--version"]);
+        assert_eq!(calls[0].exit_code, Some(0));
+        assert!(
+            calls[1].exit_code != Some(0) && !calls[1].stderr.is_empty(),
+            "{:?}",
+            calls[1]
+        );
+    }
 
     #[test]
     fn parses_versions() {
