@@ -372,3 +372,80 @@
   font: 12px var(--page-font-code);
   color: var(--page-muted);
 }
+
+/* --- Blocks: the handle, its menu, dragging and selected blocks ------------ */
+
+/* Left of the block under the pointer: "+" to add a block, the grip to drag or open the menu. */
+.page-block-handle {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  height: 24px;
+  user-select: none;
+  animation: page-handle-in 120ms ease-out;
+}
+@keyframes page-handle-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .page-block-handle { animation: none; } }
+.page-block-handle button {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 24px;
+  padding: 0;
+  color: var(--page-muted);
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  opacity: 0.6;
+  cursor: pointer;
+}
+.page-block-handle button:hover,
+.page-block-handle button[aria-expanded="true"] { background: var(--page-menu-hover); opacity: 1; }
+.page-block-handle .page-block-grip { width: 18px; cursor: grab; touch-action: none; }
+.page-block-handle.active .page-block-grip { opacity: 1; }
+.page-block-handle.active:has(+ .page-block-drop) .page-block-grip { cursor: grabbing; }
+
+/* Where a dragged block will land. */
+.page-block-drop {
+  position: absolute;
+  z-index: 4;
+  height: 3px;
+  margin-top: -1px;
+  border-radius: 2px;
+  background: var(--page-accent);
+  opacity: 0.55;
+  pointer-events: none;
+}
+.page-editor .ProseMirror .page-block-dragging { opacity: 0.35; }
+
+/* A selected block (Esc, or the grip's menu), highlighted as in Notion. */
+.page-editor .ProseMirror .ProseMirror-selectednode {
+  background: color-mix(in srgb, var(--page-accent) 14%, transparent);
+  border-radius: 4px;
+  outline: none;
+}
+.page-editor .ProseMirror hr.ProseMirror-selectednode { background: none; border-top-color: var(--page-accent); }
+.page-editor .ProseMirror-hideselection *::selection { background: transparent; }
+.page-editor .ProseMirror-hideselection { caret-color: transparent; }
+
+/* The grip's menu. */
+.page-block-menu { overflow: visible; max-height: none; outline: none; min-width: 230px; }
+.page-block-menu-row { position: relative; display: flex; flex-direction: column; }
+.page-block-menu button[disabled] { opacity: 0.4; cursor: default; background: none; }
+.page-block-menu button.danger:is(:hover, .active) { color: var(--page-hl-keyword); }
+.page-block-menu-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  flex: none;
+  color: var(--page-muted);
+}
+.page-block-menu button svg:last-child:not(.page-block-menu-icon svg) { color: var(--page-muted); }
+.page-block-submenu {
+  left: calc(100% + 6px);
+  top: -4px;
+  max-height: 340px;
+  --page-menu-from: translateX(-4px);
+}
+.page-block-menu-current { color: var(--page-accent); font-size: 13px; }

@@ -1,4 +1,4 @@
-import { CODE_BLOCK_KEYS, SHORTCUTS, keysLabel } from "./shortcuts.ts";
+import { BLOCK_KEYS, CODE_BLOCK_KEYS, SHORTCUTS, keysLabel } from "./shortcuts.ts";
 
 /** ⌘/: every shortcut. */
 export function ShortcutsHelp({ devPanel, onClose }: { devPanel: boolean; onClose: () => void }) {
@@ -30,6 +30,23 @@ export function ShortcutsHelp({ devPanel, onClose }: { devPanel: boolean; onClos
               select text, or type <kbd>/</kbd>
             </dd>
           </div>
+        </dl>
+        <h3>Blocks</h3>
+        <dl>
+          <div className="shortcut-row">
+            <dt>Move a block, or open its menu</dt>
+            <dd>drag or click ⋮⋮ left of it</dd>
+          </div>
+          {BLOCK_KEYS.map((k) => (
+            <div key={k.label} className="shortcut-row">
+              <dt>{k.label}</dt>
+              <dd>
+                {k.keys.map((keys) => (
+                  <kbd key={keys}>{keysLabel(keys)}</kbd>
+                ))}
+              </dd>
+            </div>
+          ))}
         </dl>
         <h3>In code blocks</h3>
         <dl>

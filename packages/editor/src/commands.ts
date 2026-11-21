@@ -1,7 +1,7 @@
 // Formatting commands and the editor state the UI needs (active formats, the
 // slash command being typed). Kept free of any UI framework so it can be
 // tested without a browser; the React toolbar and menu only call these.
-import { type Editor, editorViewCtx } from "@milkdown/kit/core";
+import { type Editor, editorViewCtx, serializerCtx } from "@milkdown/kit/core";
 import {
   createCodeBlockCommand,
   insertHrCommand,
@@ -16,10 +16,24 @@ import {
   wrapInOrderedListCommand,
 } from "@milkdown/kit/preset/commonmark";
 import { insertTableCommand, toggleStrikethroughCommand } from "@milkdown/kit/preset/gfm";
-import type { MarkType, Node } from "@milkdown/kit/prose/model";
-import { type EditorState, TextSelection } from "@milkdown/kit/prose/state";
+import { lift } from "@milkdown/kit/prose/commands";
+import { Fragment, type MarkType, type Node } from "@milkdown/kit/prose/model";
+import { liftListItem } from "@milkdown/kit/prose/schema-list";
+import { type EditorState, TextSelection, type Transaction } from "@milkdown/kit/prose/state";
 import type { EditorView } from "@milkdown/kit/prose/view";
 import { callCommand } from "@milkdown/kit/utils";
+import {
+  type Block,
+  blockAt,
+  deleteBlock,
+  duplicateBlock,
+  focusBlock,
+  insertBlock,
+  moveBlockStep,
+  moveBlockTo,
+  selectBlock,
+} from "./blocks.ts";
+import { prepareForSave } from "./markdown.ts";
 
 export type InlineFormat = "bold" | "italic" | "strikethrough" | "code";
 
@@ -67,7 +81,7 @@ function markActive(state: EditorState, type: MarkType): boolean {
   return state.doc.rangeHasMark(from, to, type);
 }
 
-function blockAt(state: EditorState): BlockFormat | null {
+function blockFormatAt(state: EditorState): BlockFormat | null {
   const { $from } = state.selection;
   const block = $from.parent;
   if (block.type.name === "code_block") return "codeBlock";
@@ -95,7 +109,7 @@ export function formatState(state: EditorState): FormatState {
   const linkType = state.schema.marks.link;
   const { $from } = state.selection;
   const link = linkType?.isInSet($from.marks()) ?? linkType?.isInSet($from.nodeAfter?.marks ?? []);
-  const block = blockAt(state);
+  const block = blockFormatAt(state);
   return { inline, link: link ? (link.attrs.href as string) : null, block, inCode: block === "codeBlock" };
 }
 
@@ -170,10 +184,22 @@ export function createCommands(editor: Editor) {
       return true;
     },
 
+    /**
+     * Turns the block the cursor is in into `format`. A list item or quote
+     * turned into text, a heading or code leaves the list or quote; a list
+     * item changes list type in place.
+     */
     setBlock(format: BlockFormat): boolean {
+      const v = view();
+      if (format === "divider") return run(insertHrCommand.key);
+      if (format === "table") return run(insertTableCommand.key, { row: 3, col: 3 });
+      const isList = format === "bulletList" || format === "numberedList" || format === "taskList";
+      if (isList && changeListType(v, format)) return true;
+      leaveContainers(v, isList || format === "quote");
       switch (format) {
         case "text":
-          return run(turnIntoTextCommand.key);
+          // Leaving a list may already have made it text.
+          return run(turnIntoTextCommand.key) || v.state.selection.$from.parent.type.name === "paragraph";
         case "heading1":
         case "heading2":
         case "heading3":
@@ -188,10 +214,6 @@ export function createCommands(editor: Editor) {
           return run(wrapInBlockquoteCommand.key);
         case "codeBlock":
           return run(createCodeBlockCommand.key);
-        case "divider":
-          return run(insertHrCommand.key);
-        case "table":
-          return run(insertTableCommand.key, { row: 3, col: 3 });
       }
     },
 
@@ -221,6 +243,64 @@ export function createCommands(editor: Editor) {
       return true;
     },
 
+    /** The block at document position `pos` (a top-level element or a list item). */
+    blockAt(pos: number): Block | null {
+      return blockAt(view().state.doc, pos);
+    },
+
+    /** Selects the whole block. */
+    selectBlock(block: Block): void {
+      const v = view();
+      v.dispatch(selectBlock(v.state, block));
+    },
+
+    deleteBlock(block: Block): void {
+      const v = view();
+      v.dispatch(deleteBlock(v.state, block));
+    },
+
+    duplicateBlock(block: Block): void {
+      const v = view();
+      v.dispatch(duplicateBlock(v.state, block));
+    },
+
+    /** Moves the block one step up (-1) or down (1). False when it can't go further. */
+    moveBlock(block: Block, direction: -1 | 1): boolean {
+      const v = view();
+      return dispatchIf(v, moveBlockStep(v.state, block, direction));
+    },
+
+    /** Moves the block to `target`, a position between blocks (see `dropTarget`). */
+    moveBlockTo(block: Block, target: number): boolean {
+      const v = view();
+      return dispatchIf(v, moveBlockTo(v.state, block, target));
+    },
+
+    /** Adds an empty block below (or above) and puts the cursor in it, optionally starting with `text`. */
+    insertBlock(block: Block, options?: { above?: boolean; text?: string }): void {
+      const v = view();
+      v.dispatch(insertBlock(v.state, block, options));
+    },
+
+    /** The block as Markdown, as it would be saved (a list item with its list marker). */
+    blockMarkdown(block: Block): string {
+      const { state } = view();
+      let node = block.node;
+      const $pos = state.doc.resolve(block.pos);
+      if (node.type.name === "list_item" && $pos.depth > 0) node = $pos.parent.copy(Fragment.from(node));
+      const doc = state.schema.topNodeType.create(null, node);
+      return editor.action((ctx) => ctx.get(serializerCtx)(prepareForSave(doc))).trimEnd();
+    },
+
+    /** Turns the block into `format` (see `setBlock`). */
+    turnBlockInto(block: Block, format: BlockFormat): boolean {
+      const v = view();
+      const tr = focusBlock(v.state, block);
+      if (!tr) return false;
+      v.dispatch(tr);
+      return this.setBlock(format);
+    },
+
     /** Replaces the "/query" being typed with the chosen block. */
     runSlash(format: BlockFormat): boolean {
       const v = view();
@@ -232,6 +312,50 @@ export function createCommands(editor: Editor) {
 }
 
 export type Commands = ReturnType<typeof createCommands>;
+
+function dispatchIf(view: EditorView, tr: Transaction | null): boolean {
+  if (tr) view.dispatch(tr);
+  return tr !== null;
+}
+
+/**
+ * In a list item, turning into another kind of list: switches the list's
+ * type (Markdown can't mix bullets and numbers in one list) and makes the
+ * item a to-do or not. False when the cursor isn't in a list.
+ */
+function changeListType(view: EditorView, format: "bulletList" | "numberedList" | "taskList"): boolean {
+  const { $from } = view.state.selection;
+  const { schema } = view.state;
+  for (let depth = $from.depth; depth > 1; depth--) {
+    const item = $from.node(depth);
+    if (item.type.name !== "list_item") continue;
+    const list = $from.node(depth - 1);
+    const tr = view.state.tr;
+    const checked = format === "taskList" ? (item.attrs.checked ?? false) : null;
+    tr.setNodeMarkup($from.before(depth), undefined, { ...item.attrs, checked });
+    const listType = format === "numberedList" ? schema.nodes.ordered_list : format === "bulletList" ? schema.nodes.bullet_list : list.type;
+    if (listType !== list.type) tr.setNodeMarkup($from.before(depth - 1), listType);
+    view.dispatch(tr);
+    return true;
+  }
+  return false;
+}
+
+/** Takes the cursor's block out of any lists (and quotes, unless `keepQuote`). */
+function leaveContainers(view: EditorView, keepQuote: boolean): void {
+  const inside = (name: string) => {
+    const { $from } = view.state.selection;
+    for (let depth = $from.depth; depth > 0; depth--) if ($from.node(depth).type.name === name) return true;
+    return false;
+  };
+  const item = view.state.schema.nodes.list_item;
+  for (let i = 0; i < 20 && inside("list_item"); i++) {
+    if (!liftListItem(item)(view.state, view.dispatch)) break;
+  }
+  for (let i = 0; i < 20 && !keepQuote && inside("blockquote"); i++) {
+    if (!lift(view.state, view.dispatch)) break;
+  }
+}
 
 /** Turns the list item at the cursor into an unchecked task. */
 function markTaskItem(view: EditorView): boolean {

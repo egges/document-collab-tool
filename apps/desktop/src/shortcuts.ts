@@ -36,6 +36,15 @@ export const CODE_BLOCK_KEYS: { label: string; keys?: string[]; typed?: string }
   { label: "Leave the code block", keys: ["mod+enter"] },
 ];
 
+/** Keys for blocks, handled by the editor; listed in the ⌘/ overview. */
+export const BLOCK_KEYS: { label: string; keys: string[] }[] = [
+  { label: "Select the block", keys: ["escape"] },
+  { label: "Duplicate the block", keys: ["mod+d"] },
+  { label: "Move the block up / down", keys: ["mod+shift+arrowup", "mod+shift+arrowdown"] },
+  { label: "Delete the selected block", keys: ["backspace"] },
+  { label: "Edit the selected block's text", keys: ["enter"] },
+];
+
 export const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
 /**

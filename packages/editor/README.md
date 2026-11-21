@@ -22,6 +22,16 @@ In React, `<PageEditorView>` is the editor with its menus:
 - **Slash menu**: type `/` on an empty line, filter by typing, pick with the
   arrow keys and Enter (or the mouse), close with Escape.
 - **To-dos**: click the box to tick an item.
+- **Blocks**, as in Notion: every top-level element is a block, and so is
+  every list item. Pointing at one shows a handle in the left margin (leave
+  about 48px for it). **+** adds a block below (⌥-click: above) and opens the
+  slash menu. Drag **⋮⋮** to move the block; a line shows where it will land.
+  A list item dragged out of its list becomes a list of its own, and a block
+  dropped into a list becomes an item (a to-do, among to-dos). Click ⋮⋮ for
+  the block menu: turn into, duplicate, copy (as Markdown), move up or down,
+  delete. Keys: Esc selects the block the cursor is in, then Backspace
+  deletes it and Enter goes back to its text; ⌘D duplicates; ⌘⇧↑ / ⌘⇧↓ move
+  it. Every one of these is a single undo step.
 - **Code blocks**: type ```` ``` ```` at the start of a line and it becomes a
   code block straight away. The code is highlighted (about 35 languages, via
   [lowlight](https://github.com/wooorm/lowlight)), and the language is
@@ -118,9 +128,11 @@ page written by an AI agent. For each one the tests check that:
 - a one-word edit changes exactly one line.
 
 `test/commands.test.ts` checks the Markdown each toolbar and menu command
-saves, and `test/react.test.tsx` checks the React menus: one editor under
-StrictMode, the toolbar formatting a selection, and the slash menu's
-filtering, keyboard navigation and Escape.
+saves, `test/blocks.test.ts` the block operations (delete, duplicate, move,
+drop into and out of lists, add, turn into, the keys), and
+`test/react.test.tsx` checks the React menus: one editor under StrictMode,
+the toolbar formatting a selection, the slash menu's filtering, keyboard
+navigation and Escape, and the block handle's menu, "+" and dragging.
 
 When you add a block type, add an example page that uses it. When a change to
 the output is deliberate, update the reviewed output with `npx vitest run -u`

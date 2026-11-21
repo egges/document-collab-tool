@@ -32,7 +32,7 @@ main { display: grid; grid-template-columns: 1fr 1fr; min-height: calc(100vh - 5
 }
 .tabs button { text-transform: none; letter-spacing: 0; font-size: 12px; }
 .tabs button.active { border-color: var(--accent); color: var(--accent); }
-#editor { max-width: 720px; }
+.pane .page-editor { max-width: 720px; margin-left: 40px; } /* room for the block handle */
 #file {
   margin: 0; font: 12.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;
   white-space: pre-wrap; word-break: break-word;

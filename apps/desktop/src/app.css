@@ -551,9 +551,10 @@ body.resizing {
 }
 
 .page {
-  max-width: 760px;
+  max-width: 792px;
   margin: 0 auto;
-  padding: 48px 40px 120px;
+  /* The left gutter holds the block handle (+ and the grip). */
+  padding: 48px 56px 120px;
 }
 
 .page-header {
