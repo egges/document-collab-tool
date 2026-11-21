@@ -8,7 +8,10 @@ use serde_json::json;
 use crate::error::IoContext;
 use crate::git::{GitBackend, Oid, PushResult, Signature};
 use crate::merge::{self, ResolvedConflict};
-use crate::{Clock, Error, Result, json_merge, layout};
+use crate::{Clock, Error, Result, Workspace, conflicts, json_merge, layout, text_merge};
+
+/// Label for the on-disk side when [`SyncEngine::write_page_body`] merges.
+pub const OTHER_CHANGES_LABEL: &str = "Changed elsewhere";
 
 /// Settings for one device's copy of a workspace.
 #[derive(Debug, Clone)]
@@ -56,10 +59,26 @@ pub struct SyncReport {
     /// The remote was unreachable. Local edits are committed and will be
     /// pushed on a later sync.
     pub offline: bool,
+    /// What git said when the remote was unreachable, for showing the user
+    /// (no network, no remote set, authentication failed, ...).
+    pub offline_reason: Option<String>,
     /// Conflicts that were resolved automatically during the merge.
     pub conflicts: Vec<ResolvedConflict>,
     /// Stale git lock files that were removed before syncing.
     pub removed_locks: Vec<String>,
+}
+
+/// What [`SyncEngine::write_page_body`] wrote.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum PageWrite {
+    /// The page was unchanged on disk, so `body` was written as given.
+    Written,
+    /// The page changed on disk since `base` (a sync, an AI agent or another
+    /// program). Both sets of changes were merged, and `body` is what was
+    /// written. Lines both sides changed are in `conflicts` conflict blocks.
+    Merged { body: String, conflicts: u32 },
+    /// The page no longer exists (a sync deleted it), so nothing was written.
+    PageGone,
 }
 
 /// Synchronizes a workspace directory with a git remote.
@@ -186,6 +205,64 @@ impl SyncEngine {
         self.commit_locked(message)
     }
 
+    /// Write a page's body that was edited starting from `base`, the body as
+    /// it was read. If the file no longer equals `base`, the two sets of
+    /// changes are merged line by line instead of overwriting the other one,
+    /// with conflict blocks where both changed the same lines. Waits for a
+    /// running sync, so it never writes in the middle of one.
+    ///
+    /// Doesn't commit: call [`SyncEngine::commit_local`] shortly after.
+    pub fn write_page_body(&self, id: &str, base: &str, body: &str) -> Result<PageWrite> {
+        let _lock = self.lock()?;
+        let workspace = Workspace::new(&self.root);
+        if !workspace.page_exists(id) {
+            return Ok(PageWrite::PageGone);
+        }
+        let on_disk = match workspace.read_body(id) {
+            Ok(text) => text,
+            Err(Error::Io { source, .. }) if source.kind() == std::io::ErrorKind::NotFound => String::new(),
+            Err(e) => return Err(e),
+        };
+        if on_disk == base || on_disk == body {
+            if on_disk != body {
+                workspace.write_body(id, body)?;
+            }
+            return Ok(PageWrite::Written);
+        }
+        let [base_oid, ours, theirs] =
+            [base, body, on_disk.as_str()].map(|text| self.git.write_blob(&self.root, text.as_bytes()));
+        let merge = self.git.merge_text(
+            &self.root,
+            &base_oid?,
+            &ours?,
+            &theirs?,
+            [&self.config.device_name, "base", OTHER_CHANGES_LABEL],
+            text_merge::MARKER_SIZE,
+        )?;
+        let merged =
+            text_merge::rewrite_conflicts(&merge.content, &self.config.device_name, OTHER_CHANGES_LABEL);
+        let merged = String::from_utf8(merged).map_err(|e| Error::InvalidData {
+            path: format!("{}/{id}/{}", layout::PAGES_DIR, layout::PAGE_BODY),
+            message: format!("merged page is not UTF-8: {e}"),
+        })?;
+        workspace.write_body(id, &merged)?;
+        Ok(PageWrite::Merged {
+            body: merged,
+            conflicts: merge.conflicts,
+        })
+    }
+
+    /// Resolve conflict block `index` on a page by keeping version `keep`
+    /// (see [`crate::conflicts`]), and return the new body. Waits for a
+    /// running sync. Doesn't commit.
+    pub fn resolve_page_conflict(&self, id: &str, index: usize, keep: usize) -> Result<String> {
+        let _lock = self.lock()?;
+        let workspace = Workspace::new(&self.root);
+        let body = conflicts::resolve_conflict(&workspace.read_body(id)?, index, keep)?;
+        workspace.write_body(id, &body)?;
+        Ok(body)
+    }
+
     /// Commit local edits, merge in remote changes and publish the result.
     ///
     /// Never leaves the repository mid-merge: conflicts are resolved
@@ -208,8 +285,9 @@ impl SyncEngine {
                 .fetch(&self.root, &self.config.remote, &self.config.branch)
             {
                 Ok(remote) => remote,
-                Err(Error::Network(_)) => {
+                Err(Error::Network(reason)) => {
                     report.offline = true;
+                    report.offline_reason = Some(reason);
                     return Ok(report);
                 }
                 Err(e) => return Err(e),
@@ -272,8 +350,9 @@ impl SyncEngine {
                     return Ok(report);
                 }
                 Ok(PushResult::Rejected(_)) => continue,
-                Err(Error::Network(_)) => {
+                Err(Error::Network(reason)) => {
                     report.offline = true;
+                    report.offline_reason = Some(reason);
                     return Ok(report);
                 }
                 Err(e) => return Err(e),

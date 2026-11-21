@@ -416,6 +416,7 @@ fn offline_device_keeps_working_and_catches_up() {
         b.ws.write_body(&p, &format!("written offline {i}\n")).unwrap();
         let report = b.sync();
         assert!(report.offline && report.committed && !report.pushed);
+        assert!(report.offline_reason.is_some());
         pages.push(p);
     }
     let online = a.ws.create_page("online", None).unwrap();
