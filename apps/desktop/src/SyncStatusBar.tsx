@@ -1,5 +1,7 @@
 import { useEffect, useState } from "react";
+import { LogOut, RefreshCw } from "lucide-react";
 import { type SyncStatus, type WorkspaceInfo, api } from "./api.ts";
+import { tip } from "./shortcuts.ts";
 
 function ago(ms: number, now: number): string {
   const s = Math.max(0, Math.round((now - ms) / 1000));
@@ -100,14 +102,23 @@ export function SyncStatusBar({
             <dd title={workspace.path}>{workspace.path}</dd>
           </dl>
           <div className="row">
-            <button className="button" disabled={!workspace.remote} onClick={() => void api.syncNow()}>
-              Sync now
-            </button>
             <button
-              className="button"
+              className="icon-button"
+              aria-label="Sync now"
+              title={tip("Sync now", "syncNow")}
+              disabled={!workspace.remote}
+              onClick={() => void api.syncNow()}
+            >
+              <RefreshCw size={15} />
+            </button>
+            <span className="spacer" />
+            <button
+              className="icon-button"
+              aria-label="Close workspace"
+              title="Close workspace"
               onClick={() => void api.closeWorkspace().finally(() => onWorkspaceChange(null))}
             >
-              Close workspace
+              <LogOut size={15} />
             </button>
           </div>
         </div>

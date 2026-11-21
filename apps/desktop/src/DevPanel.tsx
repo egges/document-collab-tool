@@ -1,32 +1,36 @@
 // Developer panel: the live log of everything the app did, with filters and
 // a Copy button for bug reports. Only in debug builds (or with
-// DOCSYNC_DEV=1); toggle with ⌘⇧D / Ctrl+Shift+D.
+// DOCSYNC_DEV=1); toggle with ⌘J / Ctrl+J.
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Check, Copy, Maximize2, Minimize2, Trash2, X } from "lucide-react";
 import { type DevInfo, type LogEntry, type LogLevel, devApi, events } from "./api.ts";
+import { tip, useShortcuts } from "./shortcuts.ts";
 
-/** Whether the panel is available, whether it's open, and the shortcut that toggles it. */
+/** Whether the panel is available, and its open and size state. Shortcuts are in App. */
 export function useDevPanel() {
   const [enabled, setEnabled] = useState(false);
   const [open, setOpen] = useState(false);
+  const [maximized, setMaximized] = useState(false);
   useEffect(() => {
     devApi
       .info()
       .then((info) => setEnabled(info.enabled))
       .catch(() => {});
   }, []);
-  useEffect(() => {
-    if (!enabled) return;
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === "d") {
-        e.preventDefault();
-        setOpen((o) => !o);
-      }
-    };
-    window.addEventListener("keydown", onKey, true);
-    return () => window.removeEventListener("keydown", onKey, true);
-  }, [enabled]);
-  return { enabled, open, toggle: () => setOpen((o) => !o) };
+  return {
+    enabled,
+    open,
+    maximized,
+    toggle: () => setOpen((o) => !o),
+    /** Fill the window or not; opens the panel if it's closed. */
+    toggleSize: () => {
+      if (!open) {
+        setOpen(true);
+        setMaximized(true);
+      } else setMaximized((m) => !m);
+    },
+  };
 }
 
 const LEVELS: LogLevel[] = ["debug", "info", "warn", "error"];
@@ -112,15 +116,23 @@ async function copyText(text: string) {
   }
 }
 
-export function DevPanel({ onClose }: { onClose: () => void }) {
+export function DevPanel({
+  maximized,
+  onToggleSize,
+  onClose,
+}: {
+  maximized: boolean;
+  onToggleSize: () => void;
+  onClose: () => void;
+}) {
   const [entries, setEntries] = useState<LogEntry[]>([]);
   const [hidden, setHidden] = useState<Set<string>>(new Set()); // sources switched off
   const [levels, setLevels] = useState<Set<LogLevel>>(new Set(LEVELS));
   const [query, setQuery] = useState("");
   const [copied, setCopied] = useState(false);
   const [height, setHeight] = useState(() => Math.round(window.innerHeight * 0.4));
-  const [maximized, setMaximized] = useState(false);
   const list = useRef<HTMLDivElement>(null);
+  const filter = useRef<HTMLInputElement>(null);
   const stickToBottom = useRef(true);
 
   useEffect(() => {
@@ -170,6 +182,11 @@ export function DevPanel({ onClose }: { onClose: () => void }) {
     setTimeout(() => setCopied(false), 1500);
   };
 
+  useShortcuts({
+    copyLog: () => void copy(),
+    filterLog: () => filter.current?.focus(),
+  });
+
   const startResize = (e: React.MouseEvent) => {
     e.preventDefault();
     const startY = e.clientY;
@@ -194,7 +211,7 @@ export function DevPanel({ onClose }: { onClose: () => void }) {
       <header
         className="dev-toolbar"
         onDoubleClick={(e) => {
-          if (e.target === e.currentTarget) setMaximized(!maximized);
+          if (e.target === e.currentTarget) onToggleSize();
         }}
       >
         <strong>Developer log</strong>
@@ -220,34 +237,49 @@ export function DevPanel({ onClose }: { onClose: () => void }) {
           ))}
         </div>
         <input
+          ref={filter}
           className="input dev-search"
+          title={tip("Filter", "filterLog")}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") {
+              setQuery("");
+              e.currentTarget.blur();
+            }
+          }}
           placeholder="Filter"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           spellCheck={false}
         />
-        <button className="button" onClick={() => void copy()} title="Copy the whole log, with app and workspace details">
-          {copied ? "Copied" : "Copy"}
+        <button
+          className={"icon-button" + (copied ? " done" : "")}
+          aria-label="Copy log"
+          title={tip("Copy the whole log, with app and workspace details", "copyLog")}
+          onClick={() => void copy()}
+        >
+          {copied ? <Check size={15} /> : <Copy size={15} />}
         </button>
         <button
-          className="button"
+          className="icon-button"
+          aria-label="Clear log"
+          title="Clear the log"
           onClick={() => {
             void devApi.clear();
             setEntries([]);
           }}
         >
-          Clear
+          <Trash2 size={15} />
         </button>
         <button
           className="icon-button"
           aria-label={maximized ? "Restore size" : "Fill the window"}
-          title={maximized ? "Restore size" : "Fill the window"}
-          onClick={() => setMaximized(!maximized)}
+          title={tip(maximized ? "Restore size" : "Fill the window", "toggleDevPanelSize")}
+          onClick={onToggleSize}
         >
-          {maximized ? "⤓" : "⤢"}
+          {maximized ? <Minimize2 size={15} /> : <Maximize2 size={15} />}
         </button>
-        <button className="icon-button" aria-label="Close" title="Close (⌘⇧D)" onClick={onClose}>
-          ×
+        <button className="icon-button" aria-label="Close" title={tip("Close", "toggleDevPanel")} onClick={onClose}>
+          <X size={16} />
         </button>
       </header>
       <div

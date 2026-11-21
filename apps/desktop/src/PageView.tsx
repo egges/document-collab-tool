@@ -2,14 +2,18 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import type { PageEditor } from "@document-collab-tool/editor";
 import { PageEditorView } from "@document-collab-tool/editor/react";
 import { type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
+import { Trash2 } from "lucide-react";
 import { type Conflict, type Page, api, errorText } from "./api.ts";
 import { ConflictPanel } from "./ConflictPanel.tsx";
 import { log } from "./devlog.ts";
 import { PageSaver } from "./pageSaver.ts";
+import { tip } from "./shortcuts.ts";
 
 export interface PageViewHandle {
   /** Write unsaved edits (title and body). */
   flush(): Promise<void>;
+  /** Ask, then delete the page. */
+  remove(): Promise<void>;
 }
 
 interface PageViewProps {
@@ -97,6 +101,7 @@ function LoadedPage({ id, initial, diskVersion, onRenamed, onDeleted, onError, r
     flush: async () => {
       await Promise.all([saver.flush(), saveTitle()]);
     },
+    remove,
   }));
 
   useEffect(() => {
@@ -172,7 +177,8 @@ function LoadedPage({ id, initial, diskVersion, onRenamed, onDeleted, onError, r
           onChange={(e) => setTitle(e.target.value)}
           onBlur={() => void saveTitle()}
           onKeyDown={(e) => {
-            if (e.key === "Enter") {
+            // Enter or Esc: on to the text.
+            if (e.key === "Enter" || e.key === "Escape") {
               e.preventDefault();
               void saveTitle();
               (document.querySelector(".page-editor .ProseMirror") as HTMLElement | null)?.focus();
@@ -184,8 +190,13 @@ function LoadedPage({ id, initial, diskVersion, onRenamed, onDeleted, onError, r
             Not saved yet
           </span>
         )}
-        <button className="link danger" onClick={() => void remove()}>
-          Delete
+        <button
+          className="icon-button danger"
+          title={tip("Delete page", "deletePage")}
+          aria-label="Delete page"
+          onClick={() => void remove()}
+        >
+          <Trash2 size={16} />
         </button>
       </header>
       <ConflictPanel conflicts={conflicts} busy={busy} onKeep={(i, v) => void keep(i, v)} />

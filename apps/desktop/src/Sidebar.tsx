@@ -1,5 +1,8 @@
 import { useMemo, useState } from "react";
+import { ChevronDown, ChevronRight, Keyboard, Plus, Search, SquareTerminal } from "lucide-react";
 import { type PageSummary, type SyncStatus, type WorkspaceInfo, api, errorText } from "./api.ts";
+import { childrenOf } from "./pageTree.ts";
+import { SHORTCUTS, keysLabel, tip } from "./shortcuts.ts";
 import { SyncStatusBar } from "./SyncStatusBar.tsx";
 
 interface SidebarProps {
@@ -11,21 +14,15 @@ interface SidebarProps {
   onCreate: (parent: string | null) => void;
   onWorkspaceChange: (w: WorkspaceInfo | null) => void;
   onError: (message: string) => void;
+  onShowShortcuts: () => void;
+  onQuickOpen: () => void;
   /** Set when the developer panel is available. */
   onOpenDevPanel?: () => void;
 }
 
 export function Sidebar(props: SidebarProps) {
   const { workspace, pages, selected, status } = props;
-  const children = useMemo(() => {
-    const map = new Map<string | null, PageSummary[]>();
-    for (const page of pages) {
-      const list = map.get(page.parent) ?? [];
-      list.push(page);
-      map.set(page.parent, list);
-    }
-    return map;
-  }, [pages]);
+  const children = useMemo(() => childrenOf(pages), [pages]);
 
   return (
     <aside className="sidebar">
@@ -33,10 +30,15 @@ export function Sidebar(props: SidebarProps) {
         <span className="workspace-name" title={workspace.path}>
           {workspace.name}
         </span>
-        <button className="icon-button" title="New page" aria-label="New page" onClick={() => props.onCreate(null)}>
-          +
+        <button className="icon-button" title={tip("New page", "newPage")} aria-label="New page" onClick={() => props.onCreate(null)}>
+          <Plus size={16} />
         </button>
       </div>
+      <button className="sidebar-search" title={tip("Go to page", "quickOpen")} onClick={props.onQuickOpen}>
+        <Search size={14} aria-hidden />
+        <span>Go to page</span>
+        <kbd>{keysLabel(SHORTCUTS.quickOpen.keys)}</kbd>
+      </button>
       <nav className="tree" aria-label="Pages">
         <ul className="tree-level" role="tree">
           {(children.get(null) ?? []).map((page) => (
@@ -53,12 +55,8 @@ export function Sidebar(props: SidebarProps) {
         </ul>
         {pages.length === 0 && <p className="muted tree-empty">No pages yet.</p>}
       </nav>
-      {props.onOpenDevPanel && (
-        <button className="dev-button" title="Developer log (⌘⇧D / Ctrl+Shift+D)" onClick={props.onOpenDevPanel}>
-          Developer log
-        </button>
-      )}
-      <SyncStatusBar
+      <div className="sidebar-footer">
+        <SyncStatusBar
         workspace={workspace}
         status={status}
         onWorkspaceChange={props.onWorkspaceChange}
@@ -69,7 +67,26 @@ export function Sidebar(props: SidebarProps) {
             props.onError(errorText(e));
           }
         }}
-      />
+        />
+        <button
+          className="icon-button"
+          title={tip("Keyboard shortcuts", "showShortcuts")}
+          aria-label="Keyboard shortcuts"
+          onClick={props.onShowShortcuts}
+        >
+          <Keyboard size={15} />
+        </button>
+        {props.onOpenDevPanel && (
+          <button
+            className="icon-button"
+            title={tip("Developer log", "toggleDevPanel")}
+            aria-label="Developer log"
+            onClick={props.onOpenDevPanel}
+          >
+            <SquareTerminal size={15} />
+          </button>
+        )}
+      </div>
     </aside>
   );
 }
@@ -107,7 +124,7 @@ function TreeItem({
             setOpen(!open);
           }}
         >
-          {open ? "▾" : "▸"}
+          {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </button>
         <span className={"tree-title" + (page.title ? "" : " untitled")}>{page.title || "Untitled"}</span>
         <button
@@ -119,7 +136,7 @@ function TreeItem({
             onCreate(page.id);
           }}
         >
-          +
+          <Plus size={14} />
         </button>
       </div>
       {open && kids.length > 0 && (

@@ -143,21 +143,50 @@ input {
 }
 
 .icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
   border: 0;
   background: none;
-  border-radius: 4px;
-  width: 22px;
-  height: 22px;
-  line-height: 20px;
+  border-radius: 5px;
+  width: 26px;
+  height: 26px;
   padding: 0;
   color: var(--muted);
   cursor: pointer;
-  font-size: 16px;
 }
 
-.icon-button:hover {
+.icon-button:hover:not(:disabled) {
   background: var(--hover);
   color: var(--text);
+}
+
+.icon-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+.icon-button.danger:hover {
+  color: var(--error);
+}
+
+.icon-button.done {
+  color: var(--ok);
+}
+
+.spacer {
+  flex: 1;
+}
+
+kbd {
+  font: 11px/1 var(--font);
+  color: var(--muted);
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  padding: 2px 5px;
+  background: var(--bg);
 }
 
 /* ---- welcome ---------------------------------------------------------- */
@@ -223,6 +252,37 @@ input {
   white-space: nowrap;
 }
 
+.sidebar-search {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 8px 8px;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+  text-align: left;
+}
+
+.sidebar-search:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.sidebar-search span {
+  flex: 1;
+}
+
+.sidebar-footer {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding-right: 8px;
+  border-top: 1px solid var(--border);
+}
+
 .tree {
   flex: 1;
   overflow-y: auto;
@@ -258,6 +318,9 @@ input {
 }
 
 .disclosure {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   border: 0;
   background: none;
   width: 16px;
@@ -280,6 +343,8 @@ input {
 
 .add-child {
   visibility: hidden;
+  width: 22px;
+  height: 22px;
 }
 
 .tree-row:hover .add-child {
@@ -290,7 +355,8 @@ input {
 
 .sync {
   position: relative;
-  border-top: 1px solid var(--border);
+  flex: 1;
+  min-width: 0;
 }
 
 .sync-bar {
@@ -399,6 +465,10 @@ input {
   gap: 12px;
   padding: 8px 16px;
   white-space: pre-wrap;
+}
+
+.banner .icon-button {
+  color: inherit;
 }
 
 .banner-error {
@@ -543,20 +613,6 @@ input {
 }
 
 /* ---- developer panel (debug builds only) ----------------------------------- */
-
-.dev-button {
-  border: 0;
-  background: none;
-  padding: 6px 14px;
-  text-align: left;
-  font-size: 12px;
-  color: var(--muted);
-  cursor: pointer;
-}
-
-.dev-button:hover {
-  color: var(--text);
-}
 
 .dev-panel {
   --src-app: #6e40c9;
@@ -769,4 +825,118 @@ input {
 
 .dev-empty {
   padding: 8px 10px;
+}
+
+/* ---- dialogs: go to page, shortcuts --------------------------------------- */
+
+.overlay {
+  position: fixed;
+  inset: 0;
+  background: rgb(0 0 0 / 0.25);
+  display: flex;
+  justify-content: center;
+  align-items: flex-start;
+  padding-top: 14vh;
+  z-index: 30;
+}
+
+.dialog {
+  width: min(560px, calc(100vw - 32px));
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: 0 20px 60px rgb(0 0 0 / 0.3);
+  overflow: hidden;
+}
+
+.dialog:focus {
+  outline: none;
+}
+
+.quick-input {
+  width: 100%;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  padding: 14px 16px;
+  font-size: 16px;
+}
+
+.quick-input:focus {
+  outline: none;
+}
+
+.quick-list {
+  list-style: none;
+  margin: 0;
+  padding: 6px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+
+.quick-list li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  color: var(--text);
+}
+
+.quick-list li svg {
+  color: var(--muted);
+  flex: none;
+}
+
+.quick-list li.active {
+  background: var(--selected);
+}
+
+.quick-list .untitled {
+  color: var(--muted);
+}
+
+.quick-path {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.quick-empty {
+  color: var(--muted);
+  cursor: default;
+}
+
+.shortcuts {
+  padding: 18px 20px;
+}
+
+.shortcuts h2 {
+  font-size: 15px;
+  margin: 0 0 12px;
+}
+
+.shortcuts dl {
+  margin: 0;
+}
+
+.shortcut-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 5px 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.shortcut-row:last-child {
+  border-bottom: 0;
+}
+
+.shortcut-row dd {
+  margin: 0;
+  color: var(--muted);
 }

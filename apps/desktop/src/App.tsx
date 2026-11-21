@@ -1,8 +1,13 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { X } from "lucide-react";
 import { type PageSummary, type SyncStatus, type WorkspaceInfo, api, errorText, events } from "./api.ts";
 import { DevPanel, useDevPanel } from "./DevPanel.tsx";
 import { log } from "./devlog.ts";
 import { PageView, type PageViewHandle } from "./PageView.tsx";
+import { displayOrder } from "./pageTree.ts";
+import { QuickOpen } from "./QuickOpen.tsx";
+import { useShortcuts } from "./shortcuts.ts";
+import { ShortcutsHelp } from "./ShortcutsHelp.tsx";
 import { Sidebar } from "./Sidebar.tsx";
 import { Welcome } from "./Welcome.tsx";
 
@@ -27,6 +32,7 @@ function WorkspaceView({ workspace, onChange }: { workspace: WorkspaceInfo; onCh
   const [selected, setSelected] = useState<string | null>(null);
   const [status, setStatus] = useState<SyncStatus | null>(null);
   const [error, setErrorState] = useState<string | null>(null);
+  const [dialog, setDialog] = useState<"quickOpen" | "shortcuts" | null>(null);
   const setError = useCallback((message: string | null) => {
     if (message) log("error", "ui", `Shown to the user: ${message}`);
     setErrorState(message);
@@ -80,16 +86,40 @@ function WorkspaceView({ workspace, onChange }: { workspace: WorkspaceInfo; onCh
     setSelected(id);
   };
 
-  const create = async (parent: string | null) => {
+  const create = async (parent: string | null, title = "") => {
     try {
       await page.current?.flush();
-      const id = await api.createPage("", parent);
+      const id = await api.createPage(title, parent);
       await reload();
       setSelected(id);
     } catch (e) {
       setError(errorText(e));
     }
   };
+
+  const step = (by: 1 | -1) => {
+    const order = displayOrder(pages);
+    if (!order.length) return;
+    const at = order.findIndex((p) => p.id === selected);
+    const next = at < 0 ? (by > 0 ? 0 : order.length - 1) : Math.min(order.length - 1, Math.max(0, at + by));
+    void select(order[next].id);
+  };
+
+  useShortcuts({
+    quickOpen: () => setDialog((d) => (d === "quickOpen" ? null : "quickOpen")),
+    showShortcuts: () => setDialog((d) => (d === "shortcuts" ? null : "shortcuts")),
+    newPage: () => void create(null),
+    newSubpage: selected ? () => void create(selected) : undefined,
+    previousPage: () => step(-1),
+    nextPage: () => step(1),
+    deletePage: selected ? () => void page.current?.remove() : undefined,
+    syncNow: () => {
+      log("info", "ui", "Save and sync requested from the keyboard");
+      void page.current?.flush().then(() => api.syncNow());
+    },
+    toggleDevPanel: dev.enabled ? dev.toggle : undefined,
+    toggleDevPanelSize: dev.enabled ? dev.toggleSize : undefined,
+  });
 
   return (
     <div className="layout">
@@ -102,13 +132,17 @@ function WorkspaceView({ workspace, onChange }: { workspace: WorkspaceInfo; onCh
         onCreate={create}
         onWorkspaceChange={onChange}
         onError={setError}
+        onShowShortcuts={() => setDialog("shortcuts")}
+        onQuickOpen={() => setDialog("quickOpen")}
         onOpenDevPanel={dev.enabled ? dev.toggle : undefined}
       />
       <main className="main">
         {error && (
           <div className="banner banner-error" role="alert">
             <span>{error}</span>
-            <button className="link" onClick={() => setError(null)}>Dismiss</button>
+            <button className="icon-button" aria-label="Dismiss" title="Dismiss" onClick={() => setError(null)}>
+              <X size={14} />
+            </button>
           </div>
         )}
         {selected ? (
@@ -127,11 +161,28 @@ function WorkspaceView({ workspace, onChange }: { workspace: WorkspaceInfo; onCh
         ) : (
           <div className="empty">
             <p>{pages.length ? "Pick a page on the left." : "This workspace has no pages yet."}</p>
-            <button className="button" onClick={() => void create(null)}>New page</button>
+            <button className="button" onClick={() => void create(null)}>
+              New page
+            </button>
           </div>
         )}
       </main>
-      {dev.open && <DevPanel onClose={dev.toggle} />}
+      {dev.open && <DevPanel maximized={dev.maximized} onToggleSize={dev.toggleSize} onClose={dev.toggle} />}
+      {dialog === "quickOpen" && (
+        <QuickOpen
+          pages={pages}
+          onOpen={(id) => {
+            setDialog(null);
+            void select(id);
+          }}
+          onCreate={(title) => {
+            setDialog(null);
+            void create(null, title);
+          }}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog === "shortcuts" && <ShortcutsHelp devPanel={dev.enabled} onClose={() => setDialog(null)} />}
     </div>
   );
 }

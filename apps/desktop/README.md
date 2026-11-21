@@ -44,16 +44,32 @@ step). On Linux, install
   built yet. Git never prompts: SSH runs in batch mode, so the host key must
   already be trusted and the key loaded in the agent.
 
+## Keyboard
+
+⌘ is Ctrl on Windows and Linux. ⌘/ shows them all in the app.
+
+| | |
+|---|---|
+| ⌘K | Go to page (or create one with the typed title) |
+| ⌘N / ⌘⇧N | New page / new page inside the open one |
+| ⌘⌥↑ / ⌘⌥↓ | Previous / next page |
+| ⌘⇧⌫ | Delete the open page |
+| ⌘S | Save and sync now |
+| ⌘J / ⌘⇧J | Developer log / fill the window with it |
+
+The shortcuts live in `src/shortcuts.ts`, so tooltips and the overview stay
+in step with them.
+
 ## Developer log
 
-Debug builds have a developer panel: press ⌘⇧D (Ctrl+Shift+D on Windows and
-Linux) or click "Developer log" at the bottom of the sidebar. It shows one
+Debug builds have a developer panel: press ⌘J (Ctrl+J on Windows and Linux)
+or click the terminal icon at the bottom of the sidebar. It shows one
 live timeline of what the app did: every git command with its exit code,
 timing and error output, why each sync started and what it did, files
 changed on disk, and each save (written, merged with changes on disk,
 retried). Sources, levels and outcomes are colour-coded. Filter by source
-or level, or search; the ⤢ button (or double-clicking the toolbar) makes the
-log fill the window. **Copy** puts the whole log
+or level, or search (⌘F); ⌘⇧J (or double-clicking the toolbar) makes the
+log fill the window, and ⌘⇧C copies it. **Copy** puts the whole log
 on the clipboard with the app version, OS, git and workspace details, ready
 to paste into a bug report. The log never contains page text, only sizes and
 page ids.
