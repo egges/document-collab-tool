@@ -47,6 +47,11 @@ straightforward building.
       the result would lose visible text. Menus are our own, in React: a
       toolbar on selection and a `/` menu. (Crepe, Milkdown's ready-made
       editor, was ruled out because it brings in Vue.)
+- [x] **Editor: code blocks** (PR #8). ```` ``` ```` starts one, the code is
+      highlighted (lowlight, about 35 languages), and the language is
+      detected on paste or when you leave the block, then written into the
+      fence. A searchable language menu and a copy button. Code-editor keys:
+      paired brackets, auto-indent, moving and copying lines, ⌘/ to comment.
 - [ ] **Editor: block handle.** A grip next to each block for dragging and a
       block menu.
 - [ ] **Editor: tables and links.** Add and remove rows and columns, and edit
