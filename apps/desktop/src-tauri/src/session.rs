@@ -4,7 +4,7 @@ use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use docsync::{SyncConfig, SyncEngine, SystemClock, layout};
+use docsync::{SyncConfig, SyncEngine, SystemClock, Workspace, layout};
 use notify::{RecommendedWatcher, RecursiveMode, Watcher};
 use serde::{Deserialize, Serialize};
 
@@ -52,7 +52,12 @@ impl Session {
             SyncEngine::open(git, path, config, clock)
         } else if is_empty_dir(path)? {
             devlog::info("app", format!("Creating a workspace in {}", path.display()));
-            SyncEngine::init(git, path, config, clock)
+            SyncEngine::init(git, path, config, clock).and_then(|engine| {
+                // Named after its folder until the user renames it.
+                let name = folder_label(engine.root());
+                Workspace::new(engine.root()).set_name(&name)?;
+                Ok(engine)
+            })
         } else {
             return Err(format!(
                 "{} isn't empty. Choose an empty folder to create a workspace in, or a folder \
@@ -113,10 +118,7 @@ impl Session {
         );
         let info = WorkspaceInfo {
             path: root.display().to_string(),
-            name: root
-                .file_name()
-                .map(|n| n.to_string_lossy().into_owned())
-                .unwrap_or_else(|| "Workspace".into()),
+            name: String::new(),
             device: engine.config().device_name.clone(),
             remote: settings.remote.clone(),
         };
@@ -149,8 +151,25 @@ impl Session {
         })
     }
 
-    pub fn info(&self) -> &WorkspaceInfo {
-        &self.info
+    /// The name is read from `workspace.json` each time, so a rename that
+    /// arrived with a sync shows up.
+    pub fn info(&self) -> WorkspaceInfo {
+        let root = self.engine.root();
+        WorkspaceInfo {
+            name: Workspace::new(root).name().unwrap_or_else(|| folder_label(root)),
+            ..self.info.clone()
+        }
+    }
+
+    /// Rename the workspace on every device. The folder and the remote keep
+    /// their names; see "Where workspaces live" in docs/sync-design.md.
+    pub fn rename(&self, name: &str) -> Result<WorkspaceInfo, String> {
+        Workspace::new(self.engine.root())
+            .set_name(name)
+            .map_err(|e| e.to_string())?;
+        devlog::info("app", format!("Renamed the workspace to \"{}\"", name.trim()));
+        self.worker.edit_notifier()();
+        Ok(self.info())
     }
 
     /// Set or clear the remote this device syncs with.
@@ -168,6 +187,13 @@ impl Session {
         self.info.remote = url;
         Ok(())
     }
+}
+
+/// The folder's name, for workspaces made before names were stored.
+fn folder_label(root: &Path) -> String {
+    root.file_name()
+        .map(|n| n.to_string_lossy().into_owned())
+        .unwrap_or_else(|| "Workspace".into())
 }
 
 fn is_empty_dir(path: &Path) -> Result<bool, String> {
@@ -210,8 +236,6 @@ fn device_name() -> String {
 
 #[cfg(test)]
 mod tests {
-    use docsync::Workspace;
-
     use super::*;
     use crate::worker::SyncStatus;
 
@@ -234,6 +258,34 @@ mod tests {
 
         let session = Session::open_or_create(&root, NoEvents).unwrap();
         assert!(Workspace::new(session.engine.root()).page_exists(&page));
+    }
+
+    #[test]
+    fn the_name_is_stored_in_the_workspace_not_the_folder() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("Notes");
+        let session = Session::open_or_create(&root, NoEvents).unwrap();
+        assert_eq!(Workspace::new(&root).name().as_deref(), Some("Notes"));
+        assert_eq!(session.rename(" Team Notes ").unwrap().name, "Team Notes");
+        assert!(session.rename("  ").is_err());
+        drop(session);
+        assert!(root.is_dir(), "the folder keeps its name");
+
+        let session = Session::open_or_create(&root, NoEvents).unwrap();
+        assert_eq!(session.info().name, "Team Notes");
+        // A rename from another device shows up without reopening.
+        Workspace::new(&root).set_name("Synced name").unwrap();
+        assert_eq!(session.info().name, "Synced name");
+    }
+
+    #[test]
+    fn workspaces_without_a_stored_name_use_the_folder_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path().join("Old workspace");
+        drop(Session::open_or_create(&root, NoEvents).unwrap());
+        fs::write(root.join(layout::WORKSPACE_FILE), "{\n  \"format\": 1\n}\n").unwrap();
+        let session = Session::open_or_create(&root, NoEvents).unwrap();
+        assert_eq!(session.info().name, "Old workspace");
     }
 
     #[test]

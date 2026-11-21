@@ -7,7 +7,7 @@ conflict markers.
 ## On-disk format
 
 ```text
-workspace.json                      workspace settings
+workspace.json                      workspace settings: {"format", "name"}
 pages/<page-id>/meta.json           {"id", "title", "parent", "properties": {...}}
 pages/<page-id>/page.md             page body (Markdown)
 pages/<page-id>/assets/...          attachments
@@ -135,6 +135,27 @@ choose a location when creating or joining a workspace, or open any folder
 that holds one. Folder names come from the workspace name, made safe for every
 platform; a name that's taken gets a number ("My Notes 2"). The code is in
 `apps/desktop/src-tauri/src/locations.rs`.
+
+### Renaming
+
+The workspace's name is the `name` field in `workspace.json`, so it syncs like
+any other field: every device and every collaborator sees the same name, and
+if two people rename at once the newest edit wins. A new workspace stores its
+name when it's created; one made before names were stored shows its folder
+name until someone renames it.
+
+Renaming never touches folders or remotes. The local folder is an internal
+detail like a page id: renaming it would disturb the file watcher, the sync
+lock and the remembered last workspace, fails on Windows while a file is open,
+and may be a folder the user chose and named. Renaming a `.docsync` folder in
+iCloud would break every other device's remote path. "Move…" can later suggest
+the current name as the new folder name. Discovery of `*.docsync` workspaces
+should read the name with `git show HEAD:workspace.json`, not use the folder
+name.
+
+In the app, clicking the name in the sidebar header edits it in place: Enter
+or leaving the field saves, Escape cancels, an empty name keeps the old one. A
+rename from another device shows up after the next sync.
 
 Still to build: moving a workspace from settings, a list of known workspaces
 in the app's `settings.json` (a workspace switcher, and "Locate…" when a

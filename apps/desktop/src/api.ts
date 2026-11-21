@@ -68,6 +68,10 @@ export const api = {
   /** Join from `url`, keeping this device's copy in the app's own data folder. */
   joinWorkspace: (url: string) => invoke<WorkspaceInfo>("join_workspace", { url }),
   showWorkspaceFolder: () => invoke<void>("show_workspace_folder"),
+  /** The open workspace, read fresh: a sync may have renamed it. */
+  workspaceInfo: () => invoke<WorkspaceInfo | null>("workspace_info"),
+  /** Rename the workspace on every device; folders and remotes keep their names. */
+  renameWorkspace: (name: string) => invoke<WorkspaceInfo>("rename_workspace", { name }),
   closeWorkspace: () => invoke<void>("close_workspace"),
   setRemote: (url: string | null) => invoke<WorkspaceInfo>("set_remote", { url }),
   syncStatus: () => invoke<SyncStatus | null>("sync_status"),

@@ -203,6 +203,37 @@ fn same_property_most_recent_edit_wins_regardless_of_sync_order() {
 }
 
 #[test]
+fn renaming_the_workspace_reaches_every_device_and_the_newest_name_wins() {
+    let net = Net::new();
+    let a = net.device("a");
+    assert_eq!(a.ws.name(), None);
+    a.ws.set_name("  Team Notes ").unwrap();
+    assert_eq!(a.ws.name().as_deref(), Some("Team Notes"));
+    a.sync();
+    let b = net.device("b");
+    assert_eq!(b.ws.name().as_deref(), Some("Team Notes"));
+
+    // Both rename; b does so 10 seconds later, and a page edit on a still
+    // merges alongside.
+    a.ws.set_name("Notes A").unwrap();
+    let page = a.ws.create_page("Agenda", None).unwrap();
+    a.commit();
+    net.clock.advance(10);
+    b.ws.set_name("Notes B").unwrap();
+    b.commit();
+    b.sync();
+    a.sync();
+    settle(&[&a, &b]);
+    for device in [&a, &b] {
+        assert_eq!(device.ws.name().as_deref(), Some("Notes B"));
+        assert!(device.ws.page_exists(&page));
+        assert_eq!(device.ws.read_page_meta(&page).unwrap()["title"], "Agenda");
+    }
+    assert!(a.ws.set_name("   ").is_err());
+    assert_eq!(a.ws.name().as_deref(), Some("Notes B"));
+}
+
+#[test]
 fn same_property_edited_at_the_same_second_goes_to_the_remote_version() {
     let net = Net::new();
     let a = net.device("a");

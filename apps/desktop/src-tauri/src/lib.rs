@@ -48,6 +48,8 @@ pub fn run() {
             commands::create_workspace,
             commands::join_workspace,
             commands::show_workspace_folder,
+            commands::workspace_info,
+            commands::rename_workspace,
             commands::close_workspace,
             commands::set_remote,
             commands::sync_status,

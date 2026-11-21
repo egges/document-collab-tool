@@ -5,6 +5,7 @@ import { childrenOf } from "./pageTree.ts";
 import { SHORTCUTS, keysLabel, tip } from "./shortcuts.ts";
 import { SIDEBAR_WIDTH } from "./sidebarLayout.ts";
 import { SyncStatusBar } from "./SyncStatusBar.tsx";
+import { WorkspaceName } from "./WorkspaceName.tsx";
 
 interface SidebarProps {
   workspace: WorkspaceInfo;
@@ -32,9 +33,7 @@ export function Sidebar(props: SidebarProps) {
   return (
     <aside className="sidebar" hidden={props.hidden}>
       <div className="sidebar-header">
-        <span className="workspace-name" title={workspace.path}>
-          {workspace.name}
-        </span>
+        <WorkspaceName workspace={workspace} onRenamed={props.onWorkspaceChange} onError={props.onError} />
         <button
           className="icon-button sidebar-hide"
           title={tip("Hide the sidebar", "toggleSidebar")}

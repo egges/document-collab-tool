@@ -35,6 +35,37 @@ impl Workspace {
         &self.root
     }
 
+    // ---- workspace settings -------------------------------------------
+
+    /// The workspace's name, from `workspace.json`. It syncs like any other
+    /// field, so every device shows the same name; folders and remotes keep
+    /// whatever name they were created with. `None` for workspaces made
+    /// before names were stored, or when the file is missing or broken.
+    pub fn name(&self) -> Option<String> {
+        let value = self.read_json(&self.root.join(layout::WORKSPACE_FILE)).ok()?;
+        let name = value.get("name")?.as_str()?.trim();
+        (!name.is_empty()).then(|| name.to_string())
+    }
+
+    /// Rename the workspace. Leading and trailing whitespace is dropped; an
+    /// empty name is refused.
+    pub fn set_name(&self, name: &str) -> Result<()> {
+        let path = self.root.join(layout::WORKSPACE_FILE);
+        let name = name.trim();
+        if name.is_empty() {
+            return Err(Error::InvalidData {
+                path: path.display().to_string(),
+                message: "a workspace name can't be empty".into(),
+            });
+        }
+        if !path.exists() {
+            return self.write_json(&path, &json!({ "name": name }));
+        }
+        self.update_json(&path, |settings| {
+            settings.insert("name".into(), name.into());
+        })
+    }
+
     // ---- pages ---------------------------------------------------------
 
     pub fn create_page(&self, title: &str, parent: Option<&str>) -> Result<String> {

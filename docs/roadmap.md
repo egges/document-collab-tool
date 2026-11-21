@@ -36,6 +36,9 @@ straightforward building.
 - [x] **Default location.** New and joined workspaces go in the app's local
       data folder unless the user picks one, and "Show in Finder" reveals it
       ([sync-design.md](sync-design.md#the-local-copy)).
+- [x] **Renaming workspaces.** The name lives in `workspace.json` and syncs;
+      folders and remotes keep theirs. Click the name in the sidebar to
+      rename ([sync-design.md](sync-design.md#renaming)).
 - [ ] **Workspace list and moving.** Known workspaces in `settings.json`, a
       switcher, "Locate…" for a missing folder, and "Move…" in settings.
 - [ ] **Cloud folder remotes.** A bare repo in iCloud Drive, Dropbox or
