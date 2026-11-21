@@ -6,6 +6,7 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Check, Copy, Maximize2, Minimize2, Trash2, X } from "lucide-react";
 import { type DevInfo, type LogEntry, type LogLevel, devApi, events } from "./api.ts";
 import { tip, useShortcuts } from "./shortcuts.ts";
+import { WINDOW_MOVE_ONLY } from "./windowChrome.ts";
 
 /** Whether the panel is available, and its open and size state. Shortcuts are in App. */
 export function useDevPanel() {
@@ -210,6 +211,8 @@ export function DevPanel({
       {!maximized && <div className="dev-resize" onMouseDown={startResize} />}
       <header
         className="dev-toolbar"
+        // Filling the window, it's the title bar: dragging it moves the window.
+        {...(maximized ? WINDOW_MOVE_ONLY : {})}
         onDoubleClick={(e) => {
           if (e.target === e.currentTarget) onToggleSize();
         }}
