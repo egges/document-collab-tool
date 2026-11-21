@@ -2,6 +2,7 @@ import { describe, expect, test } from "vitest";
 import { TextSelection } from "@milkdown/kit/prose/state";
 import type { EditorView } from "@milkdown/kit/prose/view";
 import { type PageEditor, createPageEditor, detectLanguage } from "../src/index.ts";
+import { filterChoices } from "../src/code/view.ts";
 
 const open = (markdown: string) => {
   const root = document.createElement("div");
@@ -114,9 +115,9 @@ describe("automatic language", () => {
       typeKeys(view, "def greet(name):");
       press(view, "Enter");
       typeKeys(view, "return name");
-      expect(editor.save()).toBe("Intro\n\n```\ndef greet(name):\n    return name\n```\n".replace("    ", ""));
+      expect(editor.save()).toBe("Intro\n\n```\ndef greet(name):\n  return name\n```\n");
       cursorAt(view, 1); // into "Intro"
-      expect(editor.save()).toBe("Intro\n\n```python\ndef greet(name):\nreturn name\n```\n");
+      expect(editor.save()).toBe("Intro\n\n```python\ndef greet(name):\n  return name\n```\n");
     });
   });
 
@@ -170,11 +171,10 @@ describe("automatic language", () => {
 });
 
 describe("keys in code blocks", () => {
-  test("Enter keeps the indentation and Tab indents", async () => {
+  test("Enter indents after an opening bracket and keeps the indentation", async () => {
     await withEditor("```js\nif (x) {\n```\n", (editor, view) => {
       cursorAt(view, codeStart(view) + "if (x) {".length);
       press(view, "Enter");
-      press(view, "Tab");
       typeKeys(view, "go();");
       press(view, "Enter");
       typeKeys(view, "stop();");
@@ -230,31 +230,220 @@ describe("drawing code blocks", () => {
   test("unlabelled code is highlighted as what it looks like", async () => {
     await withEditor("```\nSELECT id FROM users;\n```\n", (_editor, view) => {
       expect(view.dom.querySelector(".hljs-keyword")?.textContent).toBe("SELECT");
-      expect(view.dom.querySelector<HTMLSelectElement>(".page-code-language")!.selectedOptions[0].text).toBe("SQL (auto)");
+      expect(languageButton(view).textContent).toBe("SQLauto");
     });
   });
 
-  test("the picker sets the language", async () => {
+  test("the menu searches languages and sets one", async () => {
     await withEditor("```\nx\n```\n", (editor, view) => {
-      const select = view.dom.querySelector<HTMLSelectElement>(".page-code-language")!;
-      select.value = "rust";
-      select.dispatchEvent(new Event("change"));
+      languageButton(view).click();
+      const input = view.dom.querySelector<HTMLInputElement>(".page-code-search input")!;
+      expect(document.activeElement).toBe(input);
+      input.value = "rs"; // a fence alias
+      input.dispatchEvent(new Event("input"));
+      expect(options(view)[0]).toBe("Rust");
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
       expect(editor.save()).toBe("```rust\nx\n```\n");
+      expect(view.dom.querySelector(".page-code-menu")).toBeNull();
     });
+  });
+
+  test("the menu: arrow keys, clicking, and Escape", async () => {
+    await withEditor("```\nx\n```\n", (editor, view) => {
+      languageButton(view).click();
+      const input = view.dom.querySelector<HTMLInputElement>(".page-code-search input")!;
+      input.value = "script";
+      input.dispatchEvent(new Event("input"));
+      expect(options(view)).toEqual(["JavaScript", "TypeScript"]);
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "ArrowDown" }));
+      input.dispatchEvent(new KeyboardEvent("keydown", { key: "Enter" }));
+      expect(editor.save()).toBe("```typescript\nx\n```\n");
+
+      languageButton(view).click();
+      view.dom.querySelector<HTMLInputElement>(".page-code-search input")!
+        .dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+      expect(view.dom.querySelector(".page-code-menu")).toBeNull();
+
+      languageButton(view).click();
+      [...view.dom.querySelectorAll<HTMLElement>(".page-code-option")].find((o) => o.textContent?.startsWith("Go"))!.click();
+      expect(editor.save()).toBe("```go\nx\n```\n");
+    });
+  });
+
+  test("filterChoices ranks exact and prefix matches first", () => {
+    const choices = ["JavaScript", "Java", "TypeScript"].map((label) => ({ value: label, label, names: [label.toLowerCase()] }));
+    expect(filterChoices(choices, "java").map((c) => c.label)).toEqual(["Java", "JavaScript"]);
+    expect(filterChoices(choices, "").length).toBe(3);
+    expect(filterChoices(choices, "zzz")).toEqual([]);
   });
 
   test("a language we don't know is kept and shown", async () => {
     await withEditor("```mermaid\ngraph TD\n```\n", (editor, view) => {
-      const select = view.dom.querySelector<HTMLSelectElement>(".page-code-language")!;
-      expect(select.value).toBe("mermaid");
+      expect(languageButton(view).textContent).toBe("mermaid");
+      languageButton(view).click();
+      expect(options(view)).toContain("mermaid");
       expect(editor.save()).toBeNull();
     });
   });
 
   test("fence aliases show as their language", async () => {
     await withEditor("```ts\nconst x = 1;\n```\n", (editor, view) => {
-      expect(view.dom.querySelector<HTMLSelectElement>(".page-code-language")!.value).toBe("typescript");
+      expect(languageButton(view).textContent).toBe("TypeScript");
       expect(editor.save()).toBeNull();
     });
   });
 });
+
+describe("editing like a code editor", () => {
+  /** Opens a block with `text`; "|" marks the cursor, "[" and "]" a selection. */
+  async function block(language: string, text: string, run: (view: EditorView, result: () => string) => void) {
+    const plain = text.replace(/[|[\]]/g, "");
+    await withEditor(`\`\`\`${language}\n${plain}\n\`\`\`\n`, (_editor, view) => {
+      const start = codeStart(view);
+      const cursor = text.indexOf("|");
+      const from = cursor >= 0 ? cursor : text.indexOf("[");
+      const to = cursor >= 0 ? cursor : text.indexOf("]") - 1;
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, start + from, start + to)));
+      run(view, () => {
+        const sel = view.state.selection;
+        const code = view.state.doc.textBetween(start, start + view.state.selection.$from.parent.content.size, "\n");
+        const a = sel.from - start;
+        const b = sel.to - start;
+        return a === b ? code.slice(0, a) + "|" + code.slice(a) : code.slice(0, a) + "[" + code.slice(a, b) + "]" + code.slice(b);
+      });
+    });
+  }
+
+  test("brackets and quotes come in pairs", async () => {
+    await block("js", "|", (view, result) => {
+      typeKeys(view, "f(");
+      expect(result()).toBe("f(|)");
+      typeKeys(view, "'a");
+      expect(result()).toBe("f('a|')");
+      typeKeys(view, "')"); // steps over the closers
+      expect(result()).toBe("f('a')|");
+    });
+  });
+
+  test("no pair in front of a word, or for an apostrophe", async () => {
+    await block("js", "|word", (view, result) => {
+      typeKeys(view, "(");
+      expect(result()).toBe("(|word");
+    });
+    await block("text", "don|", (view, result) => {
+      typeKeys(view, "'t");
+      expect(result()).toBe("don't|");
+    });
+  });
+
+  test("an opener typed over a selection wraps it", async () => {
+    await block("js", "f([x])", (view, result) => {
+      typeKeys(view, "[");
+      expect(result()).toBe("f([[x]])");
+    });
+  });
+
+  test("Backspace between an empty pair removes both", async () => {
+    await block("js", "f(|)", (view, result) => {
+      press(view, "Backspace");
+      expect(result()).toBe("f|");
+    });
+  });
+
+  test("Backspace in the indentation goes back one level", async () => {
+    await block("js", "    |x", (view, result) => {
+      press(view, "Backspace");
+      expect(result()).toBe("  |x");
+    });
+  });
+
+  test("Enter between brackets opens an indented line", async () => {
+    await block("js", "if (x) {|}", (view, result) => {
+      press(view, "Enter");
+      expect(result()).toBe("if (x) {\n  |\n}");
+    });
+  });
+
+  test("Enter after a colon indents in Python", async () => {
+    await block("python", "def f():|", (view, result) => {
+      press(view, "Enter");
+      expect(result()).toBe("def f():\n  |");
+    });
+  });
+
+  test("Home goes to the first character, then the line start", async () => {
+    await block("js", "a\n    b|c", (view, result) => {
+      press(view, "Home");
+      expect(result()).toBe("a\n    |bc");
+      press(view, "Home");
+      expect(result()).toBe("a\n|    bc");
+    });
+  });
+
+  test("End goes to the end of the line", async () => {
+    await block("js", "a|b\nc", (view, result) => {
+      press(view, "End");
+      expect(result()).toBe("ab|\nc");
+    });
+  });
+
+  test("Alt-arrows move lines", async () => {
+    await block("js", "one\ntw|o\nthree", (view, result) => {
+      press(view, "ArrowUp", { altKey: true });
+      expect(result()).toBe("tw|o\none\nthree");
+      press(view, "ArrowDown", { altKey: true });
+      press(view, "ArrowDown", { altKey: true });
+      expect(result()).toBe("one\nthree\ntw|o");
+      press(view, "ArrowDown", { altKey: true }); // already last
+      expect(result()).toBe("one\nthree\ntw|o");
+    });
+  });
+
+  test("Shift-Alt-arrows copy lines", async () => {
+    await block("js", "a|b\nc", (view, result) => {
+      press(view, "ArrowDown", { altKey: true, shiftKey: true });
+      expect(result()).toBe("ab\na|b\nc");
+      press(view, "ArrowUp", { altKey: true, shiftKey: true });
+      expect(result()).toBe("ab\na|b\nab\nc");
+    });
+  });
+
+  test("Mod-/ comments lines out and back in", async () => {
+    await block("python", "[if x:\n    y]", (view, result) => {
+      press(view, "/", { ctrlKey: true });
+      expect(result().replace(/[[\]]/g, "")).toBe("# if x:\n#     y");
+      press(view, "/", { ctrlKey: true });
+      expect(result().replace(/[[\]]/g, "")).toBe("if x:\n    y");
+    });
+    await block("ts", "  let a|", (view, result) => {
+      press(view, "/", { ctrlKey: true });
+      expect(result()).toBe("  // let a|");
+    });
+  });
+
+  test("Mod-] and Mod-[ indent the line wherever the cursor is", async () => {
+    await block("js", "a|b", (view, result) => {
+      press(view, "]", { ctrlKey: true });
+      expect(result()).toBe("  a|b");
+      press(view, "[", { ctrlKey: true });
+      expect(result()).toBe("a|b");
+    });
+  });
+
+  test("Up on the first line of a block at the top adds a line before it", async () => {
+    await withEditor("```\nx\n```\n", (editor, view) => {
+      cursorAt(view, codeStart(view));
+      press(view, "ArrowUp");
+      typeKeys(view, "Before");
+      expect(editor.save()).toBe("Before\n\n```\nx\n```\n");
+    });
+  });
+});
+
+function languageButton(view: EditorView) {
+  return view.dom.querySelector<HTMLButtonElement>(".page-code-language")!;
+}
+
+function options(view: EditorView): string[] {
+  return [...view.dom.querySelectorAll(".page-code-option > span:first-child")].map((o) => o.textContent!);
+}

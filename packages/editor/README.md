@@ -27,12 +27,18 @@ In React, `<PageEditorView>` is the editor with its menus:
   [lowlight](https://github.com/wooorm/lowlight)), and the language is
   detected by itself: when you paste into a block, or when you finish typing
   and move on, it's written into the fence (```` ```python ````). Pointing at a
-  block shows a language picker and a copy button. A language that was picked
-  by hand or came with the file is never changed, and opening a page never
-  adds one. In a block, Enter keeps the indentation, Tab and Shift-Tab indent
-  and outdent the lines, ⌘↩ (or ↓ on the last line of the page) moves on to
-  text below, Backspace in an empty block makes it text again, and ⌘A selects
-  just the code.
+  block shows a searchable language menu and a copy button. A language that
+  was picked by hand or came with the file is never changed, and opening a
+  page never adds one.
+- **Editing code** works as in a code editor: brackets and quotes close
+  themselves (and typing the closer steps over it); Enter keeps the
+  indentation and adds a level after `{`, `(`, `[` (and `:` in Python and
+  YAML); Tab / Shift-Tab and ⌘] / ⌘[ indent and outdent lines; ⌥↑ / ⌥↓ move
+  lines and ⇧⌥↑ / ⇧⌥↓ copy them; ⌘/ comments lines out and back in; Home goes
+  to the first character of the line, then its start; Backspace in the
+  indentation goes back a level. ⌘↩ (or ↑ / ↓ past the first or last line of
+  the page) moves on to text, Backspace in an empty block makes it text
+  again, and ⌘A selects just the code.
 
 ```tsx
 import { PageEditorView } from "@document-collab-tool/editor/react";
