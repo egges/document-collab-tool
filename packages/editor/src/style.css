@@ -419,6 +419,25 @@
 }
 .page-editor .ProseMirror .page-block-dragging { opacity: 0.35; }
 
+/* The copy of a dragged block that follows the pointer. Long blocks fade out. */
+.page-block-ghost {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 30;
+  max-height: 320px;
+  overflow: hidden;
+  opacity: 0.6;
+  pointer-events: none;
+  user-select: none;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 48px), transparent);
+  mask-image: linear-gradient(to bottom, #000 calc(100% - 48px), transparent);
+}
+.page-block-ghost .ProseMirror { min-height: 0; }
+.page-block-ghost .ProseMirror > * { margin: 0; }
+/* Hover-only parts of a block (a code block's language menu) stay hidden. */
+.page-block-ghost .page-code-header { opacity: 0; }
+
 /* A selected block (Esc, or the grip's menu), highlighted as in Notion. */
 .page-editor .ProseMirror .ProseMirror-selectednode {
   background: color-mix(in srgb, var(--page-accent) 14%, transparent);

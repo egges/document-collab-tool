@@ -2,12 +2,10 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import type { PageEditor } from "@document-collab-tool/editor";
 import { PageEditorView } from "@document-collab-tool/editor/react";
 import { type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { Trash2 } from "lucide-react";
 import { type Conflict, type Page, api, errorText } from "./api.ts";
 import { ConflictPanel } from "./ConflictPanel.tsx";
 import { log } from "./devlog.ts";
 import { PageSaver } from "./pageSaver.ts";
-import { tip } from "./shortcuts.ts";
 
 export interface PageViewHandle {
   /** Write unsaved edits (title and body). */
@@ -24,6 +22,8 @@ interface PageViewProps {
   reveal?: string | null;
   onOpenLink: (href: string) => void;
   onRenamed: () => void;
+  /** The title as it's typed (or changed on disk), before the page list has it. */
+  onTitleChange?: (title: string) => void;
   onDeleted: () => void;
   onError: (message: string) => void;
   ref?: Ref<PageViewHandle>;
@@ -46,7 +46,7 @@ export function PageView(props: PageViewProps) {
   return page ? <LoadedPage {...props} initial={page} /> : <div className="page" />;
 }
 
-function LoadedPage({ id, initial, diskVersion, reveal, onOpenLink, onRenamed, onDeleted, onError, ref }: PageViewProps & { initial: Page }) {
+function LoadedPage({ id, initial, diskVersion, reveal, onOpenLink, onRenamed, onTitleChange, onDeleted, onError, ref }: PageViewProps & { initial: Page }) {
   const [title, setTitle] = useState(initial.title);
   const [conflicts, setConflicts] = useState<Conflict[]>(initial.conflicts);
   const [notice, setNotice] = useState<string | null>(null);
@@ -127,6 +127,7 @@ function LoadedPage({ id, initial, diskVersion, reveal, onOpenLink, onRenamed, o
         if (document.activeElement !== titleInput.current && page.title !== titleSaved.current) {
           titleSaved.current = page.title;
           setTitle(page.title);
+          onTitleChange?.(page.title);
         }
       })
       .catch(() => {}); // deleted: the page list update closes this view
@@ -177,7 +178,10 @@ function LoadedPage({ id, initial, diskVersion, reveal, onOpenLink, onRenamed, o
           placeholder="Untitled"
           value={title}
           aria-label="Page title"
-          onChange={(e) => setTitle(e.target.value)}
+          onChange={(e) => {
+            setTitle(e.target.value);
+            onTitleChange?.(e.target.value);
+          }}
           onBlur={() => void saveTitle()}
           onKeyDown={(e) => {
             // Enter or Esc: on to the text.
@@ -193,14 +197,6 @@ function LoadedPage({ id, initial, diskVersion, reveal, onOpenLink, onRenamed, o
             Not saved yet
           </span>
         )}
-        <button
-          className="icon-button danger"
-          title={tip("Delete page", "deletePage")}
-          aria-label="Delete page"
-          onClick={() => void remove()}
-        >
-          <Trash2 size={16} />
-        </button>
       </header>
       <ConflictPanel conflicts={conflicts} busy={busy} onKeep={(i, v) => void keep(i, v)} />
       <PageEditorView

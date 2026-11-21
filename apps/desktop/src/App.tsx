@@ -1,18 +1,19 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { PanelLeftOpen, X } from "lucide-react";
+import { X } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { type PageSummary, type SyncStatus, type WorkspaceInfo, api, errorText, events } from "./api.ts";
 import { DevPanel, useDevPanel } from "./DevPanel.tsx";
 import { log } from "./devlog.ts";
 import { PageView, type PageViewHandle } from "./PageView.tsx";
 import { linkTarget } from "./links.ts";
-import { displayOrder } from "./pageTree.ts";
+import { displayOrder, trail } from "./pageTree.ts";
 import { Search } from "./Search.tsx";
 import type { SearchAction } from "./search.ts";
-import { inCodeBlock, tip, useShortcuts } from "./shortcuts.ts";
+import { inCodeBlock, useShortcuts } from "./shortcuts.ts";
 import { ShortcutsHelp } from "./ShortcutsHelp.tsx";
 import { Sidebar } from "./Sidebar.tsx";
 import { useSidebarLayout } from "./sidebarLayout.ts";
+import { PageTitleBar } from "./TitleBar.tsx";
 import { Welcome } from "./Welcome.tsx";
 
 export function App() {
@@ -34,6 +35,8 @@ export function App() {
 function WorkspaceView({ workspace, onChange }: { workspace: WorkspaceInfo; onChange: (w: WorkspaceInfo | null) => void }) {
   const [pages, setPages] = useState<PageSummary[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
+  // The open page's title while it's typed, for the title bar.
+  const [draftTitle, setDraftTitle] = useState<{ id: string; title: string } | null>(null);
   // Text to select once the open page loads, when it was opened from a search.
   const [reveal, setReveal] = useState<string | null>(null);
   const sidebar = useSidebarLayout();
@@ -172,16 +175,15 @@ function WorkspaceView({ workspace, onChange }: { workspace: WorkspaceInfo; onCh
         onOpenDevPanel={dev.enabled ? dev.toggle : undefined}
       />
       <main className="main">
-        {sidebar.hidden && (
-          <button
-            className="icon-button sidebar-show"
-            title={tip("Show the sidebar", "toggleSidebar")}
-            aria-label="Show the sidebar"
-            onClick={sidebar.toggle}
-          >
-            <PanelLeftOpen size={16} />
-          </button>
-        )}
+        <PageTitleBar
+          trail={selected ? trail(pages, selected) : []}
+          draftTitle={draftTitle && draftTitle.id === selected ? draftTitle.title : null}
+          sidebarHidden={sidebar.hidden}
+          onShowSidebar={sidebar.toggle}
+          onSearch={() => setDialog("search")}
+          onSelect={(id) => id !== selected && void select(id)}
+          onDelete={selected ? () => void page.current?.remove() : undefined}
+        />
         {error && (
           <div className="banner banner-error" role="alert">
             <span>{error}</span>
@@ -190,29 +192,32 @@ function WorkspaceView({ workspace, onChange }: { workspace: WorkspaceInfo; onCh
             </button>
           </div>
         )}
-        {selected ? (
-          <PageView
-            key={selected}
-            ref={page}
-            id={selected}
-            diskVersion={diskVersion}
-            reveal={reveal}
-            onOpenLink={openLink}
-            onRenamed={reload}
-            onDeleted={async () => {
-              setSelected(null);
-              await reload();
-            }}
-            onError={setError}
-          />
-        ) : (
-          <div className="empty">
-            <p>{pages.length ? "Pick a page on the left." : "This workspace has no pages yet."}</p>
-            <button className="button" onClick={() => void create(null)}>
-              New page
-            </button>
-          </div>
-        )}
+        <div className="main-scroll">
+          {selected ? (
+            <PageView
+              key={selected}
+              ref={page}
+              id={selected}
+              diskVersion={diskVersion}
+              reveal={reveal}
+              onOpenLink={openLink}
+              onRenamed={reload}
+              onTitleChange={(title) => setDraftTitle({ id: selected, title })}
+              onDeleted={async () => {
+                setSelected(null);
+                await reload();
+              }}
+              onError={setError}
+            />
+          ) : (
+            <div className="empty">
+              <p>{pages.length ? "Pick a page on the left." : "This workspace has no pages yet."}</p>
+              <button className="button" onClick={() => void create(null)}>
+                New page
+              </button>
+            </div>
+          )}
+        </div>
       </main>
       {dev.open && <DevPanel maximized={dev.maximized} onToggleSize={dev.toggleSize} onClose={dev.toggle} />}
       {dialog === "search" && <Search pages={pages} onAction={runSearch} onClose={() => setDialog(null)} />}

@@ -4,7 +4,7 @@
   "description": "What the main window may call.",
   "windows": ["main"],
   "permissions": [
-    "core:default", "dialog:allow-open", "dialog:allow-ask", "dialog:allow-message",
+    "core:default", "core:window:allow-start-dragging", "dialog:allow-open", "dialog:allow-ask", "dialog:allow-message",
     {
       "identifier": "opener:allow-open-url",
       "allow": [{ "url": "http://*" }, { "url": "https://*" }, { "url": "mailto:*" }]

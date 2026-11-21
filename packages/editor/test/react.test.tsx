@@ -287,8 +287,14 @@ describe("block handle", () => {
     await act(() => pointer("pointermove", grip, 0, 40));
     expect(editor.view.dom.querySelector(".page-block-dragging")?.textContent).toBe("A.");
     expect(container.querySelector(".page-block-drop")).not.toBeNull();
+    // A copy of the block follows the pointer, outside the editable text.
+    const ghost = container.querySelector<HTMLElement>(".page-block-ghost");
+    expect(ghost?.textContent).toBe("A.");
+    expect(ghost?.querySelector(".page-block-dragging")).toBeNull();
+    expect(editor.view.dom.contains(ghost)).toBe(false);
     await act(() => pointer("pointerup", grip, 0, 40));
     expect(editor.save()).toBe("B.\n\nC.\n\nA.\n");
     expect(editor.view.dom.querySelector(".page-block-dragging")).toBeNull();
+    expect(container.querySelector(".page-block-ghost")).toBeNull();
   });
 });

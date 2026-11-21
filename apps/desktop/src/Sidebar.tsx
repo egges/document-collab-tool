@@ -1,10 +1,11 @@
 import { useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, Keyboard, PanelLeftClose, Plus, Search, SquareTerminal } from "lucide-react";
+import { ChevronDown, ChevronRight, Keyboard, Plus, Search, SquareTerminal } from "lucide-react";
 import { type PageSummary, type SyncStatus, type WorkspaceInfo, api, errorText } from "./api.ts";
 import { childrenOf } from "./pageTree.ts";
 import { SHORTCUTS, keysLabel, tip } from "./shortcuts.ts";
 import { SIDEBAR_WIDTH } from "./sidebarLayout.ts";
 import { SyncStatusBar } from "./SyncStatusBar.tsx";
+import { SidebarTitleBar } from "./TitleBar.tsx";
 import { WorkspaceName } from "./WorkspaceName.tsx";
 
 interface SidebarProps {
@@ -32,25 +33,18 @@ export function Sidebar(props: SidebarProps) {
 
   return (
     <aside className="sidebar" hidden={props.hidden}>
-      <div className="sidebar-header">
-        <WorkspaceName workspace={workspace} onRenamed={props.onWorkspaceChange} onError={props.onError} />
-        <button
-          className="icon-button sidebar-hide"
-          title={tip("Hide the sidebar", "toggleSidebar")}
-          aria-label="Hide the sidebar"
-          onClick={props.onHide}
-        >
-          <PanelLeftClose size={16} />
-        </button>
-        <button className="icon-button" title={tip("New page", "newPage")} aria-label="New page" onClick={() => props.onCreate(null)}>
-          <Plus size={16} />
-        </button>
-      </div>
+      <SidebarTitleBar onHide={props.onHide} />
       <button className="sidebar-search" title={tip("Search", "search")} onClick={props.onSearch}>
         <Search size={14} aria-hidden />
         <span>Search</span>
         <kbd>{keysLabel(SHORTCUTS.search.keys)}</kbd>
       </button>
+      <div className="sidebar-header">
+        <WorkspaceName workspace={workspace} onRenamed={props.onWorkspaceChange} onError={props.onError} />
+        <button className="icon-button" title={tip("New page", "newPage")} aria-label="New page" onClick={() => props.onCreate(null)}>
+          <Plus size={16} />
+        </button>
+      </div>
       <nav className="tree" aria-label="Pages">
         <ul className="tree-level" role="tree">
           {(children.get(null) ?? []).map((page) => (
