@@ -15,6 +15,7 @@ import { $prose } from "@milkdown/kit/utils";
 import type { Node } from "@milkdown/kit/prose/model";
 import type { EditorView } from "@milkdown/kit/prose/view";
 import { SaveRefusedError, findLostContent } from "./check.ts";
+import { codeBlocks } from "./code/index.ts";
 import { type Commands, createCommands } from "./commands.ts";
 import { configureHouseStyle, joinPage, prepareForSave, splitFrontMatter } from "./markdown.ts";
 
@@ -79,6 +80,7 @@ async function createMilkdown(
     })
     .use(commonmark)
     .use(gfm)
+    .use(codeBlocks)
     .use(history)
     .use(clipboard)
     .use(updates)

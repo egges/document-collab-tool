@@ -920,8 +920,22 @@ kbd {
   margin: 0 0 12px;
 }
 
+.shortcuts h3 {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
+  margin: 16px 0 4px;
+}
+
 .shortcuts dl {
   margin: 0;
+}
+
+.shortcuts {
+  max-height: calc(100vh - 80px);
+  overflow-y: auto;
 }
 
 .shortcut-row {
@@ -939,4 +953,6 @@ kbd {
 .shortcut-row dd {
   margin: 0;
   color: var(--muted);
+  display: flex;
+  gap: 4px;
 }

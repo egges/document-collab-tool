@@ -6,7 +6,7 @@ import { log } from "./devlog.ts";
 import { PageView, type PageViewHandle } from "./PageView.tsx";
 import { displayOrder } from "./pageTree.ts";
 import { QuickOpen } from "./QuickOpen.tsx";
-import { useShortcuts } from "./shortcuts.ts";
+import { inCodeBlock, useShortcuts } from "./shortcuts.ts";
 import { ShortcutsHelp } from "./ShortcutsHelp.tsx";
 import { Sidebar } from "./Sidebar.tsx";
 import { Welcome } from "./Welcome.tsx";
@@ -107,7 +107,8 @@ function WorkspaceView({ workspace, onChange }: { workspace: WorkspaceInfo; onCh
 
   useShortcuts({
     quickOpen: () => setDialog((d) => (d === "quickOpen" ? null : "quickOpen")),
-    showShortcuts: () => setDialog((d) => (d === "shortcuts" ? null : "shortcuts")),
+    // In a code block, ⌘/ comments lines out, as in a code editor.
+    showShortcuts: () => (inCodeBlock() ? false : setDialog((d) => (d === "shortcuts" ? null : "shortcuts"))),
     newPage: () => void create(null),
     newSubpage: selected ? () => void create(selected) : undefined,
     previousPage: () => step(-1),

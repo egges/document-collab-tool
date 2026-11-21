@@ -20,6 +20,21 @@ export const SHORTCUTS = {
 
 export type ShortcutId = keyof typeof SHORTCUTS;
 
+/**
+ * Keys in code blocks, handled by the editor; listed in the ⌘/ overview.
+ * `typed` is shown as is; `keys` are combinations, as in SHORTCUTS.
+ */
+export const CODE_BLOCK_KEYS: { label: string; keys?: string[]; typed?: string }[] = [
+  { label: "Start a code block", typed: "```" },
+  { label: "Indent / outdent", keys: ["tab", "shift+tab"] },
+  { label: "Move lines up / down", keys: ["alt+arrowup", "alt+arrowdown"] },
+  { label: "Copy lines up / down", keys: ["shift+alt+arrowup", "shift+alt+arrowdown"] },
+  { label: "Comment lines out or in", keys: ["mod+/"] },
+  { label: "First character of the line", keys: ["home"] },
+  { label: "Select the code", keys: ["mod+a"] },
+  { label: "Leave the code block", keys: ["mod+enter"] },
+];
+
 export const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
 /**
@@ -59,6 +74,8 @@ const MAC_SYMBOLS: Record<string, string> = {
   arrowdown: "↓",
   escape: "Esc",
   enter: "↩",
+  tab: "⇥",
+  home: "Home",
 };
 
 const OTHER_NAMES: Record<string, string> = {
@@ -70,6 +87,8 @@ const OTHER_NAMES: Record<string, string> = {
   arrowdown: "↓",
   escape: "Esc",
   enter: "Enter",
+  tab: "Tab",
+  home: "Home",
 };
 
 /** How to show a combination: "⌘⇧J" on macOS, "Ctrl+Shift+J" elsewhere. */
@@ -87,18 +106,19 @@ export function tip(text: string, id: ShortcutId): string {
 /**
  * Run handlers for shortcuts, wherever the focus is (the editor included).
  * Handlers that are undefined are ignored, so a shortcut only takes effect
- * where it means something.
+ * where it means something. A handler that returns false passes the key on
+ * (to the editor, say).
  */
-export function useShortcuts(handlers: Partial<Record<ShortcutId, () => void>>) {
+export function useShortcuts(handlers: Partial<Record<ShortcutId, () => void | false>>) {
   const current = useRef(handlers);
   current.current = handlers;
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
       for (const [id, handler] of Object.entries(current.current)) {
         if (handler && matches(SHORTCUTS[id as ShortcutId].keys, event)) {
+          if (handler() === false) return;
           event.preventDefault();
           event.stopPropagation();
-          handler();
           return;
         }
       }
@@ -107,4 +127,11 @@ export function useShortcuts(handlers: Partial<Record<ShortcutId, () => void>>) 
     window.addEventListener("keydown", onKey, true);
     return () => window.removeEventListener("keydown", onKey, true);
   }, []);
+}
+
+/** Whether the text cursor is in a code block, where some keys mean what they do in a code editor. */
+export function inCodeBlock(): boolean {
+  const node = window.getSelection()?.anchorNode;
+  const element = node instanceof Element ? node : node?.parentElement;
+  return !!element?.closest(".page-code-block pre");
 }
