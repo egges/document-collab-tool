@@ -1,7 +1,7 @@
 //! How a workspace is laid out on disk.
 //!
 //! ```text
-//! workspace.json                      workspace settings
+//! workspace.json                      workspace settings: {"format", "name"}
 //! pages/<page-id>/meta.json           title, parent, properties
 //! pages/<page-id>/page.md             page body
 //! pages/<page-id>/assets/...          attachments

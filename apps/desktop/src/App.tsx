@@ -48,6 +48,8 @@ function WorkspaceView({ workspace, onChange }: { workspace: WorkspaceInfo; onCh
   // Bumped when files change on disk, so the open page rereads its file.
   const [diskVersion, setDiskVersion] = useState(0);
   const page = useRef<PageViewHandle>(null);
+  const nameRef = useRef(workspace.name);
+  nameRef.current = workspace.name;
 
   const reload = useCallback(async () => {
     try {
@@ -65,12 +67,14 @@ function WorkspaceView({ workspace, onChange }: { workspace: WorkspaceInfo; onCh
         log("debug", "ui", "Workspace changed on disk: reloading the page list and the open page");
         void reload();
         setDiskVersion((n) => n + 1);
+        // Another device may have renamed the workspace.
+        void api.workspaceInfo().then((w) => w && w.name !== nameRef.current && onChange(w));
       }),
     ];
     // The first sync may have reported before we listened.
     void Promise.all(unlisten).then(() => api.syncStatus().then((s) => s && setStatus((now) => now ?? s)));
     return () => unlisten.forEach((u) => void u.then((f) => f()));
-  }, [reload, setError]);
+  }, [reload, setError, onChange]);
 
   // Save before the window goes away or loses focus (and so before a sync on refocus).
   useEffect(() => {
