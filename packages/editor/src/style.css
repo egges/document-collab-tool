@@ -1,0 +1,200 @@
+/*
+ * Styles for the page editor and its menus. Everything is scoped to
+ * .page-editor; override the custom properties to theme it.
+ */
+.page-editor {
+  --page-text: #1f2328;
+  --page-muted: #59636e;
+  --page-border: #d1d9e0;
+  --page-code-bg: #f6f8fa;
+  --page-accent: #0969da;
+  --page-menu-bg: #ffffff;
+  --page-menu-hover: #eef1f4;
+  --page-menu-shadow: 0 1px 3px rgb(0 0 0 / 0.12), 0 6px 20px rgb(0 0 0 / 0.12);
+  --page-font: system-ui, -apple-system, "Segoe UI", sans-serif;
+  --page-font-code: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  position: relative;
+  color: var(--page-text);
+  font: 16px/1.6 var(--page-font);
+}
+@media (prefers-color-scheme: dark) {
+  .page-editor {
+    --page-text: #e6edf3;
+    --page-muted: #9198a1;
+    --page-border: #3d444d;
+    --page-code-bg: #151b23;
+    --page-accent: #4493f8;
+    --page-menu-bg: #1c2129;
+    --page-menu-hover: #2a313c;
+    --page-menu-shadow: 0 1px 3px rgb(0 0 0 / 0.5), 0 6px 20px rgb(0 0 0 / 0.4);
+  }
+}
+
+/* --- Page content --------------------------------------------------------- */
+
+.page-editor .ProseMirror {
+  outline: none;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  min-height: 4em;
+}
+.page-editor .ProseMirror > * + * { margin-top: 0.75em; }
+.page-editor .ProseMirror :is(h1, h2, h3, h4) { line-height: 1.25; margin: 1.2em 0 0.4em; }
+.page-editor .ProseMirror > :first-child { margin-top: 0; }
+.page-editor .ProseMirror h1 { font-size: 1.9em; }
+.page-editor .ProseMirror h2 { font-size: 1.45em; }
+.page-editor .ProseMirror h3 { font-size: 1.2em; }
+.page-editor .ProseMirror p { margin: 0; }
+.page-editor .ProseMirror a { color: var(--page-accent); }
+.page-editor .ProseMirror code {
+  font: 0.9em var(--page-font-code);
+  background: var(--page-code-bg);
+  padding: 0.1em 0.3em;
+  border-radius: 4px;
+}
+.page-editor .ProseMirror pre {
+  background: var(--page-code-bg);
+  padding: 12px 16px;
+  border-radius: 6px;
+  overflow-x: auto;
+}
+.page-editor .ProseMirror pre code { background: none; padding: 0; }
+.page-editor .ProseMirror blockquote {
+  margin: 0;
+  padding-left: 1em;
+  border-left: 3px solid var(--page-border);
+  color: var(--page-muted);
+}
+.page-editor .ProseMirror :is(ul, ol) { padding-left: 1.6em; }
+.page-editor .ProseMirror li > p { margin: 0; }
+.page-editor .ProseMirror li[data-item-type="task"] { list-style: none; position: relative; }
+.page-editor .ProseMirror li[data-item-type="task"]::before {
+  content: "";
+  position: absolute;
+  left: -1.5em;
+  top: 0.3em;
+  width: 1em;
+  height: 1em;
+  border: 1.5px solid var(--page-muted);
+  border-radius: 3px;
+  cursor: pointer;
+}
+.page-editor .ProseMirror li[data-item-type="task"][data-checked="true"]::before {
+  background: var(--page-accent);
+  border-color: var(--page-accent);
+  /* A white tick. */
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-7' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+}
+.page-editor .ProseMirror li[data-item-type="task"][data-checked="true"] > p {
+  color: var(--page-muted);
+  text-decoration: line-through;
+}
+.page-editor .ProseMirror hr { border: 0; border-top: 1px solid var(--page-border); margin: 1.2em 0; }
+.page-editor .ProseMirror table { border-collapse: collapse; }
+.page-editor .ProseMirror :is(th, td) { border: 1px solid var(--page-border); padding: 4px 10px; min-width: 3em; }
+.page-editor .ProseMirror img { max-width: 100%; }
+
+/* --- Menus ---------------------------------------------------------------- */
+
+.page-toolbar,
+.page-menu {
+  position: absolute;
+  z-index: 10;
+  background: var(--page-menu-bg);
+  border: 1px solid var(--page-border);
+  border-radius: 8px;
+  box-shadow: var(--page-menu-shadow);
+  font: 14px/1.4 var(--page-font);
+  animation: page-menu-in 120ms ease-out;
+}
+@keyframes page-menu-in {
+  from { opacity: 0; transform: var(--page-menu-from, translateY(4px)); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-toolbar, .page-menu { animation: none; }
+}
+.page-toolbar button,
+.page-menu button {
+  font: inherit;
+  color: var(--page-text);
+  background: none;
+  border: 0;
+  border-radius: 5px;
+  cursor: pointer;
+}
+
+/* Toolbar: centred above the selection. */
+.page-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px;
+  white-space: nowrap;
+  transform: translate(-50%, calc(-100% - 8px));
+  --page-menu-from: translate(-50%, calc(-100% - 4px));
+}
+.page-toolbar > button,
+.page-toolbar-group > button {
+  min-width: 30px;
+  height: 30px;
+  padding: 0 8px;
+}
+.page-toolbar button:hover { background: var(--page-menu-hover); }
+.page-toolbar button.active { color: var(--page-accent); }
+.page-toolbar-bold { font-weight: 700; }
+.page-toolbar-italic { font-style: italic; font-family: Georgia, serif !important; }
+.page-toolbar-strikethrough { text-decoration: line-through; }
+.page-toolbar-code { font-family: var(--page-font-code) !important; font-size: 12px !important; }
+.page-toolbar-separator { width: 1px; align-self: stretch; margin: 4px 2px; background: var(--page-border); }
+.page-toolbar-group { position: relative; }
+.page-toolbar-turn-into span { font-size: 10px; color: var(--page-muted); }
+.page-toolbar-menu { left: 0; top: calc(100% + 8px); transform: none; }
+.page-toolbar-link { display: flex; gap: 4px; padding: 0 2px; }
+.page-toolbar-link input {
+  width: 240px;
+  font: inherit;
+  color: var(--page-text);
+  background: var(--page-code-bg);
+  border: 1px solid var(--page-border);
+  border-radius: 5px;
+  padding: 4px 8px;
+}
+.page-toolbar-link button { padding: 0 10px; height: 30px; }
+
+/* Block menus: the slash menu and "Turn into". */
+.page-menu {
+  display: flex;
+  flex-direction: column;
+  min-width: 220px;
+  max-height: 320px;
+  overflow-y: auto;
+  padding: 4px;
+}
+.page-slash-menu { margin-top: 6px; }
+.page-menu button {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 8px;
+  text-align: left;
+}
+.page-menu button:hover,
+.page-menu button.active { background: var(--page-menu-hover); }
+.page-menu-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  flex: none;
+  border: 1px solid var(--page-border);
+  border-radius: 5px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--page-muted);
+}
+.page-menu-label { flex: 1; }
+.page-menu kbd {
+  font: 12px var(--page-font-code);
+  color: var(--page-muted);
+}

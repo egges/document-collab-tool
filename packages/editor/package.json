@@ -1,0 +1,38 @@
+{
+  "name": "@document-collab-tool/editor",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Page editor: Milkdown configured to round-trip our Markdown pages.",
+  "type": "module",
+  "exports": {
+    ".": "./src/index.ts",
+    "./react": "./src/react/index.ts",
+    "./style.css": "./src/style.css"
+  },
+  "scripts": {
+    "dev": "vite demo",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@milkdown/kit": "7.23.0"
+  },
+  "devDependencies": {
+    "@types/node": "24.19.2",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "diff": "9.0.0",
+    "jsdom": "31.0.1",
+    "micromark": "4.0.3",
+    "micromark-extension-gfm": "3.0.0",
+    "react": "19.3.1",
+    "react-dom": "19.3.1",
+    "typescript": "7.0.2",
+    "vite": "8.3.8",
+    "vitest": "5.1.1"
+  },
+  "peerDependencies": {
+    "react": "^19.0.0",
+    "react-dom": "^19.0.0"
+  }
+}

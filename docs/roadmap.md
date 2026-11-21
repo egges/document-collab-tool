@@ -3,9 +3,9 @@
 Sync was the riskiest part, and it now has a tested foundation
 ([sync-design.md](sync-design.md)). This is the order for the rest.
 
-Two unknowns could still change the design: Windows behaviour (now covered by
-CI) and whether the editor can round-trip Markdown without rewriting it. The
-editor test in step 3 comes first for that reason; everything else is mostly
+The two unknowns that could have changed the design are settled: Windows
+behaviour is covered by CI, and the editor test in step 3 found an editor
+that round-trips Markdown well enough. Everything else is mostly
 straightforward building.
 
 ## 1. Harden what we have — done
@@ -32,11 +32,23 @@ straightforward building.
 
 ## 3. Desktop app (the bulk of the work)
 
-- [ ] **Editor round-trip test — do this first.** Check whether Tiptap or
-      BlockNote can open and save Markdown without changing it. If the editor
-      reformats pages on every save, it creates noisy commits and needless
-      conflicts. Test it against a set of example Markdown files before
-      building any other UI.
+- [x] **Editor round-trip test.** Compared Tiptap, BlockNote and Milkdown on
+      12 example pages ([spikes/editor-roundtrip](../spikes/editor-roundtrip)).
+      Result: **Milkdown**, with remark set to `-` bullets and unpadded
+      tables. It keeps raw HTML and footnotes, and after a page's first save
+      a one-word edit changes one line.
+- [x] **Editor package** (`packages/editor`). Milkdown with our house style,
+      the example pages as regression tests, and a demo page. The editor
+      only writes a page when the user changed it, and refuses to save if
+      the result would lose visible text. Menus are our own, in React: a
+      toolbar on selection and a `/` menu. (Crepe, Milkdown's ready-made
+      editor, was ruled out because it brings in Vue.)
+- [ ] **Editor: block handle.** A grip next to each block for dragging and a
+      block menu.
+- [ ] **Editor: tables and links.** Add and remove rows and columns, and edit
+      a link by clicking it.
+- [ ] **Importer.** Move front matter into `meta.json` before a page reaches
+      the editor.
 - [ ] **App shell.** Tauri 2 + React, calling `docsync` directly from the Rust
       side.
 - [ ] **Pages and databases.** A page tree, a page view, a database table
