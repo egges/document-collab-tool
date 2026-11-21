@@ -235,21 +235,55 @@ kbd {
 /* ---- layout ------------------------------------------------------------ */
 
 .layout {
+  --slide: 220ms cubic-bezier(0.2, 0, 0, 1);
   display: grid;
   grid-template-columns: 260px 1fr;
   height: 100%;
+  transition: grid-template-columns var(--slide);
 }
 
+/* Following the pointer while resizing, not easing after it. */
+body.resizing .layout {
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .layout,
+  .layout * {
+    transition-duration: 0s !important;
+  }
+}
+
+/*
+ * Hiding the sidebar shrinks its column to nothing. Its content keeps its
+ * width and is cut off on the right, so it slides away instead of squashing.
+ */
 .sidebar {
   position: relative;
-  display: flex;
-  flex-direction: column;
-  background: var(--sidebar-bg);
-  border-right: 1px solid var(--border);
+  min-width: 0;
   min-height: 0;
 }
 
-.sidebar[hidden] {
+.sidebar-clip {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--sidebar-bg);
+  border-right: 1px solid var(--border);
+  transition: border-color var(--slide);
+}
+
+.sidebar-hidden .sidebar-clip {
+  border-right-color: transparent;
+}
+
+.sidebar-content {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.sidebar-hidden .sidebar-resizer {
   display: none;
 }
 
@@ -262,13 +296,23 @@ kbd {
 
 /* ---- title bar (TitleBar.tsx) ---------------------------------------------- */
 
-/* Room for the window's close, minimise and zoom buttons (macOS, see windowChrome.ts). */
+/*
+ * On macOS the window's close, minimise and zoom buttons sit over the bar
+ * (see windowChrome.ts), centred 22 points from the top
+ * (tauri.macos.conf.json). They never zoom or move, so the bar keeps the
+ * same height and the same room for them on screen at any zoom, and the
+ * icons and text in it, which do zoom, stay centred on them. --chrome-zoom
+ * (set by zoom.ts) turns screen sizes into page sizes.
+ */
 :root {
+  --bar-height: calc(44px * var(--chrome-zoom, 1));
+  /* Zooms, but never taller than the bar. */
+  --bar-button: min(26px, calc(40px * var(--chrome-zoom, 1)));
   --window-buttons: 0px;
 }
 
 :root.overlay-titlebar:not(.fullscreen) {
-  --window-buttons: 72px;
+  --window-buttons: calc(72px * var(--chrome-zoom, 1));
 }
 
 .titlebar {
@@ -276,13 +320,16 @@ kbd {
   flex: none;
   align-items: center;
   gap: 2px;
-  height: 44px;
+  height: var(--bar-height);
   padding: 0 8px;
   user-select: none;
   -webkit-user-select: none;
 }
 
-.titlebar .icon-button {
+.titlebar .icon-button,
+.sidebar-toggle {
+  width: var(--bar-button);
+  height: var(--bar-button);
   color: var(--muted);
 }
 
@@ -290,10 +337,24 @@ kbd {
   color: var(--text);
 }
 
-/* Whichever strip is leftmost makes room for the window's buttons. */
-.titlebar-sidebar,
+/*
+ * Shows and hides the sidebar. Always in the same spot, right of the
+ * window's buttons, over whichever strip is leftmost.
+ */
+.sidebar-toggle {
+  position: fixed;
+  z-index: 6;
+  top: calc((var(--bar-height) - var(--bar-button)) / 2);
+  left: calc(8px + var(--window-buttons));
+}
+
+.titlebar-page {
+  transition: padding-left var(--slide);
+}
+
+/* With the sidebar hidden, the page's strip starts after the toggle. */
 .sidebar-hidden .titlebar-page {
-  padding-left: calc(8px + var(--window-buttons));
+  padding-left: calc(8px + var(--window-buttons) + var(--bar-button) + 4px);
 }
 
 .breadcrumb {
@@ -343,7 +404,7 @@ kbd {
   top: 0;
   left: 0;
   right: 0;
-  height: 44px;
+  height: var(--bar-height);
 }
 
 /* Over the sidebar's border, a little wider than it, so it's easy to grab. */
