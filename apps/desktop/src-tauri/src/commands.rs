@@ -11,6 +11,7 @@ use serde::{Deserialize, Serialize};
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::devlog::{self, Entry, Level};
+use crate::search::{self, TextMatch};
 use crate::session::{Session, WorkspaceInfo};
 use crate::tree::{self, PageSummary};
 use crate::worker::{Events, SyncStatus};
@@ -265,6 +266,16 @@ pub async fn read_page(state: State<'_, AppState>, id: String) -> CmdResult<Page
     let (engine, _) = state.engine()?;
     blocking("read_page", move || {
         read_page_from(&Workspace::new(engine.root()), &id)
+    })
+    .await
+}
+
+/// Pages whose text contains `query`, for the search palette.
+#[tauri::command]
+pub async fn search_text(state: State<'_, AppState>, query: String) -> CmdResult<Vec<TextMatch>> {
+    let (engine, _) = state.engine()?;
+    blocking("search_text", move || {
+        search::search_text(&Workspace::new(engine.root()), &query, 50).map_err(text)
     })
     .await
 }

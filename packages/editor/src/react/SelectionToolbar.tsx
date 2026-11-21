@@ -67,7 +67,11 @@ export function SelectionToolbar({ editor, container }: {
         >
           <input
             ref={linkInput}
-            type="url"
+            // Text, not type="url": that silently refuses "example.com" or a link to a page.
+            type="text"
+            inputMode="url"
+            spellCheck={false}
+            autoCapitalize="off"
             placeholder="Paste or type a link"
             value={linkDraft}
             onChange={(e) => setLinkDraft(e.target.value)}

@@ -140,3 +140,31 @@ describe("slash commands", () => {
     await editor.destroy();
   });
 });
+
+test("find selects the first match, ignoring case and formatting", async () => {
+  const editor = await open("# Intro\n\nWe met **Acme** on Tuesday.\n\nAcme again.\n");
+  expect(editor.commands.find("acme on")).toBe(true);
+  const { from, to } = editor.view.state.selection;
+  expect(editor.view.state.doc.textBetween(from, to)).toBe("Acme on");
+  expect(editor.commands.find("zebra")).toBe(false);
+});
+
+test("linkAt finds a link's whole range, across formatting", async () => {
+  const editor = await open("See [the **big** docs](https://x.org) now.\n");
+  const { doc } = editor.view.state;
+  let inside = 0;
+  doc.descendants((node, pos) => {
+    if (node.isText && node.text === "big") inside = pos + 1;
+  });
+  const link = editor.commands.linkAt(inside)!;
+  expect(doc.textBetween(link.from, link.to)).toBe("the big docs");
+  expect(link.href).toBe("https://x.org");
+  expect(editor.commands.linkAt(2)).toBeNull();
+
+  editor.commands.updateLinkAt(inside, "https://y.org");
+  expect(editor.save()).toBe("See [the **big** docs](https://y.org) now.\n");
+  editor.commands.updateLinkAt(inside, "https://y.org", "manual");
+  expect(editor.save()).toBe("See [manual](https://y.org) now.\n");
+  editor.commands.updateLinkAt(5, "");
+  expect(editor.save()).toBe("See manual now.\n");
+});

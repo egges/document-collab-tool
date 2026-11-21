@@ -22,6 +22,7 @@ describe("matches", () => {
   test("uses the physical key, so ⌥ doesn't turn letters into symbols", () => {
     expect(matches("mod+alt+arrowup", press({ code: "ArrowUp", key: "ArrowUp", meta: true, alt: true }), true)).toBe(true);
     expect(matches("mod+/", press({ code: "Slash", key: "/", meta: true }), true)).toBe(true);
+    expect(matches("mod+\\", press({ code: "Backslash", key: "\\", ctrl: true }), false)).toBe(true);
     expect(
       matches("mod+shift+backspace", press({ code: "Backspace", key: "Backspace", meta: true, shift: true }), true),
     ).toBe(true);
@@ -38,4 +39,5 @@ test("labels", () => {
   expect(keysLabel("mod+shift+j", false)).toBe("Ctrl+Shift+J");
   expect(keysLabel("mod+alt+arrowdown", true)).toBe("⌘⌥↓");
   expect(keysLabel("mod+shift+backspace", false)).toBe("Ctrl+Shift+Backspace");
+  expect(keysLabel("mod+\\", true)).toBe("⌘\\");
 });

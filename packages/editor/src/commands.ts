@@ -17,7 +17,7 @@ import {
 } from "@milkdown/kit/preset/commonmark";
 import { insertTableCommand, toggleStrikethroughCommand } from "@milkdown/kit/preset/gfm";
 import type { MarkType, Node } from "@milkdown/kit/prose/model";
-import type { EditorState } from "@milkdown/kit/prose/state";
+import { type EditorState, TextSelection } from "@milkdown/kit/prose/state";
 import type { EditorView } from "@milkdown/kit/prose/view";
 import { callCommand } from "@milkdown/kit/utils";
 
@@ -140,6 +140,36 @@ export function createCommands(editor: Editor) {
       return true;
     },
 
+    /** The link at document position `pos`: its whole range and address. */
+    linkAt(pos: number): LinkRange | null {
+      return linkAt(view().state, pos);
+    },
+
+    /**
+     * Changes the link at `pos`: its address, and its text when `text` is
+     * given and differs. An empty `href` removes the link, keeping its text.
+     */
+    updateLinkAt(pos: number, href: string, text?: string): boolean {
+      const v = view();
+      const link = linkAt(v.state, pos);
+      if (!link) return false;
+      const type = v.state.schema.marks.link;
+      const tr = v.state.tr;
+      let { from, to } = link;
+      // Keep the rest of the link (its "title"), change only the address.
+      const attrs = type.isInSet(v.state.doc.resolve(from + 1).marks())?.attrs ?? {};
+      if (text !== undefined && text !== "" && text !== v.state.doc.textBetween(from, to)) {
+        // New text takes the formatting of the link's first character.
+        const marks = v.state.doc.resolve(from + 1).marks().filter((m) => m.type !== type);
+        tr.replaceWith(from, to, v.state.schema.text(text, marks));
+        to = from + text.length;
+      }
+      tr.removeMark(from, to, type);
+      if (href) tr.addMark(from, to, type.create({ ...attrs, href }));
+      v.dispatch(tr);
+      return true;
+    },
+
     setBlock(format: BlockFormat): boolean {
       switch (format) {
         case "text":
@@ -179,6 +209,18 @@ export function createCommands(editor: Editor) {
       return false;
     },
 
+    /**
+     * Selects the first place `text` appears (ignoring case) and scrolls to
+     * it, for opening a page from a search. False if it isn't there.
+     */
+    find(text: string): boolean {
+      const v = view();
+      const range = findText(v.state.doc, text);
+      if (!range) return false;
+      v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, range.from, range.to)).scrollIntoView());
+      return true;
+    },
+
     /** Replaces the "/query" being typed with the chosen block. */
     runSlash(format: BlockFormat): boolean {
       const v = view();
@@ -202,4 +244,63 @@ function markTaskItem(view: EditorView): boolean {
     }
   }
   return false;
+}
+
+/** Document range of the first place `text` appears in one text block, ignoring case. */
+export function findText(doc: Node, text: string): { from: number; to: number } | null {
+  const needle = text.trim().toLowerCase();
+  if (!needle) return null;
+  let found: { from: number; to: number } | null = null;
+  doc.descendants((block, blockPos) => {
+    if (found) return false;
+    if (!block.isTextblock) return true;
+    // The block's text, lowercased, with the document position of each character.
+    let lower = "";
+    const positions: number[] = [];
+    block.forEach((child, offset) => {
+      if (!child.isText) return;
+      for (let i = 0; i < child.text!.length; i++) {
+        const c = child.text![i].toLowerCase();
+        lower += c;
+        for (let k = 0; k < c.length; k++) positions.push(blockPos + 1 + offset + i);
+      }
+    });
+    const at = lower.indexOf(needle);
+    if (at >= 0) found = { from: positions[at], to: positions[at + needle.length - 1] + 1 };
+    return false;
+  });
+  return found;
+}
+
+export interface LinkRange {
+  from: number;
+  to: number;
+  href: string;
+}
+
+/** The link covering `pos` (or starting or ending there), extended over all of its text. */
+export function linkAt(state: EditorState, pos: number): LinkRange | null {
+  const type = state.schema.marks.link;
+  if (!type || pos < 0 || pos > state.doc.content.size) return null;
+  const $pos = state.doc.resolve(pos);
+  const parent = $pos.parent;
+  if (!parent.inlineContent || parent.childCount === 0) return null;
+  let index = Math.min($pos.index(), parent.childCount - 1);
+  let mark = type.isInSet(parent.child(index).marks);
+  if (!mark && index > 0 && $pos.textOffset === 0) {
+    index -= 1;
+    mark = type.isInSet(parent.child(index).marks);
+  }
+  if (!mark) return null;
+  let start = index;
+  let end = index + 1;
+  while (start > 0 && mark.isInSet(parent.child(start - 1).marks)) start--;
+  while (end < parent.childCount && mark.isInSet(parent.child(end).marks)) end++;
+  let offset = 0;
+  let from = 0;
+  for (let i = 0; i < end; i++) {
+    if (i === start) from = offset;
+    offset += parent.child(i).nodeSize;
+  }
+  return { from: $pos.start() + from, to: $pos.start() + offset, href: mark.attrs.href as string };
 }

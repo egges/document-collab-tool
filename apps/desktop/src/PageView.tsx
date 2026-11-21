@@ -20,6 +20,9 @@ interface PageViewProps {
   id: string;
   /** Changes whenever files changed on disk. */
   diskVersion: number;
+  /** Text to select and scroll to once the page loads (opened from a search). */
+  reveal?: string | null;
+  onOpenLink: (href: string) => void;
   onRenamed: () => void;
   onDeleted: () => void;
   onError: (message: string) => void;
@@ -43,7 +46,7 @@ export function PageView(props: PageViewProps) {
   return page ? <LoadedPage {...props} initial={page} /> : <div className="page" />;
 }
 
-function LoadedPage({ id, initial, diskVersion, onRenamed, onDeleted, onError, ref }: PageViewProps & { initial: Page }) {
+function LoadedPage({ id, initial, diskVersion, reveal, onOpenLink, onRenamed, onDeleted, onError, ref }: PageViewProps & { initial: Page }) {
   const [title, setTitle] = useState(initial.title);
   const [conflicts, setConflicts] = useState<Conflict[]>(initial.conflicts);
   const [notice, setNotice] = useState<string | null>(null);
@@ -202,8 +205,12 @@ function LoadedPage({ id, initial, diskVersion, onRenamed, onDeleted, onError, r
       <ConflictPanel conflicts={conflicts} busy={busy} onKeep={(i, v) => void keep(i, v)} />
       <PageEditorView
         markdown={initial.body}
-        onReady={(editor: PageEditor) => saver.attach(editor)}
+        onReady={(editor: PageEditor) => {
+          saver.attach(editor);
+          if (reveal && editor.commands.find(reveal)) editor.view.focus();
+        }}
         onChange={() => saver.changed()}
+        onOpenLink={onOpenLink}
       />
     </article>
   );

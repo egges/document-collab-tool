@@ -54,8 +54,11 @@ straightforward building.
       paired brackets, auto-indent, moving and copying lines, ⌘/ to comment.
 - [ ] **Editor: block handle.** A grip next to each block for dragging and a
       block menu.
-- [ ] **Editor: tables and links.** Add and remove rows and columns, and edit
-      a link by clicking it.
+- [ ] **Editor: tables.** Add and remove rows and columns.
+- [x] **Links and search.** Clicking a link opens it (in the browser, or the
+      page it points to); hovering shows it with copy and edit (text, address, remove).
+      ⌘K searches page titles and text. The sidebar can
+      be resized and hidden (⌘\\).
 - [ ] **Importer.** Move front matter into `meta.json` before a page reaches
       the editor.
 - [x] **App shell** (`apps/desktop`). Tauri 2 + React, calling `docsync`
@@ -71,7 +74,7 @@ straightforward building.
 ## 4. Search and AI
 
 - [ ] **Local search.** A SQLite full-text index stored in `.docsync/`, which
-      is never synced.
+      is never synced, to replace the plain scan ⌘K uses now.
 - [ ] **MCP server.** Built on the same crate, with tools to search, read
       pages, create and update pages, and query databases. Commits made by
       agents are credited to something like "Claude (via MCP)", so the history

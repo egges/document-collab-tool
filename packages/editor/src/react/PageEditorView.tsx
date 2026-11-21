@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
 import { type PageEditor, createPageEditor } from "../editor.ts";
+import { LinkPopover } from "./LinkPopover.tsx";
 import { SelectionToolbar } from "./SelectionToolbar.tsx";
 import { SlashMenu } from "./SlashMenu.tsx";
 
@@ -11,6 +12,11 @@ export interface PageEditorViewProps {
   onDirtyChange?: (dirty: boolean) => void;
   /** Called after every change to the document or the selection. */
   onChange?: (editor: PageEditor) => void;
+  /**
+   * Called when a link is clicked, with its address as written. Without it,
+   * links open with `window.open`.
+   */
+  onOpenLink?: (href: string) => void;
   className?: string;
 }
 
@@ -21,7 +27,7 @@ export type KeyHandler = (event: KeyboardEvent) => boolean;
  * The page editor with its toolbar (on selection) and slash menu. Styles:
  * import "@document-collab-tool/editor/style.css".
  */
-export function PageEditorView({ markdown, onReady, onDirtyChange, onChange, className }: PageEditorViewProps) {
+export function PageEditorView({ markdown, onReady, onDirtyChange, onChange, onOpenLink, className }: PageEditorViewProps) {
   const container = useRef<HTMLDivElement>(null);
   const root = useRef<HTMLDivElement>(null);
   const [editor, setEditor] = useState<PageEditor | null>(null);
@@ -29,9 +35,9 @@ export function PageEditorView({ markdown, onReady, onDirtyChange, onChange, cla
   const [, rerender] = useReducer((n: number) => n + 1, 0);
 
   // Latest callbacks, so the editor is created once but always calls the current ones.
-  const callbacks = useRef({ onReady, onDirtyChange, onChange });
+  const callbacks = useRef({ onReady, onDirtyChange, onChange, onOpenLink });
   useLayoutEffect(() => {
-    callbacks.current = { onReady, onDirtyChange, onChange };
+    callbacks.current = { onReady, onDirtyChange, onChange, onOpenLink };
   });
   // The slash menu takes over arrow keys, Enter and Escape while it's open.
   const keyHandler = useRef<KeyHandler>(() => false);
@@ -95,10 +101,27 @@ export function PageEditorView({ markdown, onReady, onDirtyChange, onChange, cla
     }
   };
 
+  // Clicking a link opens it, as in Notion. Resting the pointer on it shows a
+  // box to copy, edit or remove it (LinkPopover). Dragging across one still
+  // selects it, and Shift-click extends the selection.
+  const onClick = (event: React.MouseEvent) => {
+    const link = (event.target as HTMLElement).closest<HTMLAnchorElement>(".ProseMirror a[href]");
+    if (!link) return;
+    // Never follow it in this window: that would replace the app.
+    event.preventDefault();
+    if (event.button !== 0 || event.shiftKey || event.altKey || !window.getSelection()?.isCollapsed) return;
+    openLink(link.getAttribute("href")!);
+  };
+  const openLink = (href: string) => {
+    if (callbacks.current.onOpenLink) callbacks.current.onOpenLink(href);
+    else window.open(href, "_blank", "noopener");
+  };
+
   return (
     <div ref={container} className={["page-editor", className].filter(Boolean).join(" ")}>
-      <div ref={root} onMouseDown={onMouseDown} />
+      <div ref={root} onMouseDown={onMouseDown} onClick={onClick} />
       {editor && <SelectionToolbar editor={editor} container={container} />}
+      {editor && <LinkPopover editor={editor} container={container} onOpen={openLink} />}
       {editor && <SlashMenu editor={editor} container={container} keyHandler={keyHandler} />}
     </div>
   );

@@ -17,6 +17,16 @@ export interface PageSummary {
   parent: string | null;
 }
 
+/** A place in a page's text where a search query appears. */
+export interface TextMatch {
+  page: string;
+  before: string;
+  matched: string;
+  after: string;
+  /** How many times the query appears in the page. */
+  count: number;
+}
+
 export interface ConflictVersion {
   label: string;
   text: string;
@@ -59,6 +69,7 @@ export const api = {
   syncNow: () => invoke<void>("sync_now"),
   listPages: () => invoke<PageSummary[]>("list_pages"),
   readPage: (id: string) => invoke<Page>("read_page", { id }),
+  searchText: (query: string) => invoke<TextMatch[]>("search_text", { query }),
   writePage: (id: string, base: string, body: string) => invoke<WriteResult>("write_page", { id, base, body }),
   createPage: (title: string, parent: string | null) => invoke<string>("create_page", { title, parent }),
   renamePage: (id: string, title: string) => invoke<void>("rename_page", { id, title }),
