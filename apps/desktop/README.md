@@ -25,7 +25,18 @@ step). On Linux, install
   workspace reopens on start.
 - **Pages.** A page tree (pages whose parent was deleted on another device
   show at the top level), a title, and the editor. Create, rename and delete
-  pages.
+  pages. Drag the sidebar's edge to resize it (double-click resets it); its
+  width and whether it's shown are kept per device.
+- **Search** (⌘K). Finds pages by title and by the text the editor shows,
+  without Markdown syntax or link addresses (`src-tauri/src/search.rs`, a
+  plain scan until the full-text index exists). Opening a text match
+  selects it in the page. Results come in sections (`src/search.ts`), so
+  other kinds of results can be added later.
+- **Links.** Clicking a link opens it: web and mail links in the browser or
+  mail app, links to another page (a path with its id, such as
+  `../<id>/page.md`) in the app (`src/links.ts`). Resting the pointer on a
+  link shows its address with Copy and Edit; Edit changes the link's text
+  and address, or removes the link.
 - **Saving.** The body is written 0.6 s after the last change, when switching
   pages and when the window loses focus. Every write says which version the
   edit started from, and if the file changed since (a sync, an AI agent,
@@ -50,7 +61,8 @@ step). On Linux, install
 
 | | |
 |---|---|
-| ⌘K | Go to page (or create one with the typed title) |
+| ⌘K | Search page titles and text (or create a page with the typed title) |
+| ⌘\\ | Show or hide the sidebar |
 | ⌘N / ⌘⇧N | New page / new page inside the open one |
 | ⌘⌥↑ / ⌘⌥↓ | Previous / next page |
 | ⌘⇧⌫ | Delete the open page |

@@ -70,7 +70,7 @@
 .page-editor .ProseMirror h2 { font-size: 1.45em; }
 .page-editor .ProseMirror h3 { font-size: 1.2em; }
 .page-editor .ProseMirror p { margin: 0; }
-.page-editor .ProseMirror a { color: var(--page-accent); }
+.page-editor .ProseMirror a { color: var(--page-accent); cursor: pointer; }
 .page-editor .ProseMirror code {
   font: 0.9em var(--page-font-code);
   background: var(--page-code-bg);
@@ -214,7 +214,8 @@
 /* --- Menus ---------------------------------------------------------------- */
 
 .page-toolbar,
-.page-menu {
+.page-menu,
+.page-link-popover {
   position: absolute;
   z-index: 10;
   background: var(--page-menu-bg);
@@ -228,10 +229,11 @@
   from { opacity: 0; transform: var(--page-menu-from, translateY(4px)); }
 }
 @media (prefers-reduced-motion: reduce) {
-  .page-toolbar, .page-menu { animation: none; }
+  .page-toolbar, .page-menu, .page-link-popover { animation: none; }
 }
 .page-toolbar button,
-.page-menu button {
+.page-menu button,
+.page-link-popover button {
   font: inherit;
   color: var(--page-text);
   background: none;
@@ -277,6 +279,62 @@
   padding: 4px 8px;
 }
 .page-toolbar-link button { padding: 0 10px; height: 30px; }
+
+/* Link box: below a link the pointer rests on. */
+.page-link-popover {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  margin-top: 6px;
+  padding: 4px;
+  white-space: nowrap;
+}
+.page-link-popover button:hover { background: var(--page-menu-hover); color: var(--page-text); }
+.page-link-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  color: var(--page-muted) !important;
+}
+.page-link-icon:hover { color: var(--page-text) !important; }
+.page-link-address {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 300px;
+  padding: 0 8px;
+  color: var(--page-accent);
+  text-decoration: none;
+}
+.page-link-address svg { flex: none; }
+.page-link-address span { overflow: hidden; text-overflow: ellipsis; }
+.page-link-address:hover span { text-decoration: underline; }
+
+.page-link-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  width: 300px;
+  padding: 4px;
+}
+.page-link-form label { display: flex; flex-direction: column; gap: 3px; }
+.page-link-form label span { font-size: 11px; font-weight: 600; color: var(--page-muted); }
+.page-link-form input {
+  font: inherit;
+  color: var(--page-text);
+  background: var(--page-code-bg);
+  border: 1px solid var(--page-border);
+  border-radius: 5px;
+  padding: 4px 8px;
+}
+.page-link-form-actions { display: flex; justify-content: space-between; margin-top: 2px; }
+.page-link-form-actions button { display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 10px; }
+.page-link-remove { color: var(--page-muted) !important; }
+.page-link-remove:hover { color: var(--page-text) !important; }
+.page-link-save { font-weight: 600; color: var(--page-accent) !important; }
 
 /* Block menus: the slash menu and "Turn into". */
 .page-menu {

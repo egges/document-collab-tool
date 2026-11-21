@@ -11,7 +11,7 @@ import { PageEditorView } from "../src/react/index.ts";
 let container: HTMLDivElement;
 afterEach(() => container?.remove());
 
-async function mount(markdown: string): Promise<PageEditor> {
+async function mount(markdown: string, onOpenLink?: (href: string) => void): Promise<PageEditor> {
   container = document.createElement("div");
   document.body.append(container);
   let ready!: (editor: PageEditor) => void;
@@ -19,7 +19,7 @@ async function mount(markdown: string): Promise<PageEditor> {
   await act(async () => {
     createRoot(container).render(
       <StrictMode>
-        <PageEditorView markdown={markdown} onReady={ready} />
+        <PageEditorView markdown={markdown} onReady={ready} onOpenLink={onOpenLink} />
       </StrictMode>,
     );
   });
@@ -85,4 +85,78 @@ test("Escape closes the slash menu", async () => {
   expect(container.querySelector(".page-slash-menu")).not.toBeNull();
   await press(editor, "Escape");
   expect(container.querySelector(".page-slash-menu")).toBeNull();
+});
+
+test("clicking a link opens it; with a selection it doesn't", async () => {
+  const opened: string[] = [];
+  const editor = await mount("See [the docs](https://example.com/docs) here.\n", (href) => opened.push(href));
+  const link = container.querySelector<HTMLAnchorElement>(".ProseMirror a")!;
+  window.getSelection()!.collapse(link.firstChild, 2);
+  await act(() => link.click());
+  expect(opened).toEqual(["https://example.com/docs"]);
+
+  // Dragging across the link selects it, to edit it.
+  window.getSelection()!.setBaseAndExtent(link.firstChild!, 0, link.firstChild!, 3);
+  await act(() => link.click());
+  expect(opened).toHaveLength(1);
+  expect(editor.save()).toBeNull();
+});
+
+test("resting on a link shows a box to copy or edit it; editing can change the text or remove the link", async () => {
+  const opened: string[] = [];
+  const editor = await mount("See [docs](https://x.org) here.\n", (href) => opened.push(href));
+  const hover = async () => {
+    const link = container.querySelector<HTMLAnchorElement>(".ProseMirror a")!;
+    await act(async () => {
+      link.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+      await new Promise((r) => setTimeout(r, 400));
+    });
+    return container.querySelector<HTMLElement>(".page-link-popover")!;
+  };
+  const button = (box: HTMLElement, label: string) =>
+    [...box.querySelectorAll("button")].find((b) => b.getAttribute("aria-label") === label || b.textContent === label)!;
+  const type = (input: HTMLInputElement, value: string) =>
+    act(() => {
+      Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(input, value);
+      input.dispatchEvent(new Event("input", { bubbles: true }));
+    });
+
+  let box = await hover();
+  expect(box.querySelector(".page-link-address")?.textContent).toBe("https://x.org");
+  expect([...box.querySelectorAll("button")].map((b) => b.getAttribute("aria-label"))).toEqual(["Copy link", "Edit link"]);
+  await act(() => box.querySelector<HTMLAnchorElement>(".page-link-address")!.click());
+  expect(opened).toEqual(["https://x.org"]);
+
+  box = await hover();
+  await act(() => button(box, "Edit link").click());
+  const text = box.querySelector<HTMLInputElement>('input[aria-label="Link text"]')!;
+  const href = box.querySelector<HTMLInputElement>('input[aria-label="Link address"]')!;
+  expect([text.value, href.value]).toEqual(["docs", "https://x.org"]);
+  await type(text, "the docs");
+  await type(href, "https://y.org");
+  await act(() => href.form!.requestSubmit());
+  expect(editor.save()).toBe("See [the docs](https://y.org) here.\n");
+
+  box = await hover();
+  await act(() => button(box, "Edit link").click());
+  await act(() => button(box, "Remove link").click());
+  expect(editor.save()).toBe("See the docs here.\n");
+  expect(container.querySelector(".page-link-popover")).toBeNull();
+});
+
+test("the link box saves addresses that aren't full URLs", async () => {
+  const editor = await mount("See [docs](www.example.com) here.\n");
+  const link = container.querySelector<HTMLAnchorElement>(".ProseMirror a")!;
+  await act(async () => {
+    link.dispatchEvent(new MouseEvent("mouseover", { bubbles: true }));
+    await new Promise((r) => setTimeout(r, 400));
+  });
+  await act(() => container.querySelector<HTMLButtonElement>('button[aria-label="Edit link"]')!.click());
+  const text = container.querySelector<HTMLInputElement>('input[aria-label="Link text"]')!;
+  await act(() => {
+    Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, "value")!.set!.call(text, "the docs");
+    text.dispatchEvent(new Event("input", { bubbles: true }));
+  });
+  await act(() => container.querySelector<HTMLButtonElement>(".page-link-save")!.click());
+  expect(editor.save()).toBe("See [the docs](www.example.com) here.\n");
 });

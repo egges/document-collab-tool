@@ -4,6 +4,7 @@
 mod commands;
 mod devlog;
 mod git;
+mod search;
 mod session;
 mod tree;
 mod worker;
@@ -14,6 +15,7 @@ use tauri::{Emitter, Manager, WindowEvent};
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(commands::AppState::default())
         .setup(|app| {
             let handle = app.handle().clone();
@@ -48,6 +50,7 @@ pub fn run() {
             commands::sync_now,
             commands::list_pages,
             commands::read_page,
+            commands::search_text,
             commands::write_page,
             commands::create_page,
             commands::rename_page,

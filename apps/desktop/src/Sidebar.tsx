@@ -1,8 +1,9 @@
-import { useMemo, useState } from "react";
-import { ChevronDown, ChevronRight, Keyboard, Plus, Search, SquareTerminal } from "lucide-react";
+import { useMemo, useRef, useState } from "react";
+import { ChevronDown, ChevronRight, Keyboard, PanelLeftClose, Plus, Search, SquareTerminal } from "lucide-react";
 import { type PageSummary, type SyncStatus, type WorkspaceInfo, api, errorText } from "./api.ts";
 import { childrenOf } from "./pageTree.ts";
 import { SHORTCUTS, keysLabel, tip } from "./shortcuts.ts";
+import { SIDEBAR_WIDTH } from "./sidebarLayout.ts";
 import { SyncStatusBar } from "./SyncStatusBar.tsx";
 
 interface SidebarProps {
@@ -15,7 +16,11 @@ interface SidebarProps {
   onWorkspaceChange: (w: WorkspaceInfo | null) => void;
   onError: (message: string) => void;
   onShowShortcuts: () => void;
-  onQuickOpen: () => void;
+  onSearch: () => void;
+  width: number;
+  hidden: boolean;
+  onResize: (width: number) => void;
+  onHide: () => void;
   /** Set when the developer panel is available. */
   onOpenDevPanel?: () => void;
 }
@@ -25,19 +30,27 @@ export function Sidebar(props: SidebarProps) {
   const children = useMemo(() => childrenOf(pages), [pages]);
 
   return (
-    <aside className="sidebar">
+    <aside className="sidebar" hidden={props.hidden}>
       <div className="sidebar-header">
         <span className="workspace-name" title={workspace.path}>
           {workspace.name}
         </span>
+        <button
+          className="icon-button sidebar-hide"
+          title={tip("Hide the sidebar", "toggleSidebar")}
+          aria-label="Hide the sidebar"
+          onClick={props.onHide}
+        >
+          <PanelLeftClose size={16} />
+        </button>
         <button className="icon-button" title={tip("New page", "newPage")} aria-label="New page" onClick={() => props.onCreate(null)}>
           <Plus size={16} />
         </button>
       </div>
-      <button className="sidebar-search" title={tip("Go to page", "quickOpen")} onClick={props.onQuickOpen}>
+      <button className="sidebar-search" title={tip("Search", "search")} onClick={props.onSearch}>
         <Search size={14} aria-hidden />
-        <span>Go to page</span>
-        <kbd>{keysLabel(SHORTCUTS.quickOpen.keys)}</kbd>
+        <span>Search</span>
+        <kbd>{keysLabel(SHORTCUTS.search.keys)}</kbd>
       </button>
       <nav className="tree" aria-label="Pages">
         <ul className="tree-level" role="tree">
@@ -87,7 +100,53 @@ export function Sidebar(props: SidebarProps) {
           </button>
         )}
       </div>
+      <Resizer width={props.width} onResize={props.onResize} />
     </aside>
+  );
+}
+
+/** The sidebar's right edge: drag to resize, double-click for the default width, or arrow keys. */
+function Resizer({ width, onResize }: { width: number; onResize: (width: number) => void }) {
+  const drag = useRef<{ x: number; width: number } | null>(null);
+  return (
+    <div
+      className="sidebar-resizer"
+      role="separator"
+      aria-orientation="vertical"
+      aria-label="Resize the sidebar"
+      aria-valuemin={SIDEBAR_WIDTH.min}
+      aria-valuemax={SIDEBAR_WIDTH.max}
+      aria-valuenow={width}
+      tabIndex={0}
+      title="Drag to resize, double-click to reset"
+      onPointerDown={(e) => {
+        if (e.button !== 0) return;
+        e.preventDefault();
+        e.currentTarget.setPointerCapture(e.pointerId);
+        drag.current = { x: e.clientX, width };
+        document.body.classList.add("resizing");
+      }}
+      onPointerMove={(e) => {
+        if (drag.current) onResize(drag.current.width + e.clientX - drag.current.x);
+      }}
+      onPointerUp={(e) => {
+        drag.current = null;
+        e.currentTarget.releasePointerCapture(e.pointerId);
+        document.body.classList.remove("resizing");
+      }}
+      onLostPointerCapture={() => {
+        drag.current = null;
+        document.body.classList.remove("resizing");
+      }}
+      onDoubleClick={() => onResize(SIDEBAR_WIDTH.default)}
+      onKeyDown={(e) => {
+        const step = e.shiftKey ? 48 : 16;
+        if (e.key === "ArrowLeft") onResize(width - step);
+        else if (e.key === "ArrowRight") onResize(width + step);
+        else return;
+        e.preventDefault();
+      }}
+    />
   );
 }
 

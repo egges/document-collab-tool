@@ -1,14 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { PanelLeftOpen, X } from "lucide-react";
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { type PageSummary, type SyncStatus, type WorkspaceInfo, api, errorText, events } from "./api.ts";
 import { DevPanel, useDevPanel } from "./DevPanel.tsx";
 import { log } from "./devlog.ts";
 import { PageView, type PageViewHandle } from "./PageView.tsx";
+import { linkTarget } from "./links.ts";
 import { displayOrder } from "./pageTree.ts";
-import { QuickOpen } from "./QuickOpen.tsx";
-import { inCodeBlock, useShortcuts } from "./shortcuts.ts";
+import { Search } from "./Search.tsx";
+import type { SearchAction } from "./search.ts";
+import { inCodeBlock, tip, useShortcuts } from "./shortcuts.ts";
 import { ShortcutsHelp } from "./ShortcutsHelp.tsx";
 import { Sidebar } from "./Sidebar.tsx";
+import { useSidebarLayout } from "./sidebarLayout.ts";
 import { Welcome } from "./Welcome.tsx";
 
 export function App() {
@@ -30,9 +34,12 @@ export function App() {
 function WorkspaceView({ workspace, onChange }: { workspace: WorkspaceInfo; onChange: (w: WorkspaceInfo | null) => void }) {
   const [pages, setPages] = useState<PageSummary[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
+  // Text to select once the open page loads, when it was opened from a search.
+  const [reveal, setReveal] = useState<string | null>(null);
+  const sidebar = useSidebarLayout();
   const [status, setStatus] = useState<SyncStatus | null>(null);
   const [error, setErrorState] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<"quickOpen" | "shortcuts" | null>(null);
+  const [dialog, setDialog] = useState<"search" | "shortcuts" | null>(null);
   const setError = useCallback((message: string | null) => {
     if (message) log("error", "ui", `Shown to the user: ${message}`);
     setErrorState(message);
@@ -81,8 +88,9 @@ function WorkspaceView({ workspace, onChange }: { workspace: WorkspaceInfo; onCh
     if (selected && pages.length && !pages.some((p) => p.id === selected)) setSelected(null);
   }, [pages, selected]);
 
-  const select = async (id: string | null) => {
+  const select = async (id: string | null, find: string | null = null) => {
     await page.current?.flush();
+    setReveal(find);
     setSelected(id);
   };
 
@@ -91,6 +99,7 @@ function WorkspaceView({ workspace, onChange }: { workspace: WorkspaceInfo; onCh
       await page.current?.flush();
       const id = await api.createPage(title, parent);
       await reload();
+      setReveal(null);
       setSelected(id);
     } catch (e) {
       setError(errorText(e));
@@ -105,8 +114,22 @@ function WorkspaceView({ workspace, onChange }: { workspace: WorkspaceInfo; onCh
     void select(order[next].id);
   };
 
+  const runSearch = (action: SearchAction) => {
+    setDialog(null);
+    if (action.kind === "openPage") void select(action.id, action.reveal ?? null);
+    else void create(null, action.title);
+  };
+
+  const openLink = (href: string) => {
+    const target = linkTarget(href, pages);
+    log("info", "ui", `Link clicked: ${href} (${target.kind})`);
+    if (target.kind === "page") void select(target.id);
+    else if (target.kind === "external") openUrl(target.url).catch((e) => setError(`Couldn't open ${target.url}: ${errorText(e)}`));
+  };
+
   useShortcuts({
-    quickOpen: () => setDialog((d) => (d === "quickOpen" ? null : "quickOpen")),
+    search: () => setDialog((d) => (d === "search" ? null : "search")),
+    toggleSidebar: sidebar.toggle,
     // In a code block, ⌘/ comments lines out, as in a code editor.
     showShortcuts: () => (inCodeBlock() ? false : setDialog((d) => (d === "shortcuts" ? null : "shortcuts"))),
     newPage: () => void create(null),
@@ -123,7 +146,10 @@ function WorkspaceView({ workspace, onChange }: { workspace: WorkspaceInfo; onCh
   });
 
   return (
-    <div className="layout">
+    <div
+      className={"layout" + (sidebar.hidden ? " sidebar-hidden" : "")}
+      style={{ gridTemplateColumns: sidebar.hidden ? "1fr" : `${sidebar.width}px 1fr` }}
+    >
       <Sidebar
         workspace={workspace}
         pages={pages}
@@ -134,10 +160,24 @@ function WorkspaceView({ workspace, onChange }: { workspace: WorkspaceInfo; onCh
         onWorkspaceChange={onChange}
         onError={setError}
         onShowShortcuts={() => setDialog("shortcuts")}
-        onQuickOpen={() => setDialog("quickOpen")}
+        onSearch={() => setDialog("search")}
+        width={sidebar.width}
+        hidden={sidebar.hidden}
+        onResize={sidebar.setWidth}
+        onHide={sidebar.toggle}
         onOpenDevPanel={dev.enabled ? dev.toggle : undefined}
       />
       <main className="main">
+        {sidebar.hidden && (
+          <button
+            className="icon-button sidebar-show"
+            title={tip("Show the sidebar", "toggleSidebar")}
+            aria-label="Show the sidebar"
+            onClick={sidebar.toggle}
+          >
+            <PanelLeftOpen size={16} />
+          </button>
+        )}
         {error && (
           <div className="banner banner-error" role="alert">
             <span>{error}</span>
@@ -152,6 +192,8 @@ function WorkspaceView({ workspace, onChange }: { workspace: WorkspaceInfo; onCh
             ref={page}
             id={selected}
             diskVersion={diskVersion}
+            reveal={reveal}
+            onOpenLink={openLink}
             onRenamed={reload}
             onDeleted={async () => {
               setSelected(null);
@@ -169,20 +211,7 @@ function WorkspaceView({ workspace, onChange }: { workspace: WorkspaceInfo; onCh
         )}
       </main>
       {dev.open && <DevPanel maximized={dev.maximized} onToggleSize={dev.toggleSize} onClose={dev.toggle} />}
-      {dialog === "quickOpen" && (
-        <QuickOpen
-          pages={pages}
-          onOpen={(id) => {
-            setDialog(null);
-            void select(id);
-          }}
-          onCreate={(title) => {
-            setDialog(null);
-            void create(null, title);
-          }}
-          onClose={() => setDialog(null)}
-        />
-      )}
+      {dialog === "search" && <Search pages={pages} onAction={runSearch} onClose={() => setDialog(null)} />}
       {dialog === "shortcuts" && <ShortcutsHelp devPanel={dev.enabled} onClose={() => setDialog(null)} />}
     </div>
   );

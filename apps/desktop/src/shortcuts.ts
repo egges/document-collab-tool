@@ -4,7 +4,8 @@
 import { useEffect, useRef } from "react";
 
 export const SHORTCUTS = {
-  quickOpen: { keys: "mod+k", label: "Go to page" },
+  search: { keys: "mod+k", label: "Search" },
+  toggleSidebar: { keys: "mod+\\", label: "Show or hide the sidebar" },
   newPage: { keys: "mod+n", label: "New page" },
   newSubpage: { keys: "mod+shift+n", label: "New page inside this one" },
   previousPage: { keys: "mod+alt+arrowup", label: "Previous page" },
@@ -46,6 +47,7 @@ function keyOf(event: KeyboardEvent): string {
   if (/^Key[A-Z]$/.test(code)) return code.slice(3).toLowerCase();
   if (/^Digit\d$/.test(code)) return code.slice(5);
   if (code === "Slash") return "/";
+  if (code === "Backslash") return "\\";
   return event.key.toLowerCase();
 }
 
