@@ -51,7 +51,9 @@ Linux) or click "Developer log" at the bottom of the sidebar. It shows one
 live timeline of what the app did: every git command with its exit code,
 timing and error output, why each sync started and what it did, files
 changed on disk, and each save (written, merged with changes on disk,
-retried). Filter by source or level, or search. **Copy** puts the whole log
+retried). Sources, levels and outcomes are colour-coded. Filter by source
+or level, or search; the ⤢ button (or double-clicking the toolbar) makes the
+log fill the window. **Copy** puts the whole log
 on the clipboard with the app version, OS, git and workspace details, ready
 to paste into a bug report. The log never contains page text, only sizes and
 page ids.

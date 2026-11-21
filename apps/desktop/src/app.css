@@ -559,6 +559,17 @@ input {
 }
 
 .dev-panel {
+  --src-app: #6e40c9;
+  --src-sync: #0969da;
+  --src-git: #57606a;
+  --src-save: #1a7f37;
+  --src-watch: #bc4c00;
+  --src-ui: #bf3989;
+  --hl-time: #8c959f;
+  --hl-good: #1a7f37;
+  --hl-merge: #8250df;
+  --row-warn: rgb(212 167 44 / 0.12);
+  --row-error: rgb(207 34 46 / 0.1);
   position: fixed;
   left: 0;
   right: 0;
@@ -570,6 +581,30 @@ input {
   box-shadow: 0 -6px 24px rgb(0 0 0 / 0.15);
   z-index: 20;
   font-size: 12px;
+}
+
+@media (prefers-color-scheme: dark) {
+  .dev-panel {
+    --src-app: #a371f7;
+    --src-sync: #58a6ff;
+    --src-git: #8b949e;
+    --src-save: #3fb950;
+    --src-watch: #f0883e;
+    --src-ui: #f778ba;
+    --hl-time: #6e7681;
+    --hl-good: #3fb950;
+    --hl-merge: #bc8cff;
+    --row-warn: rgb(210 153 34 / 0.12);
+    --row-error: rgb(248 81 73 / 0.12);
+  }
+}
+
+/* Fills the whole window, over the sidebar too. */
+.dev-panel.maximized {
+  top: 0;
+  height: auto;
+  border-top: 0;
+  box-shadow: none;
 }
 
 .dev-resize {
@@ -648,9 +683,63 @@ input {
   background: var(--hover);
 }
 
-.dev-time,
-.dev-source {
+.dev-row.level-warn {
+  background: var(--row-warn);
+}
+
+.dev-row.level-error {
+  background: var(--row-error);
+}
+
+.dev-time {
   color: var(--muted);
+}
+
+.dev-level {
+  text-transform: uppercase;
+  font-size: 10px;
+  letter-spacing: 0.03em;
+  align-self: center;
+}
+
+.dev-source {
+  font-weight: 600;
+}
+
+.source-app { color: var(--src-app); }
+.source-sync { color: var(--src-sync); }
+.source-git { color: var(--src-git); }
+.source-save { color: var(--src-save); }
+.source-watch { color: var(--src-watch); }
+.source-ui { color: var(--src-ui); }
+.source-other { color: var(--muted); }
+
+.dev-chip.on.source-app { border-color: var(--src-app); }
+.dev-chip.on.source-sync { border-color: var(--src-sync); }
+.dev-chip.on.source-git { border-color: var(--src-git); }
+.dev-chip.on.source-save { border-color: var(--src-save); }
+.dev-chip.on.source-watch { border-color: var(--src-watch); }
+.dev-chip.on.source-ui { border-color: var(--src-ui); }
+
+.hl-command {
+  font-weight: 600;
+}
+
+.hl-time {
+  color: var(--hl-time);
+}
+
+.hl-good {
+  color: var(--hl-good);
+}
+
+.hl-merge {
+  color: var(--hl-merge);
+}
+
+.hl-bad {
+  color: var(--error);
+  font-weight: 600;
 }
 
 .dev-message {
@@ -661,6 +750,10 @@ input {
 .dev-row.level-debug .dev-message,
 .dev-row.level-debug .dev-level {
   color: var(--muted);
+}
+
+.dev-row.level-info .dev-level {
+  color: var(--src-sync);
 }
 
 .level-warn .dev-level,

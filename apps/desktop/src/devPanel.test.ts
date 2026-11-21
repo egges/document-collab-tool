@@ -26,3 +26,22 @@ test("a copied report has the app details, then one line per entry", () => {
     "09:41:02.007 WARN  [sync] Offline after 12 ms: no route",
   ]);
 });
+
+test("highlights commands, timings, exit codes and outcomes without changing the text", async () => {
+  const { renderToStaticMarkup } = await import("react-dom/server");
+  const { createElement } = await import("react");
+  const { Highlighted } = await import("./DevPanel.tsx");
+  const html = (text: string) => renderToStaticMarkup(createElement(Highlighted, { text }));
+
+  expect(html("git fetch -q origin → exit 128 (15012 ms): ssh: timed out")).toBe(
+    '<span class="hl-command">git fetch</span> -q origin <span class="hl-bad">→ exit 128</span> ' +
+      '<span class="hl-time">(15012 ms)</span>: ssh: timed out',
+  );
+  expect(html("Sync done in 59 ms: pulled changes, pushed")).toBe(
+    'Sync done <span class="hl-time">in 59 ms</span>: <span class="hl-good">pulled changes</span>, ' +
+      '<span class="hl-good">pushed</span>',
+  );
+  // "git" later in a message isn't a command.
+  expect(html("Using git: git 2.56.1")).toBe("Using git: git 2.56.1");
+  expect(html("plain text")).toBe("plain text");
+});

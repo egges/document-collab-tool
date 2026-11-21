@@ -31,6 +31,49 @@ export function useDevPanel() {
 
 const LEVELS: LogLevel[] = ["debug", "info", "warn", "error"];
 
+/** Sources with their own colour; anything else is drawn neutral. */
+const KNOWN_SOURCES = new Set(["app", "sync", "git", "save", "watch", "ui"]);
+const sourceClass = (source: string) => (KNOWN_SOURCES.has(source) ? source : "other");
+
+/**
+ * Colours the parts of a message worth spotting at a glance: git commands,
+ * timings, exit codes, and words for outcomes.
+ */
+const HIGHLIGHTS: [RegExp, string][] = [
+  [/^git \S+/, "hl-command"],
+  [/→ exit \d+|→ exit \?/, "hl-bad"],
+  [/\(\d+ ms\)|\bin \d+ ms\b|\bafter \d+ ms\b/, "hl-time"],
+  [/\b(?:failed|refused|Offline|deleted elsewhere|Permission denied)\b/, "hl-bad"],
+  [/\b(?:merged?|conflicts? resolved|Resolved a conflict)\b/, "hl-merge"],
+  [/\b(?:pushed|pulled changes|already up to date|Committed edits|Wrote page|Saved)\b/, "hl-good"],
+];
+
+export function Highlighted({ text }: { text: string }) {
+  const parts: React.ReactNode[] = [];
+  let rest = text;
+  let key = 0;
+  while (rest) {
+    // The earliest match of any pattern.
+    let best: { index: number; length: number; cls: string } | null = null;
+    for (const [pattern, cls] of HIGHLIGHTS) {
+      const m = pattern.source.startsWith("^") && parts.length ? null : pattern.exec(rest);
+      if (m && (!best || m.index < best.index)) best = { index: m.index, length: m[0].length, cls };
+    }
+    if (!best) {
+      parts.push(rest);
+      break;
+    }
+    if (best.index) parts.push(rest.slice(0, best.index));
+    parts.push(
+      <span key={key++} className={best.cls}>
+        {rest.slice(best.index, best.index + best.length)}
+      </span>,
+    );
+    rest = rest.slice(best.index + best.length);
+  }
+  return <>{parts}</>;
+}
+
 function time(ms: number): string {
   const d = new Date(ms);
   const pad = (n: number, w = 2) => String(n).padStart(w, "0");
@@ -76,6 +119,7 @@ export function DevPanel({ onClose }: { onClose: () => void }) {
   const [query, setQuery] = useState("");
   const [copied, setCopied] = useState(false);
   const [height, setHeight] = useState(() => Math.round(window.innerHeight * 0.4));
+  const [maximized, setMaximized] = useState(false);
   const list = useRef<HTMLDivElement>(null);
   const stickToBottom = useRef(true);
 
@@ -141,15 +185,24 @@ export function DevPanel({ onClose }: { onClose: () => void }) {
   };
 
   return (
-    <section className="dev-panel" style={{ height }} aria-label="Developer log">
-      <div className="dev-resize" onMouseDown={startResize} />
-      <header className="dev-toolbar">
+    <section
+      className={"dev-panel" + (maximized ? " maximized" : "")}
+      style={maximized ? undefined : { height }}
+      aria-label="Developer log"
+    >
+      {!maximized && <div className="dev-resize" onMouseDown={startResize} />}
+      <header
+        className="dev-toolbar"
+        onDoubleClick={(e) => {
+          if (e.target === e.currentTarget) setMaximized(!maximized);
+        }}
+      >
         <strong>Developer log</strong>
         <div className="dev-chips">
           {sources.map((source) => (
             <button
               key={source}
-              className={"dev-chip" + (hidden.has(source) ? "" : " on")}
+              className={`dev-chip source-${sourceClass(source)}` + (hidden.has(source) ? "" : " on")}
               onClick={() => setHidden(toggle(hidden, source))}
             >
               {source}
@@ -185,6 +238,14 @@ export function DevPanel({ onClose }: { onClose: () => void }) {
         >
           Clear
         </button>
+        <button
+          className="icon-button"
+          aria-label={maximized ? "Restore size" : "Fill the window"}
+          title={maximized ? "Restore size" : "Fill the window"}
+          onClick={() => setMaximized(!maximized)}
+        >
+          {maximized ? "⤓" : "⤢"}
+        </button>
         <button className="icon-button" aria-label="Close" title="Close (⌘⇧D)" onClick={onClose}>
           ×
         </button>
@@ -201,8 +262,10 @@ export function DevPanel({ onClose }: { onClose: () => void }) {
           <div key={e.id} className={`dev-row level-${e.level}`}>
             <span className="dev-time">{time(e.time)}</span>
             <span className="dev-level">{e.level}</span>
-            <span className="dev-source">{e.source}</span>
-            <span className="dev-message">{e.message}</span>
+            <span className={`dev-source source-${sourceClass(e.source)}`}>{e.source}</span>
+            <span className="dev-message">
+              <Highlighted text={e.message} />
+            </span>
           </div>
         ))}
         {shown.length === 0 && <p className="muted dev-empty">Nothing logged{entries.length ? " that matches" : " yet"}.</p>}
