@@ -10,8 +10,10 @@ import { getCurrentWindow } from "@tauri-apps/api/window";
 import { errorText } from "./api.ts";
 import { log } from "./devlog.ts";
 
-/** Spread on an element to make it, and its empty parts, move the window. */
+/** Spread on an element to make it, and its empty parts, move the window (double-click zooms it). */
 export const WINDOW_DRAG = { "data-window-drag": "" };
+/** The same, for a bar whose double-click already means something else. */
+export const WINDOW_MOVE_ONLY = { "data-window-drag": "move" };
 
 /** Pressing these never moves the window. */
 const CONTROLS = "button, a, input, textarea, select, label, [role=button], [contenteditable]:not([contenteditable=false])";
@@ -28,6 +30,8 @@ export function setUpWindowChrome() {
 
   document.addEventListener("mousedown", (event) => {
     if (event.button !== 0 || !movesWindow(event.target)) return;
+    const moveOnly = (event.target as Element).closest("[data-window-drag]")?.getAttribute("data-window-drag") === "move";
+    if (moveOnly && event.detail === 2) return; // the bar's own double-click
     event.preventDefault(); // no text selection, no focus change
     const action = event.detail === 2 ? window_.toggleMaximize() : event.detail === 1 ? window_.startDragging() : null;
     action?.catch((e) => log("warn", "ui", `Couldn't ${event.detail === 2 ? "zoom" : "move"} the window: ${errorText(e)}`));

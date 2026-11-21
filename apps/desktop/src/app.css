@@ -901,6 +901,12 @@ button.workspace-name:hover {
   box-shadow: none;
 }
 
+/* Filling the window, the toolbar is the title bar: as high, and clear of the window's buttons. */
+.dev-panel.maximized .dev-toolbar {
+  min-height: var(--bar-height);
+  padding-left: calc(10px + var(--window-buttons));
+}
+
 .dev-resize {
   position: absolute;
   top: -3px;
