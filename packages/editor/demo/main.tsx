@@ -107,7 +107,7 @@ function App() {
 
       <main>
         <section className="pane">
-          <h2>Editor <span className="hint">Select text for the toolbar · type / on an empty line for blocks</span></h2>
+          <h2>Editor <span className="hint">Select text for the toolbar · type / on an empty line for blocks · hover a block for its handle</span></h2>
           <PageEditorView
             key={openCount}
             markdown={onDisk}

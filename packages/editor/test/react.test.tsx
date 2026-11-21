@@ -1,7 +1,7 @@
 import { StrictMode, act } from "react";
 import { createRoot } from "react-dom/client";
-import { afterEach, expect, test } from "vitest";
-import { TextSelection } from "@milkdown/kit/prose/state";
+import { afterEach, describe, expect, test } from "vitest";
+import { NodeSelection, TextSelection } from "@milkdown/kit/prose/state";
 import type { PageEditor } from "../src/index.ts";
 import { PageEditorView } from "../src/react/index.ts";
 
@@ -159,4 +159,136 @@ test("the link box saves addresses that aren't full URLs", async () => {
   });
   await act(() => container.querySelector<HTMLButtonElement>(".page-link-save")!.click());
   expect(editor.save()).toBe("See [the docs](www.example.com) here.\n");
+});
+
+describe("block handle", () => {
+  /** Rests the pointer on the block containing `text` (jsdom has no layout, so hit-testing is stubbed). */
+  async function hover(editor: PageEditor, text: string) {
+    const { view } = editor;
+    let pos = -1;
+    view.state.doc.descendants((node, p) => {
+      if (pos < 0 && node.isText && node.text!.includes(text)) pos = p;
+      return pos < 0;
+    });
+    view.posAtCoords = () => ({ pos, inside: -1 });
+    await act(async () => {
+      window.dispatchEvent(new MouseEvent("mousemove", { clientX: 1, clientY: 1 }));
+      await new Promise((r) => requestAnimationFrame(r));
+    });
+    return container.querySelector<HTMLElement>(".page-block-handle")!;
+  }
+
+  const pointer = (type: string, target: Element, x = 0, y = 0) =>
+    target.dispatchEvent(new PointerEvent(type, { bubbles: true, button: 0, pointerId: 1, clientX: x, clientY: y }));
+
+  async function openMenu(editor: PageEditor, text: string) {
+    const handle = await hover(editor, text);
+    const grip = handle.querySelector(".page-block-grip")!;
+    await act(() => {
+      pointer("pointerdown", grip);
+      pointer("pointerup", grip);
+    });
+    return container.querySelector<HTMLElement>(".page-block-menu")!;
+  }
+
+  const item = (menu: HTMLElement, label: string) =>
+    [...menu.querySelectorAll<HTMLButtonElement>("button")].find((b) => b.querySelector(".page-menu-label")?.textContent === label)!;
+
+  test("shows next to the hovered block", async () => {
+    const editor = await mount("First.\n\nSecond.\n");
+    expect(container.querySelector(".page-block-handle")).toBeNull();
+    expect(await hover(editor, "Second")).not.toBeNull();
+  });
+
+  test("clicking the grip selects the block and opens its menu", async () => {
+    const editor = await mount("First.\n\nSecond.\n");
+    const menu = await openMenu(editor, "Second");
+    expect(editor.view.state.selection).toBeInstanceOf(NodeSelection);
+    expect([...menu.querySelectorAll(":scope > div > button .page-menu-label")].map((l) => l.textContent)).toEqual([
+      "Turn into", "Duplicate", "Copy", "Move up", "Move down", "Delete",
+    ]);
+    expect(item(menu, "Move down").disabled).toBe(true);
+    await act(() => item(menu, "Move up").click());
+    expect(editor.save()).toBe("Second.\n\nFirst.\n");
+    expect(container.querySelector(".page-block-menu")).toBeNull();
+  });
+
+  test("the menu duplicates, deletes and turns a block into another", async () => {
+    const editor = await mount("First.\n\nSecond.\n");
+    let menu = await openMenu(editor, "First");
+    await act(() => item(menu, "Duplicate").click());
+    expect(editor.save()).toBe("First.\n\nFirst.\n\nSecond.\n");
+
+    menu = await openMenu(editor, "Second");
+    await act(() => item(menu, "Delete").click());
+    expect(editor.save()).toBe("First.\n\nFirst.\n");
+
+    menu = await openMenu(editor, "First");
+    await act(() => item(menu, "Turn into").dispatchEvent(new MouseEvent("mouseover", { bubbles: true })));
+    const submenu = menu.querySelector<HTMLElement>(".page-block-submenu")!;
+    expect(submenu.querySelector("[aria-checked=true]")?.textContent).toContain("Text");
+    await act(() => item(submenu, "Heading 2").click());
+    expect(editor.save()).toBe("## First.\n\nFirst.\n");
+  });
+
+  test("the menu works from the keyboard", async () => {
+    const editor = await mount("First.\n\nSecond.\n");
+    const menu = await openMenu(editor, "First");
+    const key = (k: string) => act(() => menu.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true })));
+    expect(document.activeElement).toBe(menu);
+    await key("ArrowDown"); // Duplicate
+    await key("ArrowDown"); // Copy
+    await key("ArrowDown"); // Move up: disabled, skipped
+    expect(menu.querySelector(".active .page-menu-label")?.textContent).toBe("Move down");
+    await key("Enter");
+    expect(editor.save()).toBe("Second.\n\nFirst.\n");
+
+    const again = await openMenu(editor, "Second");
+    await act(() => again.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true })));
+    expect(container.querySelector(".page-block-menu")).toBeNull();
+    expect(editor.view.state.selection).toBeInstanceOf(NodeSelection); // the block stays selected
+  });
+
+  test("+ adds a block below and opens the slash menu", async () => {
+    const editor = await mount("First.\n\nSecond.\n");
+    const handle = await hover(editor, "First");
+    await act(() => handle.querySelector<HTMLButtonElement>(".page-block-add")!.click());
+    expect(container.querySelector(".page-slash-menu")).not.toBeNull();
+    await press(editor, "Enter"); // Text
+    await act(() => editor.view.dispatch(editor.view.state.tr.insertText("Middle.")));
+    expect(editor.save()).toBe("First.\n\nMiddle.\n\nSecond.\n");
+  });
+
+  test("Escape closes the slash menu without selecting the block", async () => {
+    const editor = await mount("Intro.\n\nx\n");
+    const { view } = editor;
+    const end = view.state.doc.content.size - 1;
+    await act(() => {
+      view.focus();
+      view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, end)));
+      view.dispatch(view.state.tr.insertText("/", end - 1, end));
+    });
+    expect(container.querySelector(".page-slash-menu")).not.toBeNull();
+    await press(editor, "Escape");
+    expect(view.state.selection).toBeInstanceOf(TextSelection);
+  });
+
+  test("dragging the grip moves the block", async () => {
+    const editor = await mount("A.\n\nB.\n\nC.\n");
+    const handle = await hover(editor, "A.");
+    const grip = handle.querySelector(".page-block-grip")!;
+    await act(() => pointer("pointerdown", grip, 0, 0));
+    // Over the last block, in its lower half (jsdom boxes are empty, so any point is "after").
+    let posC = -1;
+    editor.view.state.doc.descendants((n, p) => {
+      if (n.isText && n.text === "C.") posC = p;
+    });
+    editor.view.posAtCoords = () => ({ pos: posC, inside: -1 });
+    await act(() => pointer("pointermove", grip, 0, 40));
+    expect(editor.view.dom.querySelector(".page-block-dragging")?.textContent).toBe("A.");
+    expect(container.querySelector(".page-block-drop")).not.toBeNull();
+    await act(() => pointer("pointerup", grip, 0, 40));
+    expect(editor.save()).toBe("B.\n\nC.\n\nA.\n");
+    expect(editor.view.dom.querySelector(".page-block-dragging")).toBeNull();
+  });
 });

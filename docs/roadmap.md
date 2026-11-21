@@ -52,8 +52,11 @@ straightforward building.
       detected on paste or when you leave the block, then written into the
       fence. A searchable language menu and a copy button. Code-editor keys:
       paired brackets, auto-indent, moving and copying lines, ⌘/ to comment.
-- [ ] **Editor: block handle.** A grip next to each block for dragging and a
-      block menu.
+- [x] **Editor: blocks.** As in Notion: a handle left of each block (and
+      each list item) with "+" to add a block and a grip to drag it, a
+      block menu (turn into, duplicate, copy, move, delete), and keys (Esc
+      selects a block, ⌘D duplicates, ⌘⇧↑ / ⌘⇧↓ move). Turning a list item
+      or quote into text now takes it out of the list or quote.
 - [ ] **Editor: tables.** Add and remove rows and columns.
 - [x] **Links and search.** Clicking a link opens it (in the browser, or the
       page it points to); hovering shows it with copy and edit (text, address, remove).

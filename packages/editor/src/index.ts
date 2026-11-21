@@ -6,3 +6,5 @@ export { findText, formatState, linkAt, slashState } from "./commands.ts";
 export type { BlockFormat, Commands, FormatState, InlineFormat, LinkRange, SlashState } from "./commands.ts";
 export { LANGUAGES, detectLanguage, findLanguage } from "./code/index.ts";
 export type { Language } from "./code/index.ts";
+export { BLOCK_KEYS, blockAt, blockStartingAt, dropTarget, selectedBlock, setDragging } from "./blocks.ts";
+export type { Block, DropTarget } from "./blocks.ts";

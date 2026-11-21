@@ -14,6 +14,8 @@ import { EditorState, Plugin } from "@milkdown/kit/prose/state";
 import { $prose } from "@milkdown/kit/utils";
 import type { Node } from "@milkdown/kit/prose/model";
 import type { EditorView } from "@milkdown/kit/prose/view";
+import { keymap } from "@milkdown/kit/prose/keymap";
+import { BLOCK_KEYS, blockStatePlugin } from "./blocks.ts";
 import { SaveRefusedError, findLostContent } from "./check.ts";
 import { codeBlocks } from "./code/index.ts";
 import { type Commands, createCommands } from "./commands.ts";
@@ -84,6 +86,9 @@ async function createMilkdown(
     .use(history)
     .use(clipboard)
     .use(updates)
+    // After `updates`, so open menus get keys such as Escape first.
+    .use($prose(() => keymap(BLOCK_KEYS)))
+    .use($prose(() => blockStatePlugin()))
     .create();
 }
 

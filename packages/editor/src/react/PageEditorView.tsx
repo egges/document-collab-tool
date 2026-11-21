@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
 import { type PageEditor, createPageEditor } from "../editor.ts";
+import { BlockHandle } from "./BlockHandle.tsx";
 import { LinkPopover } from "./LinkPopover.tsx";
 import { SelectionToolbar } from "./SelectionToolbar.tsx";
 import { SlashMenu } from "./SlashMenu.tsx";
@@ -24,7 +25,8 @@ export interface PageEditorViewProps {
 export type KeyHandler = (event: KeyboardEvent) => boolean;
 
 /**
- * The page editor with its toolbar (on selection) and slash menu. Styles:
+ * The page editor with its toolbar (on selection), slash menu and block
+ * handle (drag to move, click for the block menu). Styles:
  * import "@document-collab-tool/editor/style.css".
  */
 export function PageEditorView({ markdown, onReady, onDirtyChange, onChange, onOpenLink, className }: PageEditorViewProps) {
@@ -123,6 +125,7 @@ export function PageEditorView({ markdown, onReady, onDirtyChange, onChange, onO
       {editor && <SelectionToolbar editor={editor} container={container} />}
       {editor && <LinkPopover editor={editor} container={container} onOpen={openLink} />}
       {editor && <SlashMenu editor={editor} container={container} keyHandler={keyHandler} />}
+      {editor && <BlockHandle editor={editor} container={container} />}
     </div>
   );
 }
