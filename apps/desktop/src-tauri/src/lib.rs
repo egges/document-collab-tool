@@ -1,6 +1,7 @@
 //! The desktop app's Rust side: opens a workspace with docsync, decides
 //! when to commit and sync, and answers the window's commands.
 
+mod cloud;
 mod commands;
 mod devlog;
 mod git;
@@ -26,6 +27,9 @@ pub fn run() {
                 let _ = handle.emit("dev-log", entry);
             });
             devlog::info("app", format!("Started version {}", app.package_info().version));
+            if let Ok(dir) = app.path().app_config_dir() {
+                session::init_install_id(&dir);
+            }
             let handle = app.handle().clone();
             // Debug builds keep the sign-in in a file: see github::init.
             let dev_file = cfg!(debug_assertions)
@@ -67,6 +71,14 @@ pub fn run() {
             commands::forget_workspace,
             commands::locate_workspace,
             commands::move_workspace,
+            commands::cloud_folders,
+            commands::create_folder_workspace,
+            commands::folder_remote_place,
+            commands::folder_place,
+            commands::workspaces_in_folder,
+            commands::sync_through_folder,
+            commands::locate_sync_folder,
+            commands::move_out_of_cloud,
             commands::workspace_deletion_info,
             commands::delete_workspace,
             commands::set_remote,

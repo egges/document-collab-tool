@@ -13,7 +13,9 @@ use docsync::git::{
     CommitInfo, GitBackend, MergeTreeResult, Oid, PushResult, Signature, TextMerge, TreeEdit, TreeEntry,
 };
 use docsync::text_merge::has_git_conflict_markers;
-use docsync::{CliGit, Error, ManualClock, Result, SyncConfig, SyncEngine, SyncReport, Workspace};
+use docsync::{
+    CliGit, Error, ManualClock, RemoteLayout, Result, SyncConfig, SyncEngine, SyncReport, Workspace,
+};
 use tempfile::TempDir;
 
 /// A raw `git` command (same binary as [`real_git`]) for test setup and
@@ -60,6 +62,10 @@ pub enum Op {
     ChangedPaths,
     EditTree,
     PathHistory,
+    InitFolderRemote,
+    RemoteUrl,
+    RemoteRefs,
+    PublishToFolder,
 }
 
 /// When an armed fault fires relative to the operation.
@@ -115,7 +121,9 @@ impl Faults {
         if let Some(hook) = hook {
             hook();
         }
-        if matches!(op, Op::Fetch | Op::Push) && self.offline.load(Ordering::SeqCst) {
+        if matches!(op, Op::Fetch | Op::Push | Op::RemoteRefs | Op::PublishToFolder)
+            && self.offline.load(Ordering::SeqCst)
+        {
             return Err(Error::Network("simulated: offline".into()));
         }
         let n = self.calls.fetch_add(1, Ordering::SeqCst);
@@ -199,6 +207,30 @@ impl GitBackend for FaultyGit {
     }
     fn push(&self, repo: &Path, remote: &str, commit: &Oid, branch: &str) -> Result<PushResult> {
         wrap!(self, Op::Push, self.inner.push(repo, remote, commit, branch))
+    }
+    fn init_folder_remote(&self, dir: &Path) -> Result<()> {
+        wrap!(self, Op::InitFolderRemote, self.inner.init_folder_remote(dir))
+    }
+    fn remote_url(&self, repo: &Path, remote: &str) -> Result<Option<String>> {
+        wrap!(self, Op::RemoteUrl, self.inner.remote_url(repo, remote))
+    }
+    fn remote_refs(&self, repo: &Path, remote: &str, prefix: &str) -> Result<Vec<(String, Oid)>> {
+        wrap!(self, Op::RemoteRefs, self.inner.remote_refs(repo, remote, prefix))
+    }
+    fn publish_to_folder(
+        &self,
+        repo: &Path,
+        folder: &Path,
+        commit: &Oid,
+        exclude: Option<&Oid>,
+        refname: &str,
+    ) -> Result<()> {
+        wrap!(
+            self,
+            Op::PublishToFolder,
+            self.inner
+                .publish_to_folder(repo, folder, commit, exclude, refname)
+        )
     }
     fn is_ancestor(&self, repo: &Path, ancestor: &Oid, descendant: &Oid) -> Result<bool> {
         wrap!(
@@ -322,6 +354,9 @@ pub struct Net {
     dir: TempDir,
     pub remote: PathBuf,
     pub clock: Arc<ManualClock>,
+    /// Set for a folder remote: every device syncs with its own copy of
+    /// the folder, and this copies files between the copies.
+    pub cloud: Option<Cloud>,
 }
 
 impl Net {
@@ -338,7 +373,86 @@ impl Net {
             dir,
             remote,
             clock: Arc::new(ManualClock::new(1_700_000_000)),
+            cloud: None,
         }
+    }
+
+    /// A workspace that syncs through a cloud folder such as Dropbox. The
+    /// folder remote starts out on the cloud's server; each device gets its
+    /// own copy when it joins.
+    pub fn folder() -> Self {
+        let dir = tempfile::tempdir().unwrap();
+        let seed = dir.path().join("seed").join("Notes.docsync");
+        std::fs::create_dir_all(seed.parent().unwrap()).unwrap();
+        SyncEngine::create_folder_remote(&real_git(), &seed).expect("create folder remote");
+        let cloud = Cloud::default();
+        cloud.add_copy("seed", &seed);
+        cloud.settle();
+        Net {
+            remote: seed,
+            dir,
+            clock: Arc::new(ManualClock::new(1_700_000_000)),
+            cloud: Some(cloud),
+        }
+    }
+
+    fn cloud(&self) -> &Cloud {
+        self.cloud.as_ref().expect("a folder remote")
+    }
+
+    /// Where `name` syncs with: the shared remote, or its own copy of the
+    /// cloud folder (downloaded first).
+    fn url_for(&self, name: &str) -> String {
+        match &self.cloud {
+            None => self.url(),
+            Some(cloud) => {
+                let copy = self
+                    .dir
+                    .path()
+                    .join(format!("{name}-cloud"))
+                    .join("Notes.docsync");
+                if !copy.exists() {
+                    std::fs::create_dir_all(&copy).unwrap();
+                    cloud.add_copy(name, &copy);
+                    cloud.settle();
+                }
+                copy.to_string_lossy().into_owned()
+            }
+        }
+    }
+
+    fn config(&self, name: &str) -> SyncConfig {
+        let mut config = SyncConfig::new(name);
+        config.stale_lock_age = std::time::Duration::ZERO;
+        if self.cloud.is_some() {
+            config.layout = RemoteLayout::DeviceRefs {
+                device_id: name.to_string(),
+            };
+        }
+        config
+    }
+
+    /// Copy one random pending file between the cloud and a device's copy.
+    /// `pick(n)` chooses one of `n` transfers. False when nothing is
+    /// pending.
+    pub fn cloud_step(&self, pick: &mut dyn FnMut(usize) -> usize) -> bool {
+        self.cloud.as_ref().is_some_and(|c| c.step(pick))
+    }
+
+    /// Sync until every device holds the same files and commit, letting the
+    /// cloud copy everything between syncs, then check the invariants.
+    pub fn settle(&self, devices: &[&Device]) {
+        let Some(cloud) = &self.cloud else {
+            return settle(devices);
+        };
+        for _ in 0..4 {
+            for d in devices {
+                cloud.settle();
+                d.sync();
+            }
+        }
+        cloud.settle();
+        assert_converged(devices);
     }
 
     pub fn path(&self) -> &Path {
@@ -363,11 +477,10 @@ impl Net {
             inner: real_git(),
             faults: faults.clone(),
         });
-        let mut config = SyncConfig::new(name);
-        config.stale_lock_age = std::time::Duration::ZERO;
+        let config = self.config(name);
         let root = self.dir.path().join(name);
-        let engine =
-            SyncEngine::clone_remote(git, &self.url(), &root, config, self.clock.clone()).expect("clone");
+        let url = self.url_for(name);
+        let engine = SyncEngine::clone_remote(git, &url, &root, config, self.clock.clone()).expect("clone");
         Device {
             name: name.to_string(),
             ws: Workspace::new(&root),
@@ -390,14 +503,175 @@ impl Net {
             inner: real_git(),
             faults: faults.clone(),
         });
-        let mut config = SyncConfig::new(&name);
-        config.stale_lock_age = std::time::Duration::ZERO;
+        let config = self.config(&name);
         let engine = SyncEngine::open(git, root, config, self.clock.clone()).expect("open");
         Device {
             name,
             ws,
             engine,
             faults,
+        }
+    }
+}
+
+// ---- a simulated cloud folder ---------------------------------------------
+
+/// A file-syncing service like Dropbox: a server plus one local copy of the
+/// folder per device. It copies one file at a time, in whatever order the
+/// test picks, so a ref can arrive before the objects it points to. Writes
+/// are atomic (temp file, then rename), as with the real services.
+///
+/// Two copies changing the same file differently would make the service
+/// keep one and set the other aside as a "conflicted copy". The folder
+/// remote's design rules that out (one writer per file), so here it fails
+/// the test.
+#[derive(Default)]
+pub struct Cloud {
+    inner: Mutex<CloudState>,
+}
+
+#[derive(Default)]
+struct CloudState {
+    version: u64,
+    /// Path -> (content, version).
+    server: BTreeMap<String, (Vec<u8>, u64)>,
+    copies: Vec<CloudCopy>,
+}
+
+struct CloudCopy {
+    name: String,
+    root: PathBuf,
+    /// Path -> (version, content) as last uploaded or downloaded.
+    known: BTreeMap<String, (u64, Vec<u8>)>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Transfer {
+    Upload,
+    Download,
+}
+
+impl Cloud {
+    fn add_copy(&self, name: &str, root: &Path) {
+        self.inner.lock().unwrap().copies.push(CloudCopy {
+            name: name.to_string(),
+            root: root.to_path_buf(),
+            known: BTreeMap::new(),
+        });
+    }
+
+    fn pending(state: &CloudState) -> Vec<(usize, String, Transfer)> {
+        let mut pending = Vec::new();
+        for (i, copy) in state.copies.iter().enumerate() {
+            let mut local = BTreeMap::new();
+            collect_all(&copy.root, &copy.root, &mut local);
+            for (path, content) in &local {
+                let changed = copy.known.get(path).is_none_or(|(_, known)| known != content);
+                let server = state.server.get(path);
+                let newer = server.is_some_and(|(_, v)| copy.known.get(path).is_none_or(|(k, _)| v > k));
+                if changed && newer && server.is_some_and(|(c, _)| c != content) {
+                    panic!(
+                        "{path} was written differently by {} and another device: a conflicted copy",
+                        copy.name
+                    );
+                }
+                if changed {
+                    pending.push((i, path.clone(), Transfer::Upload));
+                }
+            }
+            for (path, (_, version)) in &state.server {
+                let newer = copy.known.get(path).is_none_or(|(k, _)| version > k);
+                let untouched = match (local.get(path), copy.known.get(path)) {
+                    (None, None) => true,
+                    (Some(content), Some((_, known))) => content == known,
+                    _ => false,
+                };
+                if newer && untouched {
+                    pending.push((i, path.clone(), Transfer::Download));
+                }
+            }
+        }
+        pending
+    }
+
+    /// Do one pending transfer, chosen with `pick`. False when none.
+    pub fn step(&self, pick: &mut dyn FnMut(usize) -> usize) -> bool {
+        let mut state = self.inner.lock().unwrap();
+        let pending = Self::pending(&state);
+        if pending.is_empty() {
+            return false;
+        }
+        let (i, path, transfer) = pending[pick(pending.len())].clone();
+        match transfer {
+            Transfer::Upload => {
+                let content = if path.ends_with('/') {
+                    Vec::new()
+                } else {
+                    std::fs::read(state.copies[i].root.join(&path)).unwrap()
+                };
+                state.version += 1;
+                let version = state.version;
+                state.server.insert(path.clone(), (content.clone(), version));
+                state.copies[i].known.insert(path, (version, content));
+            }
+            Transfer::Download => {
+                let (content, version) = state.server[&path].clone();
+                let root = state.copies[i].root.clone();
+                let target = root.join(&path);
+                std::fs::create_dir_all(target.parent().unwrap()).unwrap();
+                if path.ends_with('/') {
+                    std::fs::create_dir_all(&target).unwrap();
+                    state.copies[i].known.insert(path, (version, content));
+                    return true;
+                }
+                let temp = root.parent().unwrap().join(".cloud-download");
+                std::fs::write(&temp, &content).unwrap();
+                std::fs::rename(&temp, &target).unwrap();
+                state.copies[i].known.insert(path, (version, content));
+            }
+        }
+        true
+    }
+
+    /// Do every pending transfer that `wanted(copy, path, upload)` allows,
+    /// until none is left.
+    pub fn transfer(&self, wanted: impl Fn(&str, &str, bool) -> bool) {
+        loop {
+            let choice = {
+                let state = self.inner.lock().unwrap();
+                Self::pending(&state)
+                    .into_iter()
+                    .position(|(i, path, t)| wanted(&state.copies[i].name, &path, t == Transfer::Upload))
+            };
+            let Some(index) = choice else { return };
+            self.step(&mut |_| index);
+        }
+    }
+
+    /// Copy everything that's pending, in order.
+    pub fn settle(&self) {
+        while self.step(&mut |_| 0) {}
+    }
+}
+
+fn collect_all(root: &Path, dir: &Path, out: &mut BTreeMap<String, Vec<u8>>) {
+    let Ok(entries) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in entries.flatten() {
+        let path = entry.path();
+        let rel = path
+            .strip_prefix(root)
+            .unwrap()
+            .to_string_lossy()
+            .replace('\\', "/");
+        if path.is_dir() {
+            // Services copy empty folders too, and git needs refs/ and
+            // objects/ to exist. "dir/" stands for the folder itself.
+            out.insert(format!("{rel}/"), Vec::new());
+            collect_all(root, &path, out);
+        } else {
+            out.insert(rel, std::fs::read(&path).unwrap());
         }
     }
 }

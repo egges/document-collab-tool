@@ -9,6 +9,10 @@
 //! saw must survive (the entity is restored). An edit that was undone
 //! before syncing (a line added, then removed) leaves nothing to lose.
 //!
+//! The same runs through a cloud folder remote, where the simulated cloud
+//! also copies one random file at a time between steps, so refs often
+//! arrive before their objects and devices see each other late.
+//!
 //! Environment variables:
 //! - `DOCSYNC_SIM_SEEDS`: number of seeds to run (default 24)
 //! - `DOCSYNC_SIM_STEPS`: actions per seed (default 80)
@@ -20,7 +24,7 @@ mod common;
 
 use std::collections::{HashMap, HashSet};
 
-use common::{Device, Net, real_git, settle};
+use common::{Device, Net, real_git};
 use docsync::GitBackend;
 use docsync::git::Oid;
 use rand::{Rng, SeedableRng};
@@ -370,25 +374,35 @@ fn trace(line: &str) {
     }
 }
 
-fn run_seed(seed: u64, steps: usize) {
+fn run_seed(seed: u64, steps: usize, folder: bool) {
     let mut rng = ChaCha8Rng::seed_from_u64(seed);
-    let net = Net::new();
+    let net = if folder { Net::folder() } else { Net::new() };
     let devices: Vec<Device> = (0..DEVICES).map(|i| net.device(&format!("dev{i}"))).collect();
     let mut oracle = Oracle::default();
     for _ in 0..steps {
         let device = &devices[rng.random_range(0..DEVICES)];
         oracle.step(&net, device, &mut rng);
+        if folder {
+            for _ in 0..rng.random_range(0..6) {
+                net.cloud_step(&mut |n| rng.random_range(0..n));
+            }
+        }
     }
     for d in &devices {
         d.faults.set_offline(false);
     }
-    if std::env::var_os("DOCSYNC_SIM_KEEP").is_some() {
+    let keep = std::env::var_os("DOCSYNC_SIM_KEEP").is_some();
+    if keep {
         eprintln!("keeping {}", net.path().display());
-        std::mem::forget(net);
     }
+    let net = std::mem::ManuallyDrop::new(net);
     let refs: Vec<&Device> = devices.iter().collect();
-    settle(&refs);
+    net.settle(&refs);
     oracle.check(&devices[0]);
+    drop(devices);
+    if !keep {
+        drop(std::mem::ManuallyDrop::into_inner(net));
+    }
 }
 
 fn env_number(name: &str, default: u64) -> u64 {
@@ -400,6 +414,15 @@ fn env_number(name: &str, default: u64) -> u64 {
 
 #[test]
 fn random_concurrent_editing_converges_without_loss() {
+    run_seeds(false);
+}
+
+#[test]
+fn random_editing_through_a_cloud_folder_converges_without_loss() {
+    run_seeds(true);
+}
+
+fn run_seeds(folder: bool) {
     let steps = env_number("DOCSYNC_SIM_STEPS", 80) as usize;
     let seeds: Vec<u64> = match std::env::var("DOCSYNC_SIM_SEED")
         .ok()
@@ -420,7 +443,7 @@ fn random_concurrent_editing_converges_without_loss() {
                 .map(|&seed| {
                     std::thread::Builder::new()
                         .name(format!("seed-{seed}"))
-                        .spawn_scoped(scope, move || run_seed(seed, steps))
+                        .spawn_scoped(scope, move || run_seed(seed, steps, folder))
                         .unwrap()
                 })
                 .collect();

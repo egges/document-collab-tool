@@ -8,6 +8,36 @@ export interface WorkspaceInfo {
   /** This device's name, as it appears in conflict blocks. */
   device: string;
   remote: string | null;
+  /** Where it's kept besides this device: "Dropbox › Work", "GitHub", ... */
+  keptIn: string | null;
+  /** The cloud folder the workspace's own folder is in, which damages it. */
+  insideCloud: string | null;
+}
+
+/** An installed cloud folder: iCloud Drive, Dropbox, OneDrive, ... */
+export interface CloudFolder {
+  name: string;
+  path: string;
+}
+
+/** A workspace found in a cloud folder (a `*.docsync` folder), to join. */
+export interface FoundWorkspace {
+  name: string;
+  path: string;
+  /** The cloud folder's name. */
+  cloud: string;
+}
+
+/** Where a folder is: "Dropbox › Work › Notes.docsync". */
+export interface FolderPlace {
+  /** The cloud folder it's in, if any. */
+  cloud: string | null;
+  label: string;
+}
+
+export interface CloudFolders {
+  folders: CloudFolder[];
+  workspaces: FoundWorkspace[];
 }
 
 /** A workspace this device knows, for the switcher. */
@@ -166,6 +196,23 @@ export const api = {
    */
   deleteWorkspace: (deleteRepo: boolean) => invoke<WorkspaceInfo | null>("delete_workspace", { deleteRepo }),
   setRemote: (url: string | null) => invoke<WorkspaceInfo>("set_remote", { url }),
+  /** Installed cloud folders and the workspaces in them. */
+  cloudFolders: () => invoke<CloudFolders>("cloud_folders"),
+  /** Where a new `<name>.docsync` folder in `folder` would go. */
+  folderRemotePlace: (folder: string, name: string) => invoke<FolderPlace>("folder_remote_place", { folder, name }),
+  /** Where a folder is: "Dropbox › Work". */
+  folderPlace: (folder: string) => invoke<FolderPlace>("folder_place", { folder }),
+  /** The `.docsync` folders to join at a chosen folder: itself, or those below it. */
+  workspacesInFolder: (folder: string) => invoke<FoundWorkspace[]>("workspaces_in_folder", { folder }),
+  /** A new workspace that syncs through `<folder>/<name>.docsync`. */
+  createFolderWorkspace: (name: string, folder: string) =>
+    invoke<WorkspaceInfo>("create_folder_workspace", { name, folder }),
+  /** Sync the open workspace through a new `.docsync` folder in `folder`, instead of where it synced. */
+  syncThroughFolder: (folder: string) => invoke<WorkspaceInfo>("sync_through_folder", { folder }),
+  /** The sync folder moved: sync with it at `folder` (the `.docsync` folder or one above it). */
+  locateSyncFolder: (folder: string) => invoke<WorkspaceInfo>("locate_sync_folder", { folder }),
+  /** Move a workspace out of the cloud folder it's in, syncing through it instead. */
+  moveOutOfCloud: () => invoke<WorkspaceInfo>("move_out_of_cloud"),
   githubAccount: () => invoke<GitHubUser | null>("github_account"),
   /** `attempt` is any number new to this run; pass it to finish and cancel too. */
   /** "browser" when this build signs in through the browser, "code" for the device flow. */
@@ -181,7 +228,7 @@ export const api = {
   githubSignInCancel: (attempt: number) => invoke<void>("github_sign_in_cancel", { attempt }),
   githubSignOut: () => invoke<void>("github_sign_out"),
   githubAccess: () => invoke<GitHubAccess>("github_access"),
-  /** A private repo for the open workspace, which then syncs with it. */
+  /** A private repo for the open workspace, which then syncs with it instead of where it synced. */
   githubCreateRepo: () => invoke<CreatedRepo>("github_create_repo"),
   syncStatus: () => invoke<SyncStatus | null>("sync_status"),
   syncNow: () => invoke<void>("sync_now"),

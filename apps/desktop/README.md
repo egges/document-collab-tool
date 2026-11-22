@@ -70,18 +70,27 @@ step). On Linux, install
   HTTPS and SSH URLs and local paths work. Git never prompts: SSH runs in
   batch mode, so the host key must already be trusted and the key loaded in
   the agent.
-- **Onboarding.** "Where should it sync?": GitHub (recommended) or only
-  this device, with a Git URL or an existing folder under "Other ways to
-  start". "Add workspace…" in the switcher shows the same screen.
-- **GitHub.** "Continue with GitHub" (onboarding) or "Sign in with GitHub"
-  (sync panel) signs in through the browser and installs the GitHub App if
-  needed; the sign-in is kept in the keychain and GitHub HTTPS remotes use
-  it. Onboarding lists the workspaces already on GitHub to join, or starts
-  one with a new private repo; the sync panel gives an existing workspace a
-  private repo in one click. While signed in, commits are by the account's
-  no-reply address. Debug builds keep the sign-in in `dev-sign-in.json` in
-  the app's config folder instead (readable only by you), since macOS would
-  ask for keychain access after every rebuild.
+- **Onboarding.** "Add a workspace" (`src/Welcome.tsx`): start a new
+  workspace or join one. A workspace is kept in a folder ("On this
+  computer" by default, or any folder you choose, such as one in Dropbox,
+  OneDrive or iCloud Drive) or in a Git repository (GitHub or any URL),
+  shown as two blocks. A new one is a single screen: the name, then the
+  blocks. "Add workspace…" in the switcher opens it, and "Change…" in the
+  sync panel shows the same blocks.
+- **Folders.** A workspace syncs through a `<name>.docsync` folder in the
+  chosen folder, with one ref per device (`src-tauri/src/cloud.rs`, and
+  "Cloud folder remotes" in `docs/sync-design.md`). The installed cloud
+  folders are shortcuts in the picker, and the `.docsync` folders in them are
+  listed to join. A workspace whose own folder is inside a cloud folder gets
+  moved out of it.
+- **GitHub.** "Continue with GitHub" in the wizard signs in through the
+  browser and installs the GitHub App if needed; the sign-in is kept in the
+  keychain and GitHub HTTPS remotes use it. The wizard lists the workspaces
+  already on GitHub to join, or creates a new private repo; the sync panel
+  shows the account, to sign out. While signed in, commits are by the
+  account's no-reply address. Debug builds keep the sign-in in
+  `dev-sign-in.json` in the app's config folder instead (readable only by
+  you), since macOS would ask for keychain access after every rebuild.
 
   The browser sign-in needs the GitHub App's client secret at build time:
   put it in `src-tauri/github-client-secret` (gitignored) or set

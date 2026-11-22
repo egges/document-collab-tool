@@ -152,6 +152,32 @@ pub trait GitBackend: Send + Sync {
     fn fetch(&self, repo: &Path, remote: &str, branch: &str) -> Result<Option<Oid>>;
     fn push(&self, repo: &Path, remote: &str, commit: &Oid, branch: &str) -> Result<PushResult>;
 
+    /// Create a bare repository in `dir` to use as a folder remote (see
+    /// [`GitBackend::publish_to_folder`]), with everything that would make
+    /// git rewrite shared files turned off.
+    fn init_folder_remote(&self, dir: &Path) -> Result<()>;
+    /// The URL or path `remote` points to, or `None` when there's no such
+    /// remote.
+    fn remote_url(&self, repo: &Path, remote: &str) -> Result<Option<String>>;
+    /// The refs on `remote` whose names start with `prefix` (e.g.
+    /// `refs/heads/devices/`), sorted by name. Fails with
+    /// [`crate::Error::Network`] when the remote is unreachable.
+    fn remote_refs(&self, repo: &Path, remote: &str, prefix: &str) -> Result<Vec<(String, Oid)>>;
+    /// Publish `commit` as `refname` in the folder remote at `folder`
+    /// without git's receive-pack, which refuses to work while any other
+    /// ref points at objects that haven't arrived yet. Writes one new pack
+    /// (everything reachable from `commit` but not from `exclude`, a commit
+    /// the folder already has), then the ref, each atomically. Fails with
+    /// [`crate::Error::Network`] when the folder can't be written.
+    fn publish_to_folder(
+        &self,
+        repo: &Path,
+        folder: &Path,
+        commit: &Oid,
+        exclude: Option<&Oid>,
+        refname: &str,
+    ) -> Result<()>;
+
     fn is_ancestor(&self, repo: &Path, ancestor: &Oid, descendant: &Oid) -> Result<bool>;
     fn merge_base(&self, repo: &Path, a: &Oid, b: &Oid) -> Result<Option<Oid>>;
     /// Merge two commits entirely in the object database.

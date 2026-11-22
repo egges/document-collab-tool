@@ -1,11 +1,13 @@
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { FolderOpen, LogOut, RefreshCw } from "lucide-react";
-import { openUrl } from "@tauri-apps/plugin-opener";
-import { type GitHubAccess, type SyncStatus, type WorkspaceInfo, api, errorText } from "./api.ts";
+import { type SyncStatus, type WorkspaceInfo, api, errorText } from "./api.ts";
 import { showInFolderLabel } from "./fileManager.ts";
-import { GitHubSignIn, useGitHubAccount } from "./GitHubSignIn.tsx";
+import { useGitHubAccount } from "./GitHubSignIn.tsx";
 import { pickFolder } from "./menu.ts";
 import { tip } from "./shortcuts.ts";
+import { folderName, isFolderRemote } from "./remotes.ts";
+import { Welcome } from "./Welcome.tsx";
 
 function ago(ms: number, now: number): string {
   const s = Math.max(0, Math.round((now - ms) / 1000));
@@ -42,32 +44,59 @@ export function SyncStatusBar({
   status,
   onWorkspaceChange,
   onSwitch,
-  onSetRemote,
 }: {
   workspace: WorkspaceInfo;
   status: SyncStatus | null;
   onWorkspaceChange: (w: WorkspaceInfo | null) => void;
   /** Saves the open page, then opens the workspace `open` returns. */
   onSwitch: (open: () => Promise<WorkspaceInfo | null>) => Promise<void>;
-  onSetRemote: (url: string | null) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
-  const [remote, setRemote] = useState(workspace.remote ?? "");
+  // The wizard's "change where it syncs", over the whole window.
+  const [changing, setChanging] = useState(false);
+  const [problem, setProblem] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(timer);
   }, []);
-  useEffect(() => setRemote(workspace.remote ?? ""), [workspace.remote]);
 
-  const [tone, label] = describe(status, workspace, now);
+  const [described, label] = describe(status, workspace, now);
+  // A workspace inside a cloud folder can get damaged: worth a dot.
+  const tone = workspace.insideCloud ? "warn" : described;
   return (
     <div className="sync">
       {open && (
         <div className="sync-panel">
-          {status?.state === "offline" && (
-            <p>Changes are saved on this device and sync when the connection is back.</p>
-          )}
+          {status?.state === "offline" &&
+            (isFolderRemote(workspace.remote) ? (
+              <div className="sync-warning">
+                <p>Can't reach the sync folder. Changes are saved on this device and sync once it's back.</p>
+                <p className="small">
+                  If it's on a drive, connect it. If you moved it, show Pagemesh where it is now.
+                </p>
+                <button
+                  className="button"
+                  onClick={() =>
+                    void (async () => {
+                      const folder = await pickFolder(`Where is “${folderName(workspace.remote!)}” now?`);
+                      if (!folder) return;
+                      setProblem(null);
+                      try {
+                        onWorkspaceChange(await api.locateSyncFolder(folder));
+                      } catch (e) {
+                        setProblem(errorText(e));
+                      }
+                    })()
+                  }
+                >
+                  Locate…
+                </button>
+                {problem && <p className="error small">{problem}</p>}
+              </div>
+            ) : (
+              <p>Changes are saved on this device and sync when the connection is back.</p>
+            ))}
           {status?.state === "error" && <p>Changes are saved on this device. Syncing will try again shortly.</p>}
           {status?.message && <p className="sync-message">{status.message}</p>}
           {status?.conflicts ? (
@@ -76,33 +105,41 @@ export function SyncStatusBar({
               a conflict show it at the top.
             </p>
           ) : null}
-          <GitHubSection workspace={workspace} onWorkspaceChange={onWorkspaceChange} />
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              void onSetRemote(remote.trim() || null);
-            }}
-          >
-            <label className="field-label" htmlFor="remote">
-              Sync with (Git URL)
-            </label>
-            <div className="row">
-              <input
-                id="remote"
-                className="input"
-                placeholder="https://github.com/you/notes.git"
-                value={remote}
-                onChange={(e) => setRemote(e.target.value)}
-                spellCheck={false}
-              />
-              <button className="button" disabled={remote.trim() === (workspace.remote ?? "")}>
-                Save
+          {workspace.insideCloud && (
+            <div className="sync-warning">
+              <p>
+                This workspace's folder is inside {workspace.insideCloud}, which can damage it: {workspace.insideCloud}{" "}
+                and Pagemesh would both sync the same files.
+              </p>
+              <button
+                className="button primary"
+                onClick={() => {
+                  setOpen(false);
+                  void onSwitch(() => api.moveOutOfCloud());
+                }}
+              >
+                {workspace.remote
+                  ? `Move it out of ${workspace.insideCloud}`
+                  : `Move it out and sync through ${workspace.insideCloud}`}
               </button>
             </div>
-            <p className="muted small">
-              An HTTPS or SSH URL, or a local path. GitHub HTTPS URLs use your GitHub sign-in.
-            </p>
-          </form>
+          )}
+          <div className="sync-target">
+            <div className="sync-target-text">
+              <span className="muted small">Kept in</span>
+              <span title={workspace.remote ?? undefined}>{workspace.keptIn ?? "On this computer"}</span>
+            </div>
+            <button
+              className="button"
+              onClick={() => {
+                setOpen(false);
+                setChanging(true);
+              }}
+            >
+              Change…
+            </button>
+          </div>
+          <GitHubAccountRow />
           <dl className="facts">
             <dt>This device</dt>
             <dd>{workspace.device}</dd>
@@ -162,83 +199,27 @@ export function SyncStatusBar({
         <span className={"dot " + tone} aria-hidden />
         <span>{label}</span>
       </button>
+      {changing &&
+        createPortal(
+          <Welcome
+            change={workspace}
+            onOpened={(w) => {
+              setChanging(false);
+              onWorkspaceChange(w);
+            }}
+            onCancel={() => setChanging(false)}
+          />,
+          document.body,
+        )}
     </div>
   );
 }
 
-/**
- * The GitHub account in the sync panel: sign in, and once signed in, give
- * a workspace that doesn't sync yet a private repository with one click.
- */
-function GitHubSection({
-  workspace,
-  onWorkspaceChange,
-}: {
-  workspace: WorkspaceInfo;
-  onWorkspaceChange: (w: WorkspaceInfo | null) => void;
-}) {
+/** The GitHub account this device is signed in with, to sign out. */
+function GitHubAccountRow() {
   const [user, setUser] = useGitHubAccount();
-  const [signingIn, setSigningIn] = useState(false);
-  const [access, setAccess] = useState<GitHubAccess | null>(null);
-  const [busy, setBusy] = useState(false);
-  const [note, setNote] = useState<{ text: string; url?: string; link?: string } | null>(null);
-
-  useEffect(() => {
-    setAccess(null);
-    if (!user) return;
-    const check = () => void api.githubAccess().then(setAccess, () => setAccess(null));
-    check();
-    // Back from installing the app on GitHub.
-    window.addEventListener("focus", check);
-    return () => window.removeEventListener("focus", check);
-  }, [user]);
-
-  if (user === undefined) return null;
-
-  const createRepo = async () => {
-    setBusy(true);
-    setNote(null);
-    try {
-      const created = await api.githubCreateRepo();
-      onWorkspaceChange(created.workspace);
-      setNote(
-        created.reachable
-          ? { text: `Syncing with the private repo ${created.fullName}.` }
-          : {
-              text: `Created ${created.fullName}. Pagemesh can only reach the repositories you chose, so add this one and it starts syncing.`,
-              url: created.manageUrl,
-              link: "Choose repositories…",
-            },
-      );
-    } catch (e) {
-      setNote({ text: errorText(e) });
-    } finally {
-      setBusy(false);
-    }
-  };
-
-  if (!user) {
-    return (
-      <div className="github">
-        <div className="row">
-          <button className="button" onClick={() => setSigningIn(true)}>
-            Sign in with GitHub
-          </button>
-        </div>
-        <p className="muted small">Sync through a private GitHub repository, with nothing to set up.</p>
-        {signingIn && (
-          <GitHubSignIn
-            onDone={(u) => {
-              setSigningIn(false);
-              setUser(u);
-            }}
-            onClose={() => setSigningIn(false)}
-          />
-        )}
-      </div>
-    );
-  }
-
+  const [problem, setProblem] = useState<string | null>(null);
+  if (!user) return null;
   return (
     <div className="github">
       <div className="github-account">
@@ -254,35 +235,13 @@ function GitHubSection({
             void api
               .githubSignOut()
               .then(() => setUser(null))
-              .catch((e) => setNote({ text: errorText(e) }))
+              .catch((e) => setProblem(errorText(e)))
           }
         >
           Sign out
         </button>
       </div>
-      {access && !access.installed && (
-        <p className="muted small">
-          To sync through GitHub, install Pagemesh on your account and choose which repositories it may use.{" "}
-          <button type="button" className="link" onClick={() => void openUrl(access.manageUrl)}>
-            Install it…
-          </button>
-        </p>
-      )}
-      {!workspace.remote && access?.installed !== false && (
-        <button className="button primary" disabled={busy} onClick={() => void createRepo()}>
-          {busy ? "Creating…" : "Create a private repo on GitHub"}
-        </button>
-      )}
-      {note && (
-        <p className="small" role="status">
-          {note.text}{" "}
-          {note.url && (
-            <button type="button" className="link" onClick={() => void openUrl(note.url!)}>
-              {note.link}
-            </button>
-          )}
-        </p>
-      )}
+      {problem && <p className="error small">{problem}</p>}
     </div>
   );
 }

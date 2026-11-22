@@ -31,6 +31,9 @@ pub struct Timing {
     pub focus_min_gap: Duration,
     /// How long to collect file-change notifications before reporting them.
     pub change_delay: Duration,
+    /// How long to wait for more files after something arrives in a folder
+    /// remote, before syncing.
+    pub remote_delay: Duration,
 }
 
 impl Default for Timing {
@@ -40,6 +43,7 @@ impl Default for Timing {
             sync_interval: Duration::from_secs(45),
             focus_min_gap: Duration::from_secs(10),
             change_delay: Duration::from_millis(300),
+            remote_delay: Duration::from_secs(2),
         }
     }
 }
@@ -80,6 +84,7 @@ pub trait Events: Send + 'static {
 enum Msg {
     Edited,
     FilesChanged,
+    RemoteChanged,
     SyncNow,
     Focused,
     Stop,
@@ -142,6 +147,15 @@ impl SyncWorker {
     pub fn set_has_remote(&self, has_remote: bool) {
         self.has_remote.store(has_remote, Ordering::SeqCst);
         self.sync_now();
+    }
+
+    /// A callback for a folder remote's watcher: syncs shortly after files
+    /// arrive, once they stop arriving.
+    pub fn remote_change_notifier(&self) -> impl Fn() + Send + 'static + use<> {
+        let tx = self.tx.clone();
+        move || {
+            let _ = tx.send(Msg::RemoteChanged);
+        }
     }
 
     /// A callback for a file watcher: reports changes outside `.git` and
@@ -217,6 +231,9 @@ struct Loop<E> {
     sync_reason: &'static str,
     last_sync: Option<Instant>,
     last_synced: Option<u64>,
+    /// When the last sync finished; changes a folder remote reports right
+    /// after are usually the sync's own.
+    sync_ended: Option<Instant>,
 }
 
 impl<E: Events> Loop<E> {
@@ -232,6 +249,7 @@ impl<E: Events> Loop<E> {
             sync_reason: "workspace opened",
             last_sync: None,
             last_synced: None,
+            sync_ended: None,
         }
     }
 
@@ -252,6 +270,16 @@ impl<E: Events> Loop<E> {
                 Ok(Msg::SyncNow) => {
                     self.sync_at = now;
                     self.sync_reason = "requested";
+                }
+                Ok(Msg::RemoteChanged) => {
+                    let own = self
+                        .sync_ended
+                        .is_some_and(|t| now - t < self.timing.remote_delay);
+                    let at = now + self.timing.remote_delay;
+                    if !own && at < self.sync_at {
+                        self.sync_at = at;
+                        self.sync_reason = "changes arrived in the shared folder";
+                    }
                 }
                 Ok(Msg::Focused) => {
                     if self
@@ -334,6 +362,15 @@ impl<E: Events> Loop<E> {
             }
             Ok(report) => {
                 devlog::info("sync", format!("Sync done in {ms} ms: {}", describe(&report)));
+                if !report.incomplete_devices.is_empty() {
+                    devlog::info(
+                        "sync",
+                        format!(
+                            "Still arriving in the shared folder, merged later: {}",
+                            report.incomplete_devices.join(", ")
+                        ),
+                    );
+                }
                 for conflict in &report.conflicts {
                     devlog::warn(
                         "sync",
@@ -353,6 +390,7 @@ impl<E: Events> Loop<E> {
                 self.report(SyncState::Error, Some(e.to_string()), 0);
             }
         }
+        self.sync_ended = Some(Instant::now());
     }
 
     fn report(&self, state: SyncState, message: Option<String>, conflicts: usize) {
@@ -452,6 +490,7 @@ mod tests {
             sync_interval: Duration::from_secs(3600),
             focus_min_gap: Duration::from_secs(3600),
             change_delay: Duration::from_millis(20),
+            remote_delay: Duration::from_millis(20),
         }
     }
 

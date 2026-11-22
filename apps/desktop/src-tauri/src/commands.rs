@@ -10,6 +10,7 @@ use docsync::{PageWrite, SyncEngine, Workspace};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
+use crate::cloud::{self, CloudFolder, FolderPlace, FoundWorkspace};
 use crate::devlog::{self, Entry, Level};
 use crate::github::{self, Access, DeviceCode, GitHubUser, RemoteWorkspace};
 use crate::locations;
@@ -353,12 +354,16 @@ pub async fn move_workspace(
     state: State<'_, AppState>,
     parent: PathBuf,
 ) -> CmdResult<WorkspaceInfo> {
+    relocate(&app, &state, &parent).await
+}
+
+async fn relocate(app: &AppHandle, state: &AppState, parent: &Path) -> CmdResult<WorkspaceInfo> {
     let (from, name) = {
         let guard = state.session.lock().unwrap();
         let session = guard.as_ref().ok_or("No workspace is open")?;
         (session.engine.root().to_path_buf(), session.info().name)
     };
-    let target = workspaces::move_target(&from, &parent, &name)?;
+    let target = workspaces::move_target(&from, parent, &name)?;
     let session = state
         .session
         .lock()
@@ -382,9 +387,9 @@ pub async fn move_workspace(
     .await?;
     if moved.is_ok() {
         devlog::info("app", format!("Moved the workspace to {}", new.display()));
-        update_settings(&app, |s| s.relocated(&old, &new));
+        update_settings(app, |s| s.relocated(&old, &new));
     }
-    let info = reopened.map(|session| install(&app, &state, session));
+    let info = reopened.map(|session| install(app, state, session));
     match moved {
         Ok(()) => info,
         Err(e) => {
@@ -393,6 +398,212 @@ pub async fn move_workspace(
             Err(message)
         }
     }
+}
+
+// ---- cloud folders ----------------------------------------------------------
+
+/// The cloud folders on this device, and the workspaces already in them.
+#[derive(Debug, Serialize)]
+pub struct CloudFolders {
+    folders: Vec<CloudFolder>,
+    workspaces: Vec<FoundWorkspace>,
+}
+
+#[tauri::command]
+pub async fn cloud_folders() -> CmdResult<CloudFolders> {
+    blocking("cloud_folders", || {
+        let folders = cloud::detect();
+        let workspaces = cloud::find_workspaces(&folders);
+        Ok(CloudFolders { folders, workspaces })
+    })
+    .await
+}
+
+/// Where a new folder remote for `name` in `folder` would go, to show
+/// before making it: "Dropbox › Work › My Notes.docsync".
+#[tauri::command]
+pub async fn folder_remote_place(folder: PathBuf, name: String) -> CmdResult<FolderPlace> {
+    blocking("folder_remote_place", move || {
+        let remote = cloud::new_remote_path(&folder, &display_name(&name));
+        Ok(cloud::place(&remote, &cloud::detect()))
+    })
+    .await
+}
+
+/// Where a folder is, for "Kept in Dropbox › Work".
+#[tauri::command]
+pub async fn folder_place(folder: PathBuf) -> CmdResult<FolderPlace> {
+    blocking("folder_place", move || {
+        Ok(cloud::place(&folder, &cloud::detect()))
+    })
+    .await
+}
+
+/// The workspaces to join at a folder the user chose: the folder itself
+/// when it's a `*.docsync` folder, otherwise the ones below it.
+#[tauri::command]
+pub async fn workspaces_in_folder(folder: PathBuf) -> CmdResult<Vec<FoundWorkspace>> {
+    blocking("workspaces_in_folder", move || {
+        Ok(cloud::workspaces_in(&folder, &cloud::detect()))
+    })
+    .await
+}
+
+fn display_name(name: &str) -> String {
+    if name.trim().is_empty() {
+        locations::DEFAULT_NAME.to_string()
+    } else {
+        name.trim().to_string()
+    }
+}
+
+/// Whether a folder remote can go in `folder`: an existing folder that
+/// isn't a workspace, inside one, or inside another folder remote.
+fn check_sync_folder(app: &AppHandle, folder: &Path) -> CmdResult<()> {
+    if !folder.is_dir() {
+        return Err(format!("{} isn't a folder.", folder.display()));
+    }
+    let real = folder.canonicalize().unwrap_or_else(|_| folder.to_path_buf());
+    let own = workspaces_dir(app)?;
+    let own = own.canonicalize().unwrap_or(own);
+    if real.starts_with(&own) {
+        return Err(
+            "That's the app's own folder for workspaces. Choose a folder that syncs, like one in Dropbox."
+                .into(),
+        );
+    }
+    for dir in real.ancestors() {
+        if dir.extension().is_some_and(|e| e == cloud::EXTENSION) {
+            return Err(format!(
+                "That's inside “{}”, which a workspace syncs through. Choose the folder around it.",
+                cloud::workspace_name(dir)
+            ));
+        }
+        if dir.join(".docsync").is_dir() {
+            return Err("That's inside a workspace. Choose a folder outside it.".into());
+        }
+    }
+    Ok(())
+}
+
+/// Make an empty folder remote for a workspace called `name` in `folder`.
+async fn new_folder_remote(app: &AppHandle, folder: PathBuf, name: String) -> CmdResult<PathBuf> {
+    check_sync_folder(app, &folder)?;
+    blocking("new_folder_remote", move || {
+        let remote = cloud::new_remote_path(&folder, &name);
+        let git = crate::git::find_git()?;
+        SyncEngine::create_folder_remote(&git, &remote).map_err(text)?;
+        devlog::info("cloud", format!("Created {}", remote.display()));
+        Ok(remote)
+    })
+    .await
+}
+
+/// A new workspace called `name` that syncs through a new folder remote in
+/// `folder`, e.g. `~/Dropbox/Work/My Notes.docsync`. The workspace's own
+/// files go in the app's data folder.
+#[tauri::command]
+pub async fn create_folder_workspace(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    name: String,
+    folder: PathBuf,
+) -> CmdResult<WorkspaceInfo> {
+    let remote = new_folder_remote(&app, folder, display_name(&name)).await?;
+    let mut session = match new_local_workspace(&app, "create_folder_workspace", name).await {
+        Ok(session) => session,
+        Err(e) => {
+            let _ = std::fs::remove_dir_all(&remote);
+            return Err(e);
+        }
+    };
+    session.set_remote(Some(remote.display().to_string()))?;
+    session.worker.sync_now();
+    Ok(install(&app, &state, session))
+}
+
+/// Sync the open workspace through a new folder remote in `folder`,
+/// instead of wherever it synced before. The whole history goes along.
+#[tauri::command]
+pub async fn sync_through_folder(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    folder: PathBuf,
+) -> CmdResult<WorkspaceInfo> {
+    let name = {
+        let guard = state.session.lock().unwrap();
+        guard.as_ref().ok_or("No workspace is open")?.info().name
+    };
+    let remote = new_folder_remote(&app, folder, name).await?;
+    switch_remote(&state, Some(remote.display().to_string())).await
+}
+
+/// The open workspace's sync folder moved (Dropbox moved its folder, a
+/// drive came back under another name): sync with it at `folder`, the
+/// `.docsync` folder itself or one above it. A different workspace's
+/// folder is refused.
+#[tauri::command]
+pub async fn locate_sync_folder(state: State<'_, AppState>, folder: PathBuf) -> CmdResult<WorkspaceInfo> {
+    let found = blocking("locate_sync_folder", move || {
+        Ok(cloud::workspaces_in(&folder, &cloud::detect()))
+    })
+    .await?;
+    let remote = match found.as_slice() {
+        [one] => one.path.clone(),
+        [] => return Err("There's no sync folder there: look for a folder ending in “.docsync”.".into()),
+        _ => return Err("There are several sync folders there: choose the one ending in “.docsync”.".into()),
+    };
+    switch_remote(&state, Some(remote.display().to_string())).await
+}
+
+/// Point the open workspace at `url` (or no remote), refusing one that
+/// holds a different workspace. The check fetches, so it runs without
+/// holding the session: other commands carry on meanwhile.
+async fn switch_remote(state: &State<'_, AppState>, url: Option<String>) -> CmdResult<WorkspaceInfo> {
+    let (engine, plan) = {
+        let guard = state.session.lock().unwrap();
+        let session = guard.as_ref().ok_or("No workspace is open")?;
+        (session.engine.clone(), session.plan_remote(url))
+    };
+    if let Some(url) = plan.url.clone() {
+        let layout = plan.layout.clone();
+        let checked = engine.clone();
+        blocking("switch_remote", move || {
+            checked.switch_remote(&url, layout).map_err(|e| e.to_string())
+        })
+        .await?;
+    }
+    let mut guard = state.session.lock().unwrap();
+    let session = guard.as_mut().ok_or("No workspace is open")?;
+    if !Arc::ptr_eq(&session.engine, &engine) {
+        return Err("Another workspace was opened meanwhile.".into());
+    }
+    session.remote_switched(plan)?;
+    session.worker.sync_now();
+    Ok(session.info())
+}
+
+/// For a workspace whose folder is inside a cloud folder, which damages it:
+/// move it to the default location, and if it doesn't sync yet, sync it
+/// through a folder remote where it was instead.
+#[tauri::command]
+pub async fn move_out_of_cloud(app: AppHandle, state: State<'_, AppState>) -> CmdResult<WorkspaceInfo> {
+    let (root, name, remote) = {
+        let guard = state.session.lock().unwrap();
+        let session = guard.as_ref().ok_or("No workspace is open")?;
+        let info = session.info();
+        (session.engine.root().to_path_buf(), info.name, info.remote)
+    };
+    let was_in = root
+        .parent()
+        .map(Path::to_path_buf)
+        .ok_or("The workspace has no parent folder")?;
+    let info = relocate(&app, &state, &workspaces_dir(&app)?).await?;
+    if remote.is_some() {
+        return Ok(info);
+    }
+    let remote = new_folder_remote(&app, was_in, name).await?;
+    switch_remote(&state, Some(remote.display().to_string())).await
 }
 
 /// What deleting the open workspace would mean, for the confirmation.
@@ -503,10 +714,7 @@ pub async fn delete_workspace(
 
 #[tauri::command]
 pub async fn set_remote(state: State<'_, AppState>, url: Option<String>) -> CmdResult<WorkspaceInfo> {
-    let mut guard = state.session.lock().unwrap();
-    let session = guard.as_mut().ok_or("No workspace is open")?;
-    session.set_remote(url)?;
-    Ok(session.info())
+    switch_remote(&state, url).await
 }
 
 #[tauri::command]
@@ -680,27 +888,25 @@ pub async fn create_github_workspace(
         Ok((repo, reachable, manage_url))
     })
     .await;
-    let mut guard = state.session.lock().unwrap();
-    let session = guard.as_mut().ok_or("No workspace is open")?;
     Ok(match created {
-        Ok((repo, reachable, manage_url)) => {
-            session.set_remote(Some(repo.clone_url.clone()))?;
-            session.worker.sync_now();
+        Ok((repo, reachable, manage_url)) => NewGitHubWorkspace {
+            workspace: switch_remote(&state, Some(repo.clone_url.clone())).await?,
+            full_name: Some(repo.full_name),
+            problem: None,
+            reachable,
+            manage_url,
+        },
+        Err(problem) => {
+            let guard = state.session.lock().unwrap();
+            let session = guard.as_ref().ok_or("No workspace is open")?;
             NewGitHubWorkspace {
                 workspace: session.info(),
-                full_name: Some(repo.full_name),
-                problem: None,
-                reachable,
-                manage_url,
+                full_name: None,
+                problem: Some(problem),
+                reachable: false,
+                manage_url: None,
             }
         }
-        Err(problem) => NewGitHubWorkspace {
-            workspace: session.info(),
-            full_name: None,
-            problem: Some(problem),
-            reachable: false,
-            manage_url: None,
-        },
     })
 }
 
@@ -722,15 +928,13 @@ pub struct CreatedRepo {
     manage_url: String,
 }
 
-/// Create a private GitHub repository for the open workspace and sync with it.
+/// Create a private GitHub repository for the open workspace and sync with
+/// it, instead of wherever it synced before.
 #[tauri::command]
 pub async fn github_create_repo(state: State<'_, AppState>) -> CmdResult<CreatedRepo> {
     let name = {
         let guard = state.session.lock().unwrap();
         let session = guard.as_ref().ok_or("No workspace is open")?;
-        if session.info().remote.is_some() {
-            return Err("This workspace already syncs somewhere.".into());
-        }
         session.info().name
     };
     let (repo, reachable, manage_url) = blocking("github_create_repo", move || {
@@ -742,12 +946,8 @@ pub async fn github_create_repo(state: State<'_, AppState>) -> CmdResult<Created
         Ok((repo, reachable, manage_url))
     })
     .await?;
-    let mut guard = state.session.lock().unwrap();
-    let session = guard.as_mut().ok_or("No workspace is open")?;
-    session.set_remote(Some(repo.clone_url.clone()))?;
-    session.worker.sync_now();
     Ok(CreatedRepo {
-        workspace: session.info(),
+        workspace: switch_remote(&state, Some(repo.clone_url.clone())).await?,
         full_name: repo.full_name,
         reachable,
         manage_url,
