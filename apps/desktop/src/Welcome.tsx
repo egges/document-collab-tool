@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { FolderSearch, X } from "lucide-react";
 import { type WorkspaceEntry, type WorkspaceInfo, api, errorText } from "./api.ts";
+import { GitHubSignIn, useGitHubAccount } from "./GitHubSignIn.tsx";
 import { pickFolder } from "./menu.ts";
 
 /** The workspaces to offer on the welcome screen: the known ones except the open one. */
@@ -21,6 +22,8 @@ export function Welcome({ onOpened, onCancel }: { onOpened: (w: WorkspaceInfo) =
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [recent, setRecent] = useState<WorkspaceEntry[]>([]);
+  const [user, setUser] = useGitHubAccount();
+  const [signingIn, setSigningIn] = useState(false);
 
   const loadRecent = useCallback(
     () =>
@@ -146,8 +149,28 @@ export function Welcome({ onOpened, onCancel }: { onOpened: (w: WorkspaceInfo) =
         <section className="card">
           <h2>Join a workspace from another device</h2>
           <p className="muted">
-            Paste the Git URL it syncs with. SSH URLs and local paths work today; GitHub sign-in comes later.
+            Paste the Git URL it syncs with: HTTPS or SSH, or a local path.
+            {user === null && (
+              <>
+                {" "}
+                For a private GitHub repo,{" "}
+                <button type="button" className="link" onClick={() => setSigningIn(true)}>
+                  sign in with GitHub
+                </button>{" "}
+                first.
+              </>
+            )}
+            {user && <> Signed in to GitHub as @{user.login}.</>}
           </p>
+          {signingIn && (
+            <GitHubSignIn
+              onDone={(u) => {
+                setSigningIn(false);
+                setUser(u);
+              }}
+              onClose={() => setSigningIn(false)}
+            />
+          )}
           <form
             className="row"
             onSubmit={(e) => {
@@ -158,7 +181,7 @@ export function Welcome({ onOpened, onCancel }: { onOpened: (w: WorkspaceInfo) =
             <input
               className="input"
               aria-label="Git URL"
-              placeholder="git@github.com:you/notes.git"
+              placeholder="https://github.com/you/notes.git"
               value={url}
               onChange={(e) => setUrl(e.target.value)}
               spellCheck={false}

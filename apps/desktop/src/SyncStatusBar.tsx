@@ -1,7 +1,9 @@
 import { useEffect, useState } from "react";
 import { FolderOpen, LogOut, RefreshCw } from "lucide-react";
-import { type SyncStatus, type WorkspaceInfo, api } from "./api.ts";
+import { openUrl } from "@tauri-apps/plugin-opener";
+import { type GitHubAccess, type SyncStatus, type WorkspaceInfo, api, errorText } from "./api.ts";
 import { showInFolderLabel } from "./fileManager.ts";
+import { GitHubSignIn, useGitHubAccount } from "./GitHubSignIn.tsx";
 import { pickFolder } from "./menu.ts";
 import { tip } from "./shortcuts.ts";
 
@@ -74,6 +76,7 @@ export function SyncStatusBar({
               a conflict show it at the top.
             </p>
           ) : null}
+          <GitHubSection workspace={workspace} onWorkspaceChange={onWorkspaceChange} />
           <form
             onSubmit={(e) => {
               e.preventDefault();
@@ -87,7 +90,7 @@ export function SyncStatusBar({
               <input
                 id="remote"
                 className="input"
-                placeholder="git@github.com:you/notes.git"
+                placeholder="https://github.com/you/notes.git"
                 value={remote}
                 onChange={(e) => setRemote(e.target.value)}
                 spellCheck={false}
@@ -97,7 +100,7 @@ export function SyncStatusBar({
               </button>
             </div>
             <p className="muted small">
-              An SSH URL or a local path. HTTPS needs GitHub sign-in, which isn't built yet.
+              An HTTPS or SSH URL, or a local path. GitHub HTTPS URLs use your GitHub sign-in.
             </p>
           </form>
           <dl className="facts">
@@ -159,6 +162,127 @@ export function SyncStatusBar({
         <span className={"dot " + tone} aria-hidden />
         <span>{label}</span>
       </button>
+    </div>
+  );
+}
+
+/**
+ * The GitHub account in the sync panel: sign in, and once signed in, give
+ * a workspace that doesn't sync yet a private repository with one click.
+ */
+function GitHubSection({
+  workspace,
+  onWorkspaceChange,
+}: {
+  workspace: WorkspaceInfo;
+  onWorkspaceChange: (w: WorkspaceInfo | null) => void;
+}) {
+  const [user, setUser] = useGitHubAccount();
+  const [signingIn, setSigningIn] = useState(false);
+  const [access, setAccess] = useState<GitHubAccess | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [note, setNote] = useState<{ text: string; url?: string; link?: string } | null>(null);
+
+  useEffect(() => {
+    setAccess(null);
+    if (!user) return;
+    const check = () => void api.githubAccess().then(setAccess, () => setAccess(null));
+    check();
+    // Back from installing the app on GitHub.
+    window.addEventListener("focus", check);
+    return () => window.removeEventListener("focus", check);
+  }, [user]);
+
+  if (user === undefined) return null;
+
+  const createRepo = async () => {
+    setBusy(true);
+    setNote(null);
+    try {
+      const created = await api.githubCreateRepo();
+      onWorkspaceChange(created.workspace);
+      setNote(
+        created.reachable
+          ? { text: `Syncing with the private repo ${created.fullName}.` }
+          : {
+              text: `Created ${created.fullName}. Pagemesh can only reach the repositories you chose, so add this one and it starts syncing.`,
+              url: created.manageUrl,
+              link: "Choose repositories…",
+            },
+      );
+    } catch (e) {
+      setNote({ text: errorText(e) });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (!user) {
+    return (
+      <div className="github">
+        <div className="row">
+          <button className="button" onClick={() => setSigningIn(true)}>
+            Sign in with GitHub
+          </button>
+        </div>
+        <p className="muted small">Sync through a private GitHub repository, with nothing to set up.</p>
+        {signingIn && (
+          <GitHubSignIn
+            onDone={(u) => {
+              setSigningIn(false);
+              setUser(u);
+            }}
+            onClose={() => setSigningIn(false)}
+          />
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div className="github">
+      <div className="github-account">
+        <img className="avatar" src={user.avatarUrl} alt="" width={20} height={20} />
+        <span className="github-name" title={`Signed in to GitHub as @${user.login}`}>
+          {user.name?.trim() || user.login} <span className="muted">@{user.login}</span>
+        </span>
+        <button
+          type="button"
+          className="link"
+          title="Sign out on this device. Commits from now on are by this device."
+          onClick={() =>
+            void api
+              .githubSignOut()
+              .then(() => setUser(null))
+              .catch((e) => setNote({ text: errorText(e) }))
+          }
+        >
+          Sign out
+        </button>
+      </div>
+      {access && !access.installed && (
+        <p className="muted small">
+          To sync through GitHub, install Pagemesh on your account and choose which repositories it may use.{" "}
+          <button type="button" className="link" onClick={() => void openUrl(access.manageUrl)}>
+            Install it…
+          </button>
+        </p>
+      )}
+      {!workspace.remote && access?.installed !== false && (
+        <button className="button primary" disabled={busy} onClick={() => void createRepo()}>
+          {busy ? "Creating…" : "Create a private repo on GitHub"}
+        </button>
+      )}
+      {note && (
+        <p className="small" role="status">
+          {note.text}{" "}
+          {note.url && (
+            <button type="button" className="link" onClick={() => void openUrl(note.url!)}>
+              {note.link}
+            </button>
+          )}
+        </p>
+      )}
     </div>
   );
 }

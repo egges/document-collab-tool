@@ -90,9 +90,23 @@ pub struct SyncEngine {
     root: PathBuf,
     config: SyncConfig,
     clock: Arc<dyn Clock>,
+    /// Name and email for new commits; starts as the config's, and changes
+    /// with [`SyncEngine::set_author`] when the user signs in or out.
+    author: std::sync::Mutex<(String, String)>,
 }
 
 impl SyncEngine {
+    fn new(git: Arc<dyn GitBackend>, root: PathBuf, config: SyncConfig, clock: Arc<dyn Clock>) -> Self {
+        let author = (config.author_name.clone(), config.author_email.clone());
+        Self {
+            git,
+            root,
+            config,
+            clock,
+            author: std::sync::Mutex::new(author),
+        }
+    }
+
     /// Create a new, empty workspace at `root`.
     pub fn init(
         git: Arc<dyn GitBackend>,
@@ -103,12 +117,7 @@ impl SyncEngine {
         let root = root.into();
         fs::create_dir_all(&root).at(&root)?;
         git.init(&root, &config.branch)?;
-        let engine = Self {
-            git,
-            root,
-            config,
-            clock,
-        };
+        let engine = Self::new(git, root, config, clock);
         engine.write_initial_files()?;
         engine.commit_local("Create workspace")?;
         Ok(engine)
@@ -127,12 +136,7 @@ impl SyncEngine {
         fs::create_dir_all(&root).at(&root)?;
         git.init(&root, &config.branch)?;
         git.set_remote_url(&root, &config.remote, url)?;
-        let engine = Self {
-            git,
-            root,
-            config,
-            clock,
-        };
+        let engine = Self::new(git, root, config, clock);
         match engine
             .git
             .fetch(&engine.root, &engine.config.remote, &engine.config.branch)?
@@ -159,12 +163,7 @@ impl SyncEngine {
         config: SyncConfig,
         clock: Arc<dyn Clock>,
     ) -> Result<Self> {
-        let engine = Self {
-            git,
-            root: root.into(),
-            config,
-            clock,
-        };
+        let engine = Self::new(git, root.into(), config, clock);
         let expected = engine.branch_ref();
         match engine.git.head_ref(&engine.root)? {
             Some(head) if head == expected => {}
@@ -184,8 +183,21 @@ impl SyncEngine {
         &self.root
     }
 
+    /// The settings the engine was opened with. The author may have changed
+    /// since; see [`SyncEngine::author`].
     pub fn config(&self) -> &SyncConfig {
         &self.config
+    }
+
+    /// Name and email that new commits get.
+    pub fn author(&self) -> (String, String) {
+        self.author.lock().unwrap().clone()
+    }
+
+    /// Who new commits are by from now on, e.g. after signing in. Earlier
+    /// commits keep their author.
+    pub fn set_author(&self, name: impl Into<String>, email: impl Into<String>) {
+        *self.author.lock().unwrap() = (name.into(), email.into());
     }
 
     pub fn set_remote(&self, url: &str) -> Result<()> {
@@ -366,9 +378,10 @@ impl SyncEngine {
     }
 
     fn signature(&self) -> Signature {
+        let (name, email) = self.author();
         Signature {
-            name: self.config.author_name.clone(),
-            email: self.config.author_email.clone(),
+            name,
+            email,
             time: self.clock.now(),
         }
     }

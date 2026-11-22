@@ -4,6 +4,7 @@
 mod commands;
 mod devlog;
 mod git;
+mod github;
 mod locations;
 mod search;
 mod session;
@@ -25,6 +26,11 @@ pub fn run() {
                 let _ = handle.emit("dev-log", entry);
             });
             devlog::info("app", format!("Started version {}", app.package_info().version));
+            let handle = app.handle().clone();
+            github::init(&app.config().identifier, move || {
+                handle.state::<commands::AppState>().account_changed();
+                let _ = handle.emit("account-changed", ());
+            });
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -57,6 +63,13 @@ pub fn run() {
             commands::locate_workspace,
             commands::move_workspace,
             commands::set_remote,
+            commands::github_account,
+            commands::github_sign_in_start,
+            commands::github_sign_in_finish,
+            commands::github_sign_in_cancel,
+            commands::github_sign_out,
+            commands::github_access,
+            commands::github_create_repo,
             commands::sync_status,
             commands::sync_now,
             commands::list_pages,

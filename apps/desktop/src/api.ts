@@ -72,6 +72,39 @@ export interface SyncStatus {
   conflicts: number;
 }
 
+/** The GitHub account this device is signed in to. */
+export interface GitHubUser {
+  id: number;
+  login: string;
+  name: string | null;
+  avatarUrl: string;
+}
+
+/** A sign-in code to enter at `verificationUri`. */
+export interface DeviceCode {
+  userCode: string;
+  verificationUri: string;
+  /** Seconds until the code expires. */
+  expiresIn: number;
+}
+
+/** Where the GitHub App is installed. */
+export interface GitHubAccess {
+  installed: boolean;
+  allRepositories: boolean;
+  /** Install it, or choose its repositories. */
+  manageUrl: string;
+}
+
+export interface CreatedRepo {
+  workspace: WorkspaceInfo;
+  /** "ada/My-Notes". */
+  fullName: string;
+  /** False when the app can only reach chosen repositories and this isn't one yet. */
+  reachable: boolean;
+  manageUrl: string;
+}
+
 export const api = {
   restoreWorkspace: () => invoke<WorkspaceInfo | null>("restore_workspace"),
   openWorkspace: (path: string) => invoke<WorkspaceInfo>("open_workspace", { path }),
@@ -98,6 +131,16 @@ export const api = {
    */
   moveWorkspace: (parent: string) => invoke<WorkspaceInfo>("move_workspace", { parent }),
   setRemote: (url: string | null) => invoke<WorkspaceInfo>("set_remote", { url }),
+  githubAccount: () => invoke<GitHubUser | null>("github_account"),
+  /** `attempt` is any number new to this run; pass it to finish and cancel too. */
+  githubSignInStart: (attempt: number) => invoke<DeviceCode>("github_sign_in_start", { attempt }),
+  /** Waits until the code is approved on GitHub; null when cancelled. */
+  githubSignInFinish: (attempt: number) => invoke<GitHubUser | null>("github_sign_in_finish", { attempt }),
+  githubSignInCancel: (attempt: number) => invoke<void>("github_sign_in_cancel", { attempt }),
+  githubSignOut: () => invoke<void>("github_sign_out"),
+  githubAccess: () => invoke<GitHubAccess>("github_access"),
+  /** A private repo for the open workspace, which then syncs with it. */
+  githubCreateRepo: () => invoke<CreatedRepo>("github_create_repo"),
   syncStatus: () => invoke<SyncStatus | null>("sync_status"),
   syncNow: () => invoke<void>("sync_now"),
   listPages: () => invoke<PageSummary[]>("list_pages"),
@@ -144,6 +187,8 @@ export const events = {
     listen<SyncStatus>("sync-status", (e) => handler(e.payload)),
   /** Files changed on disk: a sync pulled changes in, or another program edited them. */
   onWorkspaceChanged: (handler: () => void): Promise<UnlistenFn> => listen("workspace-changed", () => handler()),
+  /** Signed out without asking, e.g. the sign-in was revoked on GitHub. */
+  onAccountChanged: (handler: () => void): Promise<UnlistenFn> => listen("account-changed", () => handler()),
   onDevLog: (handler: (entry: LogEntry) => void): Promise<UnlistenFn> =>
     listen<LogEntry>("dev-log", (e) => handler(e.payload)),
 };

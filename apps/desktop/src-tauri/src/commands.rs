@@ -11,6 +11,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::devlog::{self, Entry, Level};
+use crate::github::{self, Access, DeviceCode, GitHubUser};
 use crate::locations;
 use crate::search::{self, TextMatch};
 use crate::session::{Session, WorkspaceInfo};
@@ -26,6 +27,13 @@ pub struct AppState {
 }
 
 impl AppState {
+    /// Signed in or out: new commits are by the new account.
+    pub fn account_changed(&self) {
+        if let Some(session) = self.session.lock().unwrap().as_ref() {
+            session.set_author(github::user().as_ref());
+        }
+    }
+
     pub fn window_focused(&self) {
         if let Some(session) = self.session.lock().unwrap().as_ref() {
             session.worker.focused();
@@ -402,6 +410,136 @@ pub async fn sync_now(state: State<'_, AppState>) -> CmdResult<()> {
     let guard = state.session.lock().unwrap();
     guard.as_ref().ok_or("No workspace is open")?.worker.sync_now();
     Ok(())
+}
+
+// ---- GitHub -------------------------------------------------------------
+
+/// The signed-in GitHub account, if any.
+#[tauri::command]
+pub async fn github_account() -> CmdResult<Option<GitHubUser>> {
+    blocking("github_account", || Ok(github::user())).await
+}
+
+/// The sign-in the window is showing, by an id the window picks, and its
+/// code once GitHub has sent it. Starting again, or cancelling, moves
+/// `current` on, which stops an earlier attempt's wait.
+struct SignIn {
+    current: Option<u64>,
+    code: Option<(u64, DeviceCode)>,
+}
+
+static SIGN_IN: Mutex<SignIn> = Mutex::new(SignIn {
+    current: None,
+    code: None,
+});
+
+fn is_current(attempt: u64) -> bool {
+    SIGN_IN.lock().unwrap().current == Some(attempt)
+}
+
+/// Start signing in: a code for the user to enter on GitHub.
+#[tauri::command]
+pub async fn github_sign_in_start(attempt: u64) -> CmdResult<DeviceCode> {
+    SIGN_IN.lock().unwrap().current = Some(attempt);
+    let code = blocking("github_sign_in_start", github::start_device_flow).await?;
+    let mut sign_in = SIGN_IN.lock().unwrap();
+    if sign_in.current != Some(attempt) {
+        return Err("Signing in was cancelled".into());
+    }
+    sign_in.code = Some((attempt, code.clone()));
+    Ok(code)
+}
+
+/// Wait until the user approves the code `attempt` got. `None` when
+/// signing in was cancelled or started again.
+#[tauri::command]
+pub async fn github_sign_in_finish(
+    state: State<'_, AppState>,
+    attempt: u64,
+) -> CmdResult<Option<GitHubUser>> {
+    let code = match &SIGN_IN.lock().unwrap().code {
+        Some((a, code)) if *a == attempt => code.clone(),
+        _ => return Ok(None),
+    };
+    let user = blocking("github_sign_in_finish", move || {
+        github::finish_device_flow(&code, || !is_current(attempt))
+    })
+    .await?;
+    if user.is_some() {
+        state.account_changed();
+    }
+    Ok(user)
+}
+
+#[tauri::command]
+pub async fn github_sign_in_cancel(attempt: u64) -> CmdResult<()> {
+    let mut sign_in = SIGN_IN.lock().unwrap();
+    if sign_in.current == Some(attempt) {
+        sign_in.current = None;
+        sign_in.code = None;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn github_sign_out(state: State<'_, AppState>) -> CmdResult<()> {
+    blocking("github_sign_out", || {
+        github::sign_out();
+        Ok(())
+    })
+    .await?;
+    state.account_changed();
+    Ok(())
+}
+
+/// Whether the GitHub App is installed on the user's account.
+#[tauri::command]
+pub async fn github_access() -> CmdResult<Access> {
+    blocking("github_access", github::access).await
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreatedRepo {
+    workspace: WorkspaceInfo,
+    /// "ada/My-Notes".
+    full_name: String,
+    /// False when the App can't reach the new repository (it's installed on
+    /// chosen repositories only): syncing waits until the user adds it.
+    reachable: bool,
+    manage_url: String,
+}
+
+/// Create a private GitHub repository for the open workspace and sync with it.
+#[tauri::command]
+pub async fn github_create_repo(state: State<'_, AppState>) -> CmdResult<CreatedRepo> {
+    let name = {
+        let guard = state.session.lock().unwrap();
+        let session = guard.as_ref().ok_or("No workspace is open")?;
+        if session.info().remote.is_some() {
+            return Err("This workspace already syncs somewhere.".into());
+        }
+        session.info().name
+    };
+    let (repo, reachable, manage_url) = blocking("github_create_repo", move || {
+        let repo = github::create_private_repo(&name)?;
+        let reachable = github::can_reach(&repo.full_name).unwrap_or(true);
+        let manage_url = github::access()
+            .map(|a| a.manage_url)
+            .unwrap_or_else(|_| github::install_url());
+        Ok((repo, reachable, manage_url))
+    })
+    .await?;
+    let mut guard = state.session.lock().unwrap();
+    let session = guard.as_mut().ok_or("No workspace is open")?;
+    session.set_remote(Some(repo.clone_url.clone()))?;
+    session.worker.sync_now();
+    Ok(CreatedRepo {
+        workspace: session.info(),
+        full_name: repo.full_name,
+        reachable,
+        manage_url,
+    })
 }
 
 // ---- pages ---------------------------------------------------------------

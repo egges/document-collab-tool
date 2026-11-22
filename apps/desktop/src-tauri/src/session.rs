@@ -123,6 +123,9 @@ impl Session {
             device: engine.config().device_name.clone(),
             remote: settings.remote.clone(),
         };
+        if let Some(user) = crate::github::user() {
+            engine.set_author(user.display_name(), user.noreply_email());
+        }
         let engine = Arc::new(engine);
         let worker = SyncWorker::start(
             engine.clone(),
@@ -171,6 +174,18 @@ impl Session {
         devlog::info("app", format!("Renamed the workspace to \"{}\"", name.trim()));
         self.worker.edit_notifier()();
         Ok(self.info())
+    }
+
+    /// Who new commits are by: the GitHub account when signed in, otherwise
+    /// this device, as before signing in.
+    pub fn set_author(&self, user: Option<&crate::github::GitHubUser>) {
+        let config = self.engine.config();
+        match user {
+            Some(user) => self.engine.set_author(user.display_name(), user.noreply_email()),
+            None => self
+                .engine
+                .set_author(config.author_name.clone(), config.author_email.clone()),
+        }
     }
 
     /// Set or clear the remote this device syncs with.
