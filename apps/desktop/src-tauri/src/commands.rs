@@ -2,12 +2,12 @@
 //! git runs on a blocking thread, so the window never waits on the main
 //! thread for a sync to finish.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 
 use docsync::conflicts::find_conflicts;
 use docsync::{PageWrite, SyncEngine, Workspace};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::devlog::{self, Entry, Level};
@@ -16,6 +16,7 @@ use crate::search::{self, TextMatch};
 use crate::session::{Session, WorkspaceInfo};
 use crate::tree::{self, PageSummary};
 use crate::worker::{Events, SyncStatus};
+use crate::workspaces::{self, AppSettings, WorkspaceEntry};
 
 type CmdResult<T> = Result<T, String>;
 
@@ -75,27 +76,28 @@ fn text<E: ToString>(e: E) -> String {
 
 // ---- app settings ------------------------------------------------------
 
-#[derive(Debug, Default, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-struct AppSettings {
-    last_workspace: Option<PathBuf>,
-}
+/// Serialises reading and writing `settings.json`.
+static SETTINGS: Mutex<()> = Mutex::new(());
 
 fn settings_path(app: &AppHandle) -> Option<PathBuf> {
     app.path().app_config_dir().ok().map(|d| d.join("settings.json"))
 }
 
 fn load_settings(app: &AppHandle) -> AppSettings {
+    let _guard = SETTINGS.lock().unwrap();
     settings_path(app)
-        .and_then(|p| std::fs::read(p).ok())
-        .and_then(|b| serde_json::from_slice(&b).ok())
+        .map(|p| AppSettings::load(&p))
         .unwrap_or_default()
 }
 
-fn save_settings(app: &AppHandle, settings: &AppSettings) {
-    if let Some(path) = settings_path(app) {
-        let _ = std::fs::create_dir_all(path.parent().expect("has a parent"));
-        let _ = std::fs::write(path, serde_json::to_vec_pretty(settings).expect("serializable"));
+/// Change the settings and save them.
+fn update_settings(app: &AppHandle, change: impl FnOnce(&mut AppSettings)) {
+    let _guard = SETTINGS.lock().unwrap();
+    let Some(path) = settings_path(app) else { return };
+    let mut settings = AppSettings::load(&path);
+    change(&mut settings);
+    if let Err(e) = settings.save(&path) {
+        devlog::warn("app", format!("Couldn't save {}: {e}", path.display()));
     }
 }
 
@@ -109,12 +111,9 @@ fn install(app: &AppHandle, state: &AppState, session: Session) -> WorkspaceInfo
     if let Some(old) = old {
         std::thread::spawn(move || drop(old));
     }
-    save_settings(
-        app,
-        &AppSettings {
-            last_workspace: Some(PathBuf::from(&info.path)),
-        },
-    );
+    update_settings(app, |s| {
+        s.opened(Path::new(&info.path), &info.name, workspaces::now_ms())
+    });
     info
 }
 
@@ -235,16 +234,28 @@ pub async fn join_workspace(
 
 /// The open workspace, read fresh: its name may have changed with a sync.
 #[tauri::command]
-pub async fn workspace_info(state: State<'_, AppState>) -> CmdResult<Option<WorkspaceInfo>> {
-    Ok(state.session.lock().unwrap().as_ref().map(Session::info))
+pub async fn workspace_info(app: AppHandle, state: State<'_, AppState>) -> CmdResult<Option<WorkspaceInfo>> {
+    let info = state.session.lock().unwrap().as_ref().map(Session::info);
+    if let Some(info) = &info {
+        update_settings(&app, |s| s.renamed(Path::new(&info.path), &info.name));
+    }
+    Ok(info)
 }
 
 /// Rename the open workspace on every device. Folders and remotes keep their
 /// names.
 #[tauri::command]
-pub async fn rename_workspace(state: State<'_, AppState>, name: String) -> CmdResult<WorkspaceInfo> {
-    let guard = state.session.lock().unwrap();
-    guard.as_ref().ok_or("No workspace is open")?.rename(&name)
+pub async fn rename_workspace(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    name: String,
+) -> CmdResult<WorkspaceInfo> {
+    let info = {
+        let guard = state.session.lock().unwrap();
+        guard.as_ref().ok_or("No workspace is open")?.rename(&name)?
+    };
+    update_settings(&app, |s| s.renamed(Path::new(&info.path), &info.name));
+    Ok(info)
 }
 
 /// Show the open workspace's folder in Finder, Explorer or the file manager.
@@ -263,8 +274,113 @@ pub async fn close_workspace(app: AppHandle, state: State<'_, AppState>) -> CmdR
         // Commits pending edits once a running sync is done; see `install`.
         std::thread::spawn(move || drop(session));
     }
-    save_settings(&app, &AppSettings::default());
+    update_settings(&app, |s| s.last_workspace = None);
     Ok(())
+}
+
+/// The workspaces this device knows, most recently opened first.
+#[tauri::command]
+pub async fn list_workspaces(app: AppHandle, state: State<'_, AppState>) -> CmdResult<Vec<WorkspaceEntry>> {
+    let current = state
+        .session
+        .lock()
+        .unwrap()
+        .as_ref()
+        .map(|s| s.engine.root().to_path_buf());
+    let mut entries = load_settings(&app).entries();
+    for entry in &mut entries {
+        entry.current = current
+            .as_deref()
+            .is_some_and(|c| workspaces::same(c, Path::new(&entry.path)));
+    }
+    Ok(entries)
+}
+
+/// Take a workspace off the list. Its files stay where they are.
+#[tauri::command]
+pub async fn forget_workspace(app: AppHandle, path: PathBuf) -> CmdResult<()> {
+    update_settings(&app, |s| s.forget(&path));
+    devlog::info(
+        "app",
+        format!("Removed {} from the workspace list", path.display()),
+    );
+    Ok(())
+}
+
+/// The workspace listed at `from` is now in `to` (moved outside the app, or
+/// on a drive that's mounted elsewhere): open it there.
+#[tauri::command]
+pub async fn locate_workspace(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    from: PathBuf,
+    to: PathBuf,
+) -> CmdResult<WorkspaceInfo> {
+    if !workspaces::is_workspace(&to) {
+        return Err(format!("{} doesn't hold a workspace.", to.display()));
+    }
+    let events = WindowEvents(app.clone());
+    let opened = to.clone();
+    let session = blocking("locate_workspace", move || {
+        Session::open_or_create(&opened, events)
+    })
+    .await?;
+    devlog::info("app", format!("Located {} at {}", from.display(), to.display()));
+    // Before `install`, which puts the new location first.
+    update_settings(&app, |s| s.relocated(&from, &to));
+    Ok(install(&app, &state, session))
+}
+
+/// Move the open workspace into a new folder inside `parent`, named after
+/// the workspace. Its history and sync settings move with it. If the move
+/// fails, the workspace reopens where it was; either way the window should
+/// ask `workspace_info` what's open afterwards.
+#[tauri::command]
+pub async fn move_workspace(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    parent: PathBuf,
+) -> CmdResult<WorkspaceInfo> {
+    let (from, name) = {
+        let guard = state.session.lock().unwrap();
+        let session = guard.as_ref().ok_or("No workspace is open")?;
+        (session.engine.root().to_path_buf(), session.info().name)
+    };
+    let target = workspaces::move_target(&from, &parent, &name)?;
+    let session = state
+        .session
+        .lock()
+        .unwrap()
+        .take()
+        .ok_or("No workspace is open")?;
+    let events = WindowEvents(app.clone());
+    let (old, new) = (from.clone(), target.clone());
+    let (moved, reopened) = blocking("move_workspace", move || {
+        // Stop syncing and watching first. This waits for a running sync
+        // and commits pending edits, so nothing writes while files move.
+        drop(session);
+        devlog::info(
+            "app",
+            format!("Moving {} to {}", from.display(), target.display()),
+        );
+        let moved = workspaces::move_dir(&from, &target).map_err(text);
+        let reopened = Session::open_or_create(if moved.is_ok() { &target } else { &from }, events);
+        Ok((moved, reopened))
+    })
+    .await?;
+    if moved.is_ok() {
+        devlog::info("app", format!("Moved the workspace to {}", new.display()));
+        update_settings(&app, |s| s.relocated(&old, &new));
+    }
+    let info = reopened.map(|session| install(&app, &state, session));
+    match moved {
+        Ok(()) => info,
+        Err(e) => {
+            let message = format!("Couldn't move the workspace: {e}");
+            devlog::error("app", &message);
+            Err(message)
+        }
+    }
 }
 
 #[tauri::command]

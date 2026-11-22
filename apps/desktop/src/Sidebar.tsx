@@ -6,7 +6,7 @@ import { SHORTCUTS, keysLabel, tip } from "./shortcuts.ts";
 import { SIDEBAR_WIDTH } from "./sidebarLayout.ts";
 import { SyncStatusBar } from "./SyncStatusBar.tsx";
 import { SidebarTitleBar } from "./TitleBar.tsx";
-import { WorkspaceName } from "./WorkspaceName.tsx";
+import { WorkspaceSwitcher } from "./WorkspaceSwitcher.tsx";
 
 interface SidebarProps {
   workspace: WorkspaceInfo;
@@ -16,6 +16,9 @@ interface SidebarProps {
   onSelect: (id: string) => void;
   onCreate: (parent: string | null) => void;
   onWorkspaceChange: (w: WorkspaceInfo | null) => void;
+  /** Saves the open page, then opens the workspace `open` returns. */
+  onSwitch: (open: () => Promise<WorkspaceInfo>) => Promise<void>;
+  onAddWorkspace: () => void;
   onError: (message: string) => void;
   onShowShortcuts: () => void;
   onSearch: () => void;
@@ -43,7 +46,13 @@ export function Sidebar(props: SidebarProps) {
             <kbd>{keysLabel(SHORTCUTS.search.keys)}</kbd>
           </button>
           <div className="sidebar-header">
-            <WorkspaceName workspace={workspace} onRenamed={props.onWorkspaceChange} onError={props.onError} />
+            <WorkspaceSwitcher
+              workspace={workspace}
+              onRenamed={props.onWorkspaceChange}
+              onSwitch={props.onSwitch}
+              onAdd={props.onAddWorkspace}
+              onError={props.onError}
+            />
             <button className="icon-button" title={tip("New page", "newPage")} aria-label="New page" onClick={() => props.onCreate(null)}>
               <Plus size={16} />
             </button>
@@ -69,6 +78,7 @@ export function Sidebar(props: SidebarProps) {
               workspace={workspace}
               status={status}
               onWorkspaceChange={props.onWorkspaceChange}
+              onSwitch={props.onSwitch}
               onSetRemote={async (url) => {
                 try {
                   props.onWorkspaceChange(await api.setRemote(url));

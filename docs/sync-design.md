@@ -157,10 +157,30 @@ In the app, clicking the name in the sidebar header edits it in place: Enter
 or leaving the field saves, Escape cancels, an empty name keeps the old one. A
 rename from another device shows up after the next sync.
 
-Still to build: moving a workspace from settings, a list of known workspaces
-in the app's `settings.json` (a workspace switcher, and "Locate…" when a
-folder has gone), and a check that offers a safe setup when the chosen
-location is inside a cloud folder.
+Still to build: a check that offers a safe setup when the chosen location
+is inside a cloud folder.
+
+### The workspace list
+
+Each device keeps a list of the workspaces it has opened in the app's
+`settings.json` (never synced), with each one's name as last seen, so a
+workspace whose folder has gone (moved in Finder, a drive that isn't
+plugged in) still shows by name. Clicking the workspace name in the sidebar
+opens the list to switch; the welcome screen shows it too. A missing folder
+offers "Locate…" (pick where it is now) and "Remove from list", which never
+deletes files. Paths are compared through their real location, so the same
+folder is never listed twice. The code is in
+`apps/desktop/src-tauri/src/workspaces.rs`.
+
+"Move…" in the sync panel moves the open workspace into a new folder, named
+after it, inside a folder the user picks. It first stops the worker and the
+file watcher, which waits for a running sync and commits pending edits, so
+nothing writes while files move. Moving is a rename on the same disk and a
+copy followed by removing the original across disks; if the copy fails, the
+partial copy is removed and the workspace reopens where it was. Everything
+moves together: history, the per-device remote in `.docsync/app.json` and
+the search index. Other devices don't notice, since remotes never point at a
+working copy.
 
 ### Never a working copy inside a cloud folder
 

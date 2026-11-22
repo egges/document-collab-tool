@@ -22,7 +22,11 @@ step). On Linux, install
 
 - **Workspaces.** Pick a folder: an existing workspace opens, an empty folder
   gets a new one. Or join one from another device by its Git URL. The last
-  workspace reopens on start.
+  workspace reopens on start. Click the workspace name in the sidebar to
+  switch between the workspaces this device knows, rename, or add one
+  (`src/WorkspaceSwitcher.tsx`); double-clicking the name renames it. A
+  workspace whose folder has gone shows "Locate…". "Move…" in the sync
+  panel moves the workspace's folder (`src-tauri/src/workspaces.rs`).
 - **Pages.** A page tree (pages whose parent was deleted on another device
   show at the top level), a title, and the editor. Create, rename and delete
   pages. Drag the sidebar's edge to resize it (double-click resets it); its
