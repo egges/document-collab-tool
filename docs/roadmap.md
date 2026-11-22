@@ -30,7 +30,14 @@ straightforward building.
 - [ ] **Signing in.** GitHub sign-in, with the token stored in the system
       keychain and passed to Git through `CliGit::with_config`. A "create a
       private repo for me" onboarding step using the GitHub API, so
-      non-developers never have to set up a remote themselves.
+      non-developers never have to set up a remote themselves. Sign in with
+      the OAuth device flow or a browser redirect back to the app, through a
+      GitHub App limited to the workspace and published-site repos rather
+      than the classic `repo` scope, which reaches every private repo the
+      user has. Commits use the user's GitHub no-reply address
+      (`<id>+<login>@users.noreply.github.com`), so real emails stay out of
+      the history and pushes are not rejected when the user blocks pushes
+      that expose their email. GitLab later, the same way (`read_user`).
 - [x] **Orphaned pages.** The app shows pages whose parent was deleted at the
       top level.
 - [x] **Default location.** New and joined workspaces go in the app's local
@@ -156,6 +163,18 @@ and identity is trusted rather than verified, as in a shared folder.
       as the device. Agents get a profile too, so their edits and comments
       show up like anyone else's. Device-only settings (theme, window,
       sidebar) stay out of the workspace.
+- [ ] **Profiles from GitHub or GitLab.** On first sign-in, fill in the
+      profile from the account (`GET /user` on GitHub, `GET /api/v4/user` on
+      GitLab): name and picture, with the picture downloaded and resized like
+      any other rather than linked. The workspace profile stays the source of
+      truth, since not everyone signs in; later, "update from GitHub" instead
+      of silently overwriting. The profile records linked accounts by their
+      numeric id (`"accounts": [{"provider": "github", "id": …, "login": …}]`),
+      since usernames can change, so an invited username is matched to its
+      profile when that person joins. The repo's collaborator list shows who
+      has access but has not joined yet, and who was removed. Signing in
+      does not verify names in the history: the host knows who pushed, not
+      who wrote each commit.
 - [ ] **Comments.** On a page or on a selection, with replies, resolve and
       reactions. Stored outside the page's Markdown so pages stay clean for
       other tools and agents, one file per comment so two people commenting
