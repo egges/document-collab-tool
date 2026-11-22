@@ -69,6 +69,7 @@ pub fn name_from_url(url: &str) -> String {
         .unwrap_or("");
     let last = last.strip_suffix(".git").unwrap_or(last);
     let last = last.strip_suffix(".docsync").unwrap_or(last);
+    let last = last.strip_suffix(".docsync").unwrap_or(last);
     folder_name(last)
 }
 

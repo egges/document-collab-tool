@@ -29,6 +29,11 @@ pub enum Error {
     #[error("git {found} is too old; version {required} or newer is required")]
     UnsupportedGitVersion { found: String, required: String },
 
+    /// The remote holds a different workspace: its history has nothing in
+    /// common with this one's, so merging would mix two workspaces.
+    #[error("{0}")]
+    DifferentWorkspace(String),
+
     /// The repository is in a state the engine does not manage
     /// (detached HEAD, wrong branch, missing commits, ...).
     #[error("invalid repository state: {0}")]

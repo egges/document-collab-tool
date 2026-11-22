@@ -20,7 +20,10 @@ pub mod text_merge;
 pub mod workspace;
 
 pub use clock::{Clock, ManualClock, SystemClock};
-pub use engine::{OTHER_CHANGES_LABEL, PageWrite, SyncConfig, SyncEngine, SyncReport};
+pub use engine::{
+    DEVICE_REFS, OTHER_CHANGES_LABEL, PageWrite, RemoteLayout, SyncConfig, SyncEngine, SyncReport,
+    prepare_folder_remote,
+};
 pub use error::{Error, Result};
 pub use git::{CliGit, GitBackend};
 pub use merge::{Resolution, ResolvedConflict};

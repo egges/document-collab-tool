@@ -1,6 +1,6 @@
 import { useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, Keyboard, Plus, Search, SquareTerminal } from "lucide-react";
-import { type PageSummary, type SyncStatus, type WorkspaceInfo, api, errorText } from "./api.ts";
+import type { PageSummary, SyncStatus, WorkspaceInfo } from "./api.ts";
 import { childrenOf } from "./pageTree.ts";
 import { SHORTCUTS, keysLabel, tip } from "./shortcuts.ts";
 import { SIDEBAR_WIDTH } from "./sidebarLayout.ts";
@@ -79,13 +79,6 @@ export function Sidebar(props: SidebarProps) {
               status={status}
               onWorkspaceChange={props.onWorkspaceChange}
               onSwitch={props.onSwitch}
-              onSetRemote={async (url) => {
-                try {
-                  props.onWorkspaceChange(await api.setRemote(url));
-                } catch (e) {
-                  props.onError(errorText(e));
-                }
-              }}
             />
             <button
               className="icon-button"

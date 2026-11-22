@@ -297,45 +297,156 @@ problem: two devices pushing at about the same time would both write
 device's push arrives seconds later. So a folder remote follows the same rule
 as the file layout, one writer per file:
 
-- **Each device pushes only to its own ref,**
+- **Each device writes only its own ref,**
   `refs/heads/devices/<device-id>`. Syncing fetches every device's ref,
-  merges them locally with the usual `merge-tree` path, and pushes the result
-  to this device's ref. No file in the shared repo has two writers.
-- **The shared repo is never repacked.** `gc.auto` and ref packing are off,
-  so git never rewrites a shared file.
-- **The app watches the shared repo's `refs/`** and syncs as soon as another
-  device's ref changes, instead of waiting for the next timed sync.
-- **iCloud may not have downloaded the repo yet.** Ask it to (through
-  `NSFileCoordinator`, or `brctl download` as a fallback); if it can't, treat
-  it like being offline.
+  merges them locally with the usual `merge-tree` path, and publishes the
+  result as this device's ref. No file in the shared repo has two writers,
+  so nobody's publish is ever rejected and no retry loop is needed.
+- **Publishing doesn't use `git push`.** git's receive-pack refuses every
+  push while any ref in the repo points at objects that are missing, which
+  is exactly the state a cloud folder is in whenever another device's ref
+  has arrived before its pack. Instead the engine writes one new pack
+  (`git pack-objects`: everything since this device's previous ref) into
+  `objects/pack/`, the `.pack` before its `.idx`, then the ref, each as a
+  temp file renamed into place (`GitBackend::publish_to_folder`). Packs are
+  named by their content and never change.
+- **A ref whose objects haven't arrived waits.** Each device ref is fetched
+  on its own (and only when its commit isn't already here). If the fetch
+  fails because objects are missing, that device is skipped this time and
+  listed in `SyncReport::incomplete_devices`; the others still merge and
+  this device still publishes.
+- **The shared repo is never repacked.** `gc.auto`, `gc.autoPackLimit`,
+  `receive.autogc` and ref packing are off, so git never rewrites a shared
+  file.
+- **The app watches the whole folder remote** and syncs 2 seconds after
+  files stop arriving, instead of waiting for the next timed sync. Changes
+  right after its own sync are its own publish, and are ignored.
+- **iCloud may not have downloaded the repo yet.** The app runs `brctl
+  download` on it when the workspace opens; files that still aren't there
+  count as not arrived yet.
+- **Which remotes are folder remotes:** a local path ending in `.docsync`.
+  Other local paths, such as `/Volumes/USB/notes.git`, are ordinary git
+  remotes with one shared branch. The device id is stored per copy in
+  `.docsync/app.json`, e.g. `arjans-macbook-pro-3f9a1c`; joining again on the
+  same device makes a new one.
 
-The cost is merging N device refs instead of one remote branch. The scenario
-tests and the simulation need a folder-remote variant with delayed, unordered
-copying to prove it converges. GitHub and other git hosts keep the single
-`main` branch.
+The cost is merging N device refs instead of one remote branch, and an
+extra merge commit when two devices merge the same changes at once (the
+next sync fast-forwards one onto the other). GitHub and other git hosts keep
+the single `main` branch.
+
+The tests prove it with a simulated cloud (`tests/common/mod.rs`): each
+device has its own copy of the folder, and the cloud copies one file at a
+time between the copies and a server, in random order. It fails the test if
+two devices ever write the same file differently, since a real service
+would keep one and set the other aside as a "conflicted copy".
+`tests/folder_remote.rs` covers the cases one by one (a ref before its
+pack, a missing folder) and the simulation runs every seed through a cloud
+folder as well.
 
 ### Setting it up
 
-Onboarding asks one question, "Where should your notes sync?":
+To the user, a workspace is kept in one of two kinds of place. Its pages
+and their whole history always live in the app's data folder
+([The local copy](#the-local-copy)); the choice is where a second copy goes:
 
-1. **Only on this device.**
-2. **iCloud Drive, Dropbox, OneDrive or Google Drive**, showing only the ones
-   installed (`~/Library/Mobile Documents/com~apple~CloudDocs`,
-   `~/Library/CloudStorage/*`, Dropbox's `info.json`, and the Windows
-   equivalents). One click creates `<name>.docsync` there.
-3. **GitHub:** "Continue with GitHub", then join a workspace that's already
-   there or start one with a new private repo
-   ([Signing in with GitHub](#signing-in-with-github)). A Git URL or an
-   existing folder sits under "Other ways to start".
+1. **A folder.** The default is "On this computer", which means no remote
+   at all. "Change…" picks any folder, which gets a `<name>.docsync` folder
+   remote. A folder in iCloud Drive, Dropbox or OneDrive puts the workspace
+   on every device; a network drive or USB stick works the same way. The
+   app can't know whether something syncs a folder, and doesn't need to:
+   the format is the same everywhere. A tip says which services do it, and
+   the installed ones are links that open the picker there.
+2. **A Git repository:** GitHub (sign in, install the GitHub App if needed,
+   then a new private repo; see
+   [Signing in with GitHub](#signing-in-with-github)), or any Git URL.
 
-Built so far: GitHub and "only on this device"; the cloud folders come with
-cloud folder remotes.
+"Add a workspace" starts with "Start a new workspace" or "Join a
+workspace", and nothing else: opening a workspace this device already has
+is the switcher's job. (The welcome screen, shown when none is open, also
+lists recent ones.) Each screen shows the two places as blocks, "In a
+folder" and "In a Git repository", with the chosen one open.
+- **New** is one screen: the name, then the blocks. The folder block holds
+  "Kept in On this computer [Change…]" and Create; the Git block holds
+  GitHub and a URL field.
+- **Join** uses the same two blocks.
+  - "In a folder" lists the `*.docsync` folders found in the cloud
+    folders, up to three levels down. It also takes any folder chosen by
+    hand: the `.docsync` folder itself, or a folder above it.
+  - "In a Git repository" lists the workspaces on GitHub this device
+    doesn't have yet, or takes a URL.
 
-Joining on another device needs no typing for cloud folders: the app looks for
-`*.docsync` in those folders and offers "Found **My Notes** in your iCloud
-Drive: open it?" If a user opens or creates a workspace inside a cloud folder,
-the app offers one button to set it up safely: move the files to the local
-folder and create the bare repo next to where they were.
+The sync panel shows "Kept in On this computer", "Kept in Dropbox › Work"
+or "Kept in GitHub". Its "Change…" shows the same two blocks; going back
+to "On this computer" stops syncing and leaves the old copy where it is.
+The local repo has the whole history, so a new place gets all of it on the
+next sync (`switching_where_it_syncs_takes_the_history_along`). Other
+devices keep using the old place until they're switched too. Nothing is
+lost meanwhile: the histories are shared and merge cleanly.
+
+Knowing the cloud folders is a convenience, not a requirement. The app
+detects them in these places:
+- iCloud Drive: `~/Library/Mobile Documents/com~apple~CloudDocs`, or
+  `%USERPROFILE%\iCloudDrive` on Windows.
+- The File Provider folders in `~/Library/CloudStorage`: Dropbox, OneDrive,
+  Google Drive's "My Drive" and Box.
+- Dropbox's `info.json`, and `%OneDrive%` on Windows.
+
+What the detection is for:
+- Links in the tip that open the folder picker there.
+- Finding workspaces to join.
+- "Kept in Dropbox › Work" in the sync panel.
+- A quiet note when a chosen folder isn't in any of them. That's fine for a
+  network drive, a USB stick or a backup.
+- A warning when a workspace's own folder sits inside a cloud folder. The
+  status dot turns amber, and the panel offers one button to move the files
+  to the local folder. If the workspace didn't sync yet, it also creates
+  the bare repo where the files were.
+
+The code is in `apps/desktop/src-tauri/src/cloud.rs` and
+`apps/desktop/src/Welcome.tsx`.
+
+#### Folders the app doesn't control
+
+Since the folder can be anywhere, these are handled, with tests in
+`crates/docsync/tests/switching.rs` and `apps/desktop/src-tauri/src/session.rs`:
+
+- **The folder is gone:** moved, deleted, renamed, or on a drive that isn't
+  connected. Syncing counts it as offline, with the reason ("the folder …
+  isn't there"). The sync panel says so and offers "Locate…" to point at its
+  new place, such as when Dropbox moves its folder or a drive comes back
+  under another letter. A folder whose files haven't arrived yet (no `HEAD`)
+  waits the same way.
+- **The service drops empty folders.** Git won't open a repository without
+  `refs/` and `objects/`. They're recreated before every sync and join
+  (`prepare_folder_remote`).
+- **The wrong folder or URL.** Pointing a workspace at a remote that already
+  holds a different workspace, one with no history in common, is refused
+  (`SyncEngine::switch_remote`); otherwise the next sync would merge the two
+  workspaces. An empty remote is fine, and so is one that can't be reached
+  right now. Two devices that each start a workspace on the same empty
+  remote still merge, as before. The check runs under the sync lock, and
+  the app runs it without holding the session, since it fetches.
+- **A copied workspace folder.** A folder copied to another computer, or
+  next to itself, or restored from a backup, takes `.docsync/app.json` and
+  its device id along. Two copies writing one device ref would overwrite
+  each other, so the id records which copy it was made for: a random id
+  per app install, plus the folder. Any other copy makes a new id. Moving a
+  workspace makes a new id too, which is harmless: the old ref is an
+  ancestor and gets skipped.
+- **Unusable places:** the app's own workspaces folder, a folder inside a
+  workspace, and a folder inside another `.docsync` folder are refused when
+  choosing.
+- **No file events.** Network drives often don't report changes, and the
+  watcher isn't re-armed when a missing folder comes back. The sync every 45
+  seconds covers both.
+- **Not handled yet:**
+  - Files the service keeps online-only (Dropbox, OneDrive) are downloaded
+    when git reads them. Without a connection that read fails, and syncing
+    shows "Sync paused" with git's message rather than "Offline".
+  - A folder that's been damaged (a pack deleted by hand) leaves that
+    device's changes "still arriving" forever. "Restore the shared folder
+    from this device" is noted under sharing below.
 
 ### Sharing with other people
 

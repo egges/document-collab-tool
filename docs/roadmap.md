@@ -47,16 +47,26 @@ straightforward building.
       workspace…"), a missing folder shows "Locate…", the welcome screen
       lists recent workspaces, and "Move…" in the sync panel moves the
       folder ([sync-design.md](sync-design.md#the-workspace-list)).
-- [ ] **Cloud folder remotes.** A bare repo in iCloud Drive, Dropbox or
-      OneDrive with one ref per device, tested with delayed, unordered
-      copying ([sync-design.md](sync-design.md#cloud-folder-remotes)).
-- [ ] **Sync setup.** One "Where should your notes sync?" choice in
-      onboarding and settings, detecting installed cloud folders, finding
-      `*.docsync` workspaces to join, and a safe setup when a workspace sits
-      inside a cloud folder. Done so far: onboarding with GitHub (one
-      "Continue with GitHub" for new and returning users, joining workspaces
-      found on GitHub or starting one with a private repo) and "only on this
-      device" ([sync-design.md](sync-design.md#signing-in-with-github)).
+- [x] **Folder remotes.** A bare repo, `<name>.docsync`, in any folder the
+      user picks: usually somewhere in iCloud Drive, Dropbox or OneDrive, but a
+      network drive or USB stick works the same. One ref per device,
+      published without `git push`, and tested with a simulated cloud that
+      copies files one at a time in random order
+      ([sync-design.md](sync-design.md#cloud-folder-remotes)).
+- [x] **Sync setup.** A workspace is kept in a folder or in a Git
+      repository, shown as two blocks. New workspaces take one screen: a
+      name, then "In a folder" ("Kept in On this computer [Change…]", where
+      any folder gets a `.docsync` folder; one in Dropbox, OneDrive or
+      iCloud Drive puts it on every device) or "In a Git repository"
+      (GitHub or a URL). Joining lists the
+      workspaces found on GitHub and in the installed cloud folders. The
+      pages always live in the app's data folder, and "Change…" in the sync
+      panel moves the workspace elsewhere, taking the whole history along
+      ([sync-design.md](sync-design.md#setting-it-up)).
+- [ ] **Following a switch.** When one device moves sync somewhere else, it
+      leaves a note at the old place ("moved to …") so other devices follow
+      on their next sync. Until then each device switches by hand; nothing is
+      lost, since the histories are shared and merge cleanly.
 - [ ] **Sharing.** A "Share" button: the provider's share sheet for cloud
       folders, invite and accept for GitHub; commits record the person, not
       just the device.
@@ -148,6 +158,23 @@ Git already has every version; this makes it visible.
 - [ ] **Reviewing agent edits.** Changes made through MCP shown as a diff to
       accept or revert, page by page, so users can trust agents with their
       notes.
+      Accepting or reverting is itself a commit, so the review syncs; review
+      state kept outside git (in `.docsync/`) would stay on one device.
+- [ ] **Clearing history.** Start the history again from the current pages:
+      one commit with no parents, and a "history was reset" marker that other
+      devices follow by adopting the new start and replaying only their
+      unsynced edits as file changes (a merge would bring the old history
+      back, since unrelated histories merge). The remote has to forget too:
+      delete the old objects from a folder remote (its cloud service may still
+      keep them in its trash or version history for weeks), and on GitHub
+      recreate the repository, since a force-push leaves old commits
+      reachable for a while. So this is housekeeping, not a promise that
+      text is gone everywhere; for that, start a fresh workspace from the
+      current pages and delete the old remote and copies.
+- [ ] **Compacting folder remotes.** Git's own cleanup is off in a folder
+      remote, because repacking while another device is mid-upload could lose
+      data, so it gains a small pack per sync. Compact it once every device's
+      latest work is fully present.
 
 ## 7. Working together
 

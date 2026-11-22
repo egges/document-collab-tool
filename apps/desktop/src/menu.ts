@@ -51,8 +51,8 @@ export function useDismiss(ref: RefObject<HTMLElement | null>, open: boolean, cl
   }, [ref, open, close]);
 }
 
-/** Ask for a folder; null when the user cancels. */
-export async function pickFolder(title: string): Promise<string | null> {
-  const path = await open({ directory: true, title });
+/** Ask for a folder, starting in `start` if given; null when the user cancels. */
+export async function pickFolder(title: string, start?: string): Promise<string | null> {
+  const path = await open({ directory: true, title, defaultPath: start });
   return typeof path === "string" ? path : null;
 }

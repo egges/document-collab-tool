@@ -13,11 +13,29 @@ use crate::{Clock, Error, Result, Workspace, conflicts, json_merge, layout, text
 /// Label for the on-disk side when [`SyncEngine::write_page_body`] merges.
 pub const OTHER_CHANGES_LABEL: &str = "Changed elsewhere";
 
+/// Where device refs live in a folder remote.
+pub const DEVICE_REFS: &str = "refs/heads/devices/";
+
+/// How devices share history through the remote.
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub enum RemoteLayout {
+    /// One branch that every device pushes to; git refuses a push that
+    /// would lose another device's commits. For git hosts.
+    #[default]
+    SharedBranch,
+    /// A bare repository in a cloud folder (Dropbox, iCloud Drive, ...),
+    /// which copies files one by one, in any order and with delays. Each
+    /// device writes only its own ref, `refs/heads/devices/<device_id>`,
+    /// so no file has two writers, and merges everyone else's.
+    DeviceRefs { device_id: String },
+}
+
 /// Settings for one device's copy of a workspace.
 #[derive(Debug, Clone)]
 pub struct SyncConfig {
     pub remote: String,
     pub branch: String,
+    pub layout: RemoteLayout,
     /// Shown in conflict blocks and conflict-copy names, e.g. "Arjan's MacBook".
     pub device_name: String,
     pub author_name: String,
@@ -36,6 +54,7 @@ impl SyncConfig {
         Self {
             remote: "origin".into(),
             branch: "main".into(),
+            layout: RemoteLayout::SharedBranch,
             author_email: format!("{}@devices.invalid", layout::slug(&device_name)),
             author_name: device_name.clone(),
             device_name,
@@ -66,6 +85,9 @@ pub struct SyncReport {
     pub conflicts: Vec<ResolvedConflict>,
     /// Stale git lock files that were removed before syncing.
     pub removed_locks: Vec<String>,
+    /// Folder remotes only: devices whose latest changes haven't fully
+    /// arrived in the folder yet. They're merged on a later sync.
+    pub incomplete_devices: Vec<String>,
 }
 
 /// What [`SyncEngine::write_page_body`] wrote.
@@ -93,18 +115,31 @@ pub struct SyncEngine {
     /// Name and email for new commits; starts as the config's, and changes
     /// with [`SyncEngine::set_author`] when the user signs in or out.
     author: std::sync::Mutex<(String, String)>,
+    /// Starts as the config's; see [`SyncEngine::set_remote_layout`].
+    layout: std::sync::Mutex<RemoteLayout>,
 }
 
 impl SyncEngine {
     fn new(git: Arc<dyn GitBackend>, root: PathBuf, config: SyncConfig, clock: Arc<dyn Clock>) -> Self {
         let author = (config.author_name.clone(), config.author_email.clone());
+        let layout = config.layout.clone();
         Self {
             git,
             root,
             config,
             clock,
             author: std::sync::Mutex::new(author),
+            layout: std::sync::Mutex::new(layout),
         }
+    }
+
+    /// Create an empty folder remote at `dir`, e.g. `~/Dropbox/Notes.docsync`,
+    /// for workspaces with [`RemoteLayout::DeviceRefs`].
+    pub fn create_folder_remote(git: &dyn GitBackend, dir: &Path) -> Result<()> {
+        if dir.exists() && fs::read_dir(dir).at(dir)?.next().is_some() {
+            return Err(Error::InvalidState(format!("{} isn't empty", dir.display())));
+        }
+        git.init_folder_remote(dir)
     }
 
     /// Create a new, empty workspace at `root`.
@@ -137,10 +172,26 @@ impl SyncEngine {
         git.init(&root, &config.branch)?;
         git.set_remote_url(&root, &config.remote, url)?;
         let engine = Self::new(git, root, config, clock);
-        match engine
-            .git
-            .fetch(&engine.root, &engine.config.remote, &engine.config.branch)?
-        {
+        let start = match engine.remote_layout() {
+            RemoteLayout::SharedBranch => {
+                engine
+                    .git
+                    .fetch(&engine.root, &engine.config.remote, &engine.config.branch)?
+            }
+            RemoteLayout::DeviceRefs { .. } => {
+                prepare_folder_remote(&engine.folder_path()?).map_err(Error::Network)?;
+                let mut report = SyncReport::default();
+                let tips = engine.fetch_device_refs(&mut report)?;
+                if tips.is_empty() && !report.incomplete_devices.is_empty() {
+                    return Err(Error::Network(
+                        "the workspace hasn't finished downloading into this folder yet".into(),
+                    ));
+                }
+                // The first sync merges the other devices' refs.
+                tips.into_iter().next().map(|(_, oid)| oid)
+            }
+        };
+        match start {
             Some(remote) => {
                 let empty_tree = engine.git.write_index_tree(&engine.root)?;
                 engine.git.checkout(&engine.root, &empty_tree, &remote)?;
@@ -202,6 +253,79 @@ impl SyncEngine {
 
     pub fn set_remote(&self, url: &str) -> Result<()> {
         self.git.set_remote_url(&self.root, &self.config.remote, url)
+    }
+
+    /// Sync with `url` from now on, shared as `layout`, refusing a remote
+    /// that already holds a different workspace: one whose history has
+    /// nothing in common with this one's, which the next sync would mix in.
+    /// An empty remote is fine, and so is one that can't be reached right
+    /// now; a folder remote that isn't there is refused.
+    ///
+    /// Holds the sync lock, so no sync runs against `url` before it's
+    /// checked. On failure the previous remote is kept.
+    pub fn switch_remote(&self, url: &str, layout: RemoteLayout) -> Result<()> {
+        let _lock = self.lock()?;
+        let old_url = self.git.remote_url(&self.root, &self.config.remote)?;
+        let old_layout = self.remote_layout();
+        self.git.set_remote_url(&self.root, &self.config.remote, url)?;
+        self.set_remote_layout(layout);
+        let problem = match self.holds_other_workspace() {
+            Ok(false) => return Ok(()),
+            Ok(true) => Error::DifferentWorkspace(
+                "That already holds a different workspace. Join that one instead, or choose an empty one."
+                    .into(),
+            ),
+            Err(e) => e,
+        };
+        if let Some(old) = old_url {
+            self.git.set_remote_url(&self.root, &self.config.remote, &old)?;
+        }
+        self.set_remote_layout(old_layout);
+        Err(problem)
+    }
+
+    /// Whether the remote has commits and none of them share this
+    /// workspace's history. Unreachable counts as no.
+    fn holds_other_workspace(&self) -> Result<bool> {
+        let Some(local) = self.head()? else {
+            return Ok(false);
+        };
+        let tips = match self.remote_layout() {
+            RemoteLayout::SharedBranch => {
+                match self
+                    .git
+                    .fetch(&self.root, &self.config.remote, &self.config.branch)
+                {
+                    Ok(tip) => tip.into_iter().collect(),
+                    Err(Error::Network(_)) => return Ok(false),
+                    Err(e) => return Err(e),
+                }
+            }
+            RemoteLayout::DeviceRefs { .. } => {
+                prepare_folder_remote(&self.folder_path()?).map_err(Error::Network)?;
+                match self.fetch_device_refs(&mut SyncReport::default()) {
+                    Ok(tips) => tips.into_iter().map(|(_, oid)| oid).collect::<Vec<_>>(),
+                    Err(Error::Network(_)) => return Ok(false),
+                    Err(e) => return Err(e),
+                }
+            }
+        };
+        for tip in &tips {
+            if self.git.merge_base(&self.root, &local, tip)?.is_some() {
+                return Ok(false);
+            }
+        }
+        Ok(!tips.is_empty())
+    }
+
+    /// How history is shared through the remote, e.g. after switching from
+    /// a git host to a cloud folder. Takes effect on the next sync.
+    pub fn set_remote_layout(&self, layout: RemoteLayout) {
+        *self.layout.lock().unwrap() = layout;
+    }
+
+    pub fn remote_layout(&self) -> RemoteLayout {
+        self.layout.lock().unwrap().clone()
     }
 
     /// The current local commit.
@@ -287,6 +411,9 @@ impl SyncEngine {
             ..SyncReport::default()
         };
         report.committed |= self.commit_locked("Save changes")?.is_some();
+        if let RemoteLayout::DeviceRefs { device_id } = self.remote_layout() {
+            return self.sync_device_refs(&device_id, report);
+        }
 
         for _ in 0..self.config.max_attempts {
             let local = self
@@ -371,6 +498,139 @@ impl SyncEngine {
             }
         }
         Err(Error::PushRejected(self.config.max_attempts))
+    }
+
+    /// [`SyncEngine::sync`] for a folder remote: fetch every device's ref
+    /// that has fully arrived, merge them all into the local branch, and
+    /// publish the result as this device's ref. Nobody else writes that
+    /// ref, so publishing is never rejected.
+    fn sync_device_refs(&self, device_id: &str, mut report: SyncReport) -> Result<SyncReport> {
+        let own = format!("{DEVICE_REFS}{device_id}");
+        for _ in 0..self.config.max_attempts {
+            let local = self
+                .head()?
+                .ok_or_else(|| Error::InvalidState("the local branch has no commits".into()))?;
+            report.incomplete_devices.clear();
+            if let Err(reason) = prepare_folder_remote(&self.folder_path()?) {
+                report.offline = true;
+                report.offline_reason = Some(reason);
+                return Ok(report);
+            }
+            let tips = match self.fetch_device_refs(&mut report) {
+                Ok(tips) => tips,
+                Err(Error::Network(reason)) => {
+                    report.offline = true;
+                    report.offline_reason = Some(reason);
+                    return Ok(report);
+                }
+                Err(e) => return Err(e),
+            };
+            let published = tips
+                .iter()
+                .find(|(name, _)| *name == own)
+                .map(|(_, oid)| oid.clone());
+
+            let mut target = local.clone();
+            let mut conflicts = Vec::new();
+            let mut merged = false;
+            for (_, tip) in &tips {
+                if self.git.is_ancestor(&self.root, tip, &target)? {
+                    continue;
+                }
+                if self.git.is_ancestor(&self.root, &target, tip)? {
+                    target = tip.clone();
+                    continue;
+                }
+                let outcome = merge::merge_commits(
+                    self.git.as_ref(),
+                    &self.root,
+                    &target,
+                    tip,
+                    &self.config.device_name,
+                )?;
+                target = self.git.commit_tree(
+                    &self.root,
+                    &outcome.tree,
+                    &[target.clone(), tip.clone()],
+                    &merge_message(&outcome.conflicts),
+                    &self.signature(),
+                )?;
+                conflicts.extend(outcome.conflicts);
+                merged = true;
+            }
+            if target != local {
+                match self.move_to(&local, &target) {
+                    Ok(()) if merged => {
+                        report.merged = true;
+                        report.conflicts.extend(conflicts);
+                    }
+                    Ok(()) => report.fast_forwarded = true,
+                    Err(Error::WorkingTreeChanged(_)) => {
+                        report.committed |= self.commit_locked("Save changes")?.is_some();
+                        continue;
+                    }
+                    Err(e) => return Err(e),
+                }
+            }
+            if published.as_ref() == Some(&target) {
+                return Ok(report);
+            }
+            let folder = self.folder_path()?;
+            return match self
+                .git
+                .publish_to_folder(&self.root, &folder, &target, published.as_ref(), &own)
+            {
+                Ok(()) => {
+                    report.pushed = true;
+                    Ok(report)
+                }
+                Err(Error::Network(reason)) => {
+                    report.offline = true;
+                    report.offline_reason = Some(reason);
+                    Ok(report)
+                }
+                Err(e) => Err(e),
+            };
+        }
+        Err(Error::PushRejected(self.config.max_attempts))
+    }
+
+    /// Every device ref in the folder remote whose objects have all
+    /// arrived, fetched, by name. The others go in
+    /// [`SyncReport::incomplete_devices`].
+    fn fetch_device_refs(&self, report: &mut SyncReport) -> Result<Vec<(String, Oid)>> {
+        let refs = self
+            .git
+            .remote_refs(&self.root, &self.config.remote, DEVICE_REFS)?;
+        let mut tips = Vec::new();
+        for (name, oid) in refs {
+            let device = name.trim_start_matches(DEVICE_REFS).to_string();
+            if self
+                .git
+                .resolve(&self.root, &format!("{oid}^{{commit}}"))?
+                .is_some()
+            {
+                tips.push((name, oid));
+                continue;
+            }
+            let branch = name.trim_start_matches("refs/heads/");
+            match self.git.fetch(&self.root, &self.config.remote, branch) {
+                Ok(Some(fetched)) => tips.push((name, fetched)),
+                // Its ref arrived before its objects, or it vanished.
+                Ok(None) | Err(Error::Network(_)) => report.incomplete_devices.push(device),
+                Err(e) => return Err(e),
+            }
+        }
+        Ok(tips)
+    }
+
+    /// The folder a folder remote's URL points to.
+    pub fn folder_path(&self) -> Result<PathBuf> {
+        let url = self
+            .git
+            .remote_url(&self.root, &self.config.remote)?
+            .ok_or_else(|| Error::Network("no remote is set".into()))?;
+        Ok(PathBuf::from(url.strip_prefix("file://").unwrap_or(&url)))
     }
 
     fn branch_ref(&self) -> String {
@@ -494,4 +754,28 @@ fn merge_message(conflicts: &[ResolvedConflict]) -> String {
         }
     }
     message
+}
+
+/// Check a folder remote before syncing with it: say why it can't be used
+/// (moved, deleted, a drive that isn't connected, not downloaded yet), and
+/// put back the empty folders git needs. Some sync services don't sync
+/// empty folders, and git won't open a repository without them.
+pub fn prepare_folder_remote(dir: &Path) -> std::result::Result<(), String> {
+    if !dir.is_dir() {
+        return Err(format!(
+            "the folder {} isn't there: it was moved or deleted, or it's on a drive that isn't connected",
+            dir.display()
+        ));
+    }
+    if !dir.join("HEAD").is_file() {
+        return Err(format!(
+            "{} isn't a workspace's sync folder, or it hasn't finished downloading",
+            dir.display()
+        ));
+    }
+    for sub in ["objects/pack", "objects/info", "refs/heads", "refs/tags"] {
+        // A read-only folder can still be read; git says so if it can't.
+        let _ = fs::create_dir_all(dir.join(sub));
+    }
+    Ok(())
 }

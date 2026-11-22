@@ -282,6 +282,10 @@ fn stderr_of(output: &Output) -> String {
     String::from_utf8_lossy(&output.stderr).trim().to_string()
 }
 
+fn fs_create_dir(path: &Path) -> Result<()> {
+    std::fs::create_dir_all(path).at(path)
+}
+
 fn path_str(path: &Path) -> Result<&str> {
     path.to_str()
         .ok_or_else(|| Error::InvalidState(format!("path is not UTF-8: {}", path.display())))
@@ -471,6 +475,125 @@ impl GitBackend for CliGit {
         } else {
             Err(Error::Network(stderr_of(&out)))
         }
+    }
+
+    fn init_folder_remote(&self, dir: &Path) -> Result<()> {
+        self.run(
+            None,
+            &["init", "-q", "--bare", "-b", "main", path_str(dir)?],
+            None,
+            &[],
+        )?;
+        // Devices only ever add files here: packs that never change and one
+        // ref each. Nothing may repack, prune or pack refs, since that
+        // rewrites files other devices write or read through the cloud.
+        for (key, value) in [
+            ("gc.auto", "0"),
+            ("gc.autoPackLimit", "0"),
+            ("gc.packRefs", "false"),
+            ("receive.autogc", "false"),
+            ("core.logAllRefUpdates", "false"),
+        ] {
+            self.run(Some(dir), &["config", key, value], None, &[])?;
+        }
+        Ok(())
+    }
+
+    fn remote_url(&self, repo: &Path, remote: &str) -> Result<Option<String>> {
+        let out = self.exec(Some(repo), &["remote", "get-url", remote], None, &[])?;
+        Ok(out
+            .status
+            .success()
+            .then(|| String::from_utf8_lossy(&out.stdout).trim().to_string()))
+    }
+
+    fn remote_refs(&self, repo: &Path, remote: &str, prefix: &str) -> Result<Vec<(String, Oid)>> {
+        let pattern = format!("{prefix}*");
+        let out = self.exec(Some(repo), &["ls-remote", "--refs", remote, &pattern], None, &[])?;
+        if !out.status.success() {
+            return Err(Error::Network(stderr_of(&out)));
+        }
+        let mut refs: Vec<(String, Oid)> = String::from_utf8_lossy(&out.stdout)
+            .lines()
+            .filter_map(|line| {
+                let (oid, name) = line.split_once('\t')?;
+                name.starts_with(prefix)
+                    .then(|| (name.to_string(), Oid::new(oid)))
+            })
+            .collect();
+        refs.sort();
+        Ok(refs)
+    }
+
+    fn publish_to_folder(
+        &self,
+        repo: &Path,
+        folder: &Path,
+        commit: &Oid,
+        exclude: Option<&Oid>,
+        refname: &str,
+    ) -> Result<()> {
+        let unreachable =
+            |e: std::io::Error| Error::Network(format!("couldn't write to {}: {e}", folder.display()));
+        if !folder.join("objects").is_dir() {
+            return Err(Error::Network(format!(
+                "{} isn't there or isn't a workspace folder",
+                folder.display()
+            )));
+        }
+        let n = TEMP_COUNTER.fetch_add(1, Ordering::SeqCst);
+        let staging = repo
+            .join(".git")
+            .join(format!("docsync-pack-{}-{n}", std::process::id()));
+        fs_create_dir(&staging)?;
+        let result = (|| {
+            let mut revs = format!("{commit}\n");
+            if let Some(exclude) = exclude {
+                revs.push_str(&format!("^{exclude}\n"));
+            }
+            let base = staging.join("pack");
+            let out = self.run(
+                Some(repo),
+                &[
+                    "-c",
+                    "pack.writeReverseIndex=false",
+                    "pack-objects",
+                    "--revs",
+                    "-q",
+                    path_str(&base)?,
+                ],
+                Some(revs.as_bytes()),
+                &[],
+            )?;
+            let hash = String::from_utf8_lossy(&out).trim().to_string();
+            if !hash.is_empty() {
+                let packs = folder.join("objects").join("pack");
+                std::fs::create_dir_all(&packs).map_err(unreachable)?;
+                // The pack before its index: git ignores an index whose pack
+                // is missing, but not the other way around.
+                for ext in ["pack", "idx"] {
+                    let name = format!("pack-{hash}.{ext}");
+                    let target = packs.join(&name);
+                    if target.exists() {
+                        continue;
+                    }
+                    let temp = packs.join(format!("{name}.docsync-tmp-{n}"));
+                    std::fs::copy(staging.join(format!("pack-{hash}.{ext}")), &temp).map_err(unreachable)?;
+                    std::fs::rename(&temp, &target).map_err(unreachable)?;
+                }
+            }
+            let ref_path = folder.join(refname);
+            if let Some(dir) = ref_path.parent() {
+                std::fs::create_dir_all(dir).map_err(unreachable)?;
+            }
+            // Not next to the ref, where git would read it as another ref.
+            let temp = folder.join(format!("docsync-ref-{}-{n}.tmp", std::process::id()));
+            std::fs::write(&temp, format!("{commit}\n")).map_err(unreachable)?;
+            std::fs::rename(&temp, &ref_path).map_err(unreachable)?;
+            Ok(())
+        })();
+        let _ = std::fs::remove_dir_all(&staging);
+        result
     }
 
     fn is_ancestor(&self, repo: &Path, ancestor: &Oid, descendant: &Oid) -> Result<bool> {
