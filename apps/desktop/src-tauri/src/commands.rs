@@ -395,6 +395,112 @@ pub async fn move_workspace(
     }
 }
 
+/// What deleting the open workspace would mean, for the confirmation.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DeletionInfo {
+    name: String,
+    path: String,
+    remote: Option<String>,
+    /// "owner/repo" when the remote is a GitHub repository the app can reach
+    /// (and so could delete).
+    github_repo: Option<String>,
+    /// Changes that aren't on the remote, or no remote at all: deleting the
+    /// folder would lose them.
+    unsynced: bool,
+}
+
+#[tauri::command]
+pub async fn workspace_deletion_info(state: State<'_, AppState>) -> CmdResult<DeletionInfo> {
+    let info = {
+        let guard = state.session.lock().unwrap();
+        guard.as_ref().ok_or("No workspace is open")?.info()
+    };
+    blocking("workspace_deletion_info", move || {
+        let git = crate::git::find_git()?;
+        let unsynced = workspaces::unsynced(git.binary(), Path::new(&info.path));
+        let github_repo = info
+            .remote
+            .as_deref()
+            .and_then(github::repo_from_url)
+            .filter(|repo| github::user().is_some() && github::can_reach(repo).unwrap_or(false));
+        Ok(DeletionInfo {
+            name: info.name,
+            path: info.path,
+            remote: info.remote,
+            github_repo,
+            unsynced,
+        })
+    })
+    .await
+}
+
+/// Delete the open workspace from this device: its folder goes to the
+/// Trash and it leaves the list. With `delete_repo`, its GitHub repository
+/// is deleted first (if that fails, nothing else happens). Then the most
+/// recently opened other workspace opens; `None` when there's none.
+#[tauri::command]
+pub async fn delete_workspace(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    delete_repo: bool,
+) -> CmdResult<Option<WorkspaceInfo>> {
+    let (root, remote) = {
+        let guard = state.session.lock().unwrap();
+        let session = guard.as_ref().ok_or("No workspace is open")?;
+        (session.engine.root().to_path_buf(), session.info().remote)
+    };
+    if delete_repo {
+        let repo = remote
+            .as_deref()
+            .and_then(github::repo_from_url)
+            .ok_or("This workspace doesn't sync with a GitHub repository.")?;
+        blocking("delete_workspace", move || github::delete_repo(&repo)).await?;
+    }
+    let session = state
+        .session
+        .lock()
+        .unwrap()
+        .take()
+        .ok_or("No workspace is open")?;
+    let events = WindowEvents(app.clone());
+    let folder = root.clone();
+    let trashed = blocking("delete_workspace", move || {
+        // Stop syncing and watching before the files go.
+        drop(session);
+        match trash::delete(&folder) {
+            Ok(()) => Ok(Ok(())),
+            // Keep it open rather than leave the window with nothing.
+            Err(e) => Ok(Err((
+                format!("Couldn't move {} to the Trash: {e}", folder.display()),
+                Session::open_or_create(&folder, events),
+            ))),
+        }
+    })
+    .await?;
+    if let Err((message, reopened)) = trashed {
+        if let Ok(session) = reopened {
+            install(&app, &state, session);
+        }
+        return Err(message);
+    }
+    devlog::info("app", format!("Moved {} to the Trash", root.display()));
+    update_settings(&app, |s| s.forget(&root));
+
+    // Open the most recent other workspace that's still there.
+    let next = load_settings(&app)
+        .entries()
+        .into_iter()
+        .find(|e| !e.missing)
+        .map(|e| PathBuf::from(e.path));
+    let Some(next) = next else { return Ok(None) };
+    let events = WindowEvents(app.clone());
+    match blocking("delete_workspace", move || Session::open_or_create(&next, events)).await {
+        Ok(session) => Ok(Some(install(&app, &state, session))),
+        Err(_) => Ok(None),
+    }
+}
+
 #[tauri::command]
 pub async fn set_remote(state: State<'_, AppState>, url: Option<String>) -> CmdResult<WorkspaceInfo> {
     let mut guard = state.session.lock().unwrap();

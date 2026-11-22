@@ -48,7 +48,7 @@ export function SyncStatusBar({
   status: SyncStatus | null;
   onWorkspaceChange: (w: WorkspaceInfo | null) => void;
   /** Saves the open page, then opens the workspace `open` returns. */
-  onSwitch: (open: () => Promise<WorkspaceInfo>) => Promise<void>;
+  onSwitch: (open: () => Promise<WorkspaceInfo | null>) => Promise<void>;
   onSetRemote: (url: string | null) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);

@@ -56,6 +56,34 @@ pub fn now_ms() -> u64 {
         .unwrap_or(0)
 }
 
+/// Whether `root` has work that isn't on its remote: uncommitted changes,
+/// commits that weren't pushed, or no remote at all. Deleting it would lose
+/// that work.
+pub fn unsynced(git: &Path, root: &Path) -> bool {
+    let run = |args: &[&str]| {
+        std::process::Command::new(git)
+            .arg("-C")
+            .arg(root)
+            .args(args)
+            .env(
+                "GIT_CONFIG_GLOBAL",
+                if cfg!(windows) { "NUL" } else { "/dev/null" },
+            )
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .output()
+            .ok()
+            .filter(|o| o.status.success())
+            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+    };
+    let changed = run(&["status", "--porcelain"]).is_none_or(|out| !out.is_empty());
+    let unpushed = match run(&["rev-parse", "--verify", "-q", "refs/remotes/origin/main"]) {
+        None => true,
+        Some(_) => run(&["rev-list", "--count", "refs/remotes/origin/main..refs/heads/main"])
+            .is_none_or(|n| n != "0"),
+    };
+    changed || unpushed
+}
+
 /// Whether `path` holds a workspace: a Git repository with `workspace.json`.
 pub fn is_workspace(path: &Path) -> bool {
     path.join(".git").exists() && path.join(layout::WORKSPACE_FILE).is_file()
@@ -265,6 +293,45 @@ mod tests {
         )
         .unwrap();
         root
+    }
+
+    #[test]
+    fn notices_work_that_would_be_lost() {
+        let git = std::path::PathBuf::from("git");
+        let run = |dir: &Path, args: &[&str]| {
+            let ok = std::process::Command::new("git")
+                .arg("-C")
+                .arg(dir)
+                .args(args)
+                .env("GIT_CONFIG_GLOBAL", "/dev/null")
+                .env("GIT_AUTHOR_NAME", "t")
+                .env("GIT_AUTHOR_EMAIL", "t@t")
+                .env("GIT_COMMITTER_NAME", "t")
+                .env("GIT_COMMITTER_EMAIL", "t@t")
+                .status()
+                .unwrap()
+                .success();
+            assert!(ok, "git {args:?}");
+        };
+        let dir = tempfile::tempdir().unwrap();
+        let remote = dir.path().join("remote.git");
+        let root = dir.path().join("ws");
+        run(
+            dir.path(),
+            &["init", "-q", "--bare", "-b", "main", remote.to_str().unwrap()],
+        );
+        run(dir.path(), &["init", "-q", "-b", "main", root.to_str().unwrap()]);
+        fs::write(root.join("a.md"), "a").unwrap();
+        run(&root, &["add", "-A"]);
+        run(&root, &["commit", "-q", "-m", "a"]);
+        assert!(unsynced(&git, &root), "never pushed");
+        run(&root, &["remote", "add", "origin", remote.to_str().unwrap()]);
+        run(&root, &["push", "-q", "origin", "main"]);
+        assert!(!unsynced(&git, &root), "all pushed");
+        fs::write(root.join("a.md"), "b").unwrap();
+        assert!(unsynced(&git, &root), "uncommitted");
+        run(&root, &["commit", "-qam", "b"]);
+        assert!(unsynced(&git, &root), "not pushed");
     }
 
     #[test]

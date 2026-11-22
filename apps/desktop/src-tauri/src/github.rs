@@ -476,6 +476,12 @@ fn api_with<T: serde::de::DeserializeOwned>(
             .header("Accept", accept)
             .header("X-GitHub-Api-Version", "2022-11-28")
             .call(),
+        "DELETE" => agent
+            .delete(&url)
+            .header("Authorization", &auth)
+            .header("Accept", accept)
+            .header("X-GitHub-Api-Version", "2022-11-28")
+            .call(),
         "PUT" => agent
             .put(&url)
             .header("Authorization", &auth)
@@ -499,6 +505,12 @@ fn api_with<T: serde::de::DeserializeOwned>(
             .unwrap_or(text);
         return Err(ApiError { status, message });
     }
+    // 204 No Content, e.g. after deleting.
+    let text = if text.trim().is_empty() {
+        "null".to_string()
+    } else {
+        text
+    };
     serde_json::from_str(&text).map_err(|e| ApiError {
         status,
         message: format!("unexpected answer: {e}"),
@@ -658,6 +670,40 @@ pub fn create_private_repo(workspace: &str) -> Result<Repo, String> {
     Err(format!(
         "You already have repositories called {base}, {base}-2 and so on up to 20."
     ))
+}
+
+/// "owner/repo" for a github.com remote URL (HTTPS or SSH).
+pub fn repo_from_url(url: &str) -> Option<String> {
+    let url = url.trim();
+    let rest = url
+        .strip_prefix("https://github.com/")
+        .or_else(|| url.strip_prefix("http://github.com/"))
+        .or_else(|| url.strip_prefix("git@github.com:"))
+        .or_else(|| url.strip_prefix("ssh://git@github.com/"))?;
+    let rest = rest.trim_end_matches('/');
+    let rest = rest.strip_suffix(".git").unwrap_or(rest);
+    let (owner, repo) = rest.split_once('/')?;
+    let valid = |part: &str| !part.is_empty() && !part.contains('/');
+    (valid(owner) && valid(repo)).then(|| format!("{owner}/{repo}"))
+}
+
+/// Delete a repository on GitHub. GitHub keeps it restorable from the
+/// owner's settings for 90 days.
+pub fn delete_repo(full_name: &str) -> Result<(), String> {
+    let token = signed_in_token()?;
+    match api::<serde_json::Value>("DELETE", &format!("/repos/{full_name}"), &token, None) {
+        Ok(_) => {
+            devlog::info("github", format!("Deleted the repo {full_name}"));
+            Ok(())
+        }
+        Err(e) if e.status == 403 => Err(format!(
+            "GitHub didn't let Pagemesh delete {full_name}. Only its owner or an admin can delete it. ({e})"
+        )),
+        Err(e) if e.status == 404 => Err(format!(
+            "{full_name} wasn't found on GitHub, or Pagemesh can't reach it."
+        )),
+        Err(e) => Err(e.to_string()),
+    }
 }
 
 /// Whether the App can reach `full_name` (e.g. "ada/notes") with the
@@ -1133,6 +1179,22 @@ mod tests {
         let sent = serde_json::to_value(&code).unwrap();
         assert_eq!(sent["userCode"], "6A1F-24A3");
         assert!(sent.get("deviceCode").is_none(), "the device code stays in Rust");
+    }
+
+    #[test]
+    fn finds_repos_in_remote_urls() {
+        for url in [
+            "https://github.com/ada/My-Notes.git",
+            "https://github.com/ada/My-Notes",
+            "git@github.com:ada/My-Notes.git",
+            "ssh://git@github.com/ada/My-Notes.git",
+        ] {
+            assert_eq!(repo_from_url(url).as_deref(), Some("ada/My-Notes"), "{url}");
+        }
+        assert_eq!(repo_from_url("https://gitlab.com/ada/notes.git"), None);
+        assert_eq!(repo_from_url("/Volumes/USB/notes.git"), None);
+        assert_eq!(repo_from_url("https://github.com/ada"), None);
+        assert_eq!(repo_from_url("https://github.com/ada/notes/tree/main"), None);
     }
 
     #[test]

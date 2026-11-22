@@ -27,6 +27,8 @@ step). On Linux, install
   (`src/WorkspaceSwitcher.tsx`); double-clicking the name renames it. A
   workspace whose folder has gone shows "Locate…". "Move…" in the sync
   panel moves the workspace's folder (`src-tauri/src/workspaces.rs`).
+  "Delete workspace…" moves its folder to the Trash and, if ticked, deletes
+  its GitHub repository too (`src/DeleteWorkspace.tsx`).
 - **Pages.** A page tree (pages whose parent was deleted on another device
   show at the top level), a title, and the editor. Create, rename and delete
   pages. Drag the sidebar's edge to resize it (double-click resets it); its

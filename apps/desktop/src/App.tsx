@@ -145,9 +145,10 @@ function WorkspaceView({
     }
   };
 
-  // Opening another workspace (or moving this one): save the open page first,
-  // so its last edits land in this workspace.
-  const switchTo = async (open: () => Promise<WorkspaceInfo>) => {
+  // Opening another workspace (or moving or deleting this one): save the
+  // open page first, so its last edits land in this workspace. `open` may
+  // return null for "no workspace open" (onboarding).
+  const switchTo = async (open: () => Promise<WorkspaceInfo | null>) => {
     try {
       await page.current?.flush();
       onChange(await open());

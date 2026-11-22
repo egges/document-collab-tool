@@ -10,6 +10,7 @@
   --accent-text: #ffffff;
   --ok: #1a7f37;
   --warn: #9a6700;
+  --danger: #cf222e;
   --warn-bg: #fff8c5;
   --error: #cf222e;
   --error-bg: #ffebe9;
@@ -33,6 +34,7 @@
     --accent-text: #0d1117;
     --ok: #3fb950;
     --warn: #d29922;
+    --danger: #da3633;
     --warn-bg: #3b2e0a;
     --error: #f85149;
     --error-bg: #3c1618;
@@ -899,6 +901,50 @@ button.workspace-name[aria-expanded="true"] {
   white-space: nowrap;
   text-align: left;
   font-size: inherit;
+}
+
+/* ---- confirmations ------------------------------------------------------ */
+
+.dialog.confirm {
+  width: min(440px, calc(100vw - 32px));
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dialog.confirm h2,
+.dialog.confirm p {
+  margin: 0;
+}
+
+.dialog.confirm h2 {
+  font-size: 16px;
+}
+
+.warn-text {
+  color: var(--warn);
+}
+
+.check {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  cursor: pointer;
+}
+
+.check input {
+  margin-top: 3px;
+}
+
+.button.danger {
+  background: var(--danger);
+  border-color: var(--danger);
+  color: #fff;
+}
+
+.button.danger:hover:not(:disabled) {
+  filter: brightness(1.08);
 }
 
 /* ---- GitHub ------------------------------------------------------------- */
