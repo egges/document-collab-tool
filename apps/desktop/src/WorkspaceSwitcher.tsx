@@ -1,13 +1,15 @@
 import { useCallback, useRef, useState } from "react";
-import { Check, ChevronDown, FolderSearch, Pencil, Plus, X } from "lucide-react";
+import { Check, ChevronDown, FolderSearch, Pencil, Plus, Trash2, X } from "lucide-react";
 import { type WorkspaceEntry, type WorkspaceInfo, api, errorText } from "./api.ts";
 import { onMenuKeyDown, pickFolder, useDismiss } from "./menu.ts";
+import { DeleteWorkspace } from "./DeleteWorkspace.tsx";
 import { WorkspaceNameInput } from "./WorkspaceName.tsx";
 
 /**
  * The workspace name in the sidebar header. Clicking it opens a menu of the
  * workspaces this device knows, to switch between them, with Rename and
- * "Add workspace…". Double-clicking the name renames it straight away.
+ * "Add workspace…" and "Delete workspace…". Double-clicking the name
+ * renames it straight away.
  * A workspace whose folder has gone shows "Locate…" to find it again.
  */
 export function WorkspaceSwitcher({
@@ -20,12 +22,13 @@ export function WorkspaceSwitcher({
   workspace: WorkspaceInfo;
   onRenamed: (w: WorkspaceInfo) => void;
   /** Saves the open page, then opens what `open` returns. */
-  onSwitch: (open: () => Promise<WorkspaceInfo>) => Promise<void>;
+  onSwitch: (open: () => Promise<WorkspaceInfo | null>) => Promise<void>;
   onAdd: () => void;
   onError: (message: string) => void;
 }) {
   const [open, setOpen] = useState(false);
   const [renaming, setRenaming] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [entries, setEntries] = useState<WorkspaceEntry[] | null>(null);
   const root = useRef<HTMLDivElement>(null);
   const trigger = useRef<HTMLButtonElement>(null);
@@ -162,6 +165,20 @@ export function WorkspaceSwitcher({
                 className="menu-item"
                 onClick={() => {
                   setOpen(false);
+                  setDeleting(true);
+                }}
+              >
+                <span className="menu-check" aria-hidden>
+                  <Trash2 size={14} />
+                </span>
+                <span className="menu-label">Delete workspace…</span>
+              </button>
+              <div className="menu-separator" role="separator" />
+              <button
+                role="menuitem"
+                className="menu-item"
+                onClick={() => {
+                  setOpen(false);
                   onAdd();
                 }}
               >
@@ -174,6 +191,7 @@ export function WorkspaceSwitcher({
           )}
         </div>
       )}
+      {deleting && <DeleteWorkspace onDelete={onSwitch} onClose={() => setDeleting(false)} />}
     </div>
   );
 }

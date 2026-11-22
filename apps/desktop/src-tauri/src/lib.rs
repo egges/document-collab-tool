@@ -62,6 +62,8 @@ pub fn run() {
             commands::forget_workspace,
             commands::locate_workspace,
             commands::move_workspace,
+            commands::workspace_deletion_info,
+            commands::delete_workspace,
             commands::set_remote,
             commands::github_account,
             commands::github_sign_in_mode,

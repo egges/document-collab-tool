@@ -17,7 +17,7 @@ interface SidebarProps {
   onCreate: (parent: string | null) => void;
   onWorkspaceChange: (w: WorkspaceInfo | null) => void;
   /** Saves the open page, then opens the workspace `open` returns. */
-  onSwitch: (open: () => Promise<WorkspaceInfo>) => Promise<void>;
+  onSwitch: (open: () => Promise<WorkspaceInfo | null>) => Promise<void>;
   onAddWorkspace: () => void;
   onError: (message: string) => void;
   onShowShortcuts: () => void;

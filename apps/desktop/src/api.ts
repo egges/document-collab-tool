@@ -113,6 +113,17 @@ export interface NewGitHubWorkspace {
   manageUrl: string | null;
 }
 
+/** What deleting the open workspace would mean. */
+export interface DeletionInfo {
+  name: string;
+  path: string;
+  remote: string | null;
+  /** "owner/repo" when the remote is a GitHub repo the app could delete. */
+  githubRepo: string | null;
+  /** Work that isn't on the remote (or no remote): deleting would lose it. */
+  unsynced: boolean;
+}
+
 export interface CreatedRepo {
   workspace: WorkspaceInfo;
   /** "ada/My-Notes". */
@@ -147,6 +158,13 @@ export const api = {
    * it reopens where it was (or nothing is open): ask `workspaceInfo`.
    */
   moveWorkspace: (parent: string) => invoke<WorkspaceInfo>("move_workspace", { parent }),
+  workspaceDeletionInfo: () => invoke<DeletionInfo>("workspace_deletion_info"),
+  /**
+   * Move the open workspace's folder to the Trash (and with `deleteRepo`,
+   * delete its GitHub repo first), then open the most recent other one;
+   * null when there's none.
+   */
+  deleteWorkspace: (deleteRepo: boolean) => invoke<WorkspaceInfo | null>("delete_workspace", { deleteRepo }),
   setRemote: (url: string | null) => invoke<WorkspaceInfo>("set_remote", { url }),
   githubAccount: () => invoke<GitHubUser | null>("github_account"),
   /** `attempt` is any number new to this run; pass it to finish and cancel too. */

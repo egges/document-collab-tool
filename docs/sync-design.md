@@ -182,6 +182,18 @@ moves together: history, the per-device remote in `.docsync/app.json` and
 the search index. Other devices don't notice, since remotes never point at a
 working copy.
 
+"Delete workspace…" in the workspace menu deletes the open workspace from
+this device: the worker and watcher stop, the folder goes to the Trash (so
+it can be put back) and it leaves the list, then the most recently opened
+other workspace opens, or onboarding when there's none. The confirmation
+says what would be lost: changes that haven't synced, or a workspace that
+syncs nowhere, would only be in the Trash. Deleting the GitHub repository
+too is a separate checkbox, off by default and only offered when the app
+can reach the repository; it's deleted first, and if GitHub refuses (only
+an owner or admin can), nothing else happens. GitHub keeps a deleted
+repository restorable for 90 days. Every other device then fails to sync
+and keeps its copy.
+
 ### Never a working copy inside a cloud folder
 
 Putting the workspace in Dropbox, iCloud Drive or OneDrive looks like the
