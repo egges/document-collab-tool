@@ -567,3 +567,24 @@ fn files_are_plain_and_readable_without_the_app() {
     assert_valid(&a);
     let _ = Workspace::new(a.root());
 }
+
+#[test]
+fn commits_use_the_author_set_after_opening() {
+    let net = Net::new();
+    let a = net.device("laptop");
+    a.engine
+        .set_author("Ada Lovelace", "1+ada@users.noreply.github.com");
+    let page = a.ws.create_page("Signed in", None).unwrap();
+    a.ws.write_body(&page, "hello\n").unwrap();
+    a.commit();
+    let out = common::git_command()
+        .arg("-C")
+        .arg(a.root())
+        .args(["log", "-1", "--format=%an <%ae>|%cn <%ce>"])
+        .output()
+        .unwrap();
+    assert_eq!(
+        String::from_utf8(out.stdout).unwrap().trim(),
+        "Ada Lovelace <1+ada@users.noreply.github.com>|Ada Lovelace <1+ada@users.noreply.github.com>"
+    );
+}

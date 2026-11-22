@@ -65,6 +65,7 @@ static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 pub struct CliGit {
     binary: PathBuf,
     extra_config: Vec<(String, String)>,
+    config_source: Option<ConfigSource>,
     tracer: Option<Tracer>,
 }
 
@@ -91,11 +92,23 @@ impl std::fmt::Debug for Tracer {
     }
 }
 
+type ConfigFn = dyn Fn() -> Vec<(String, String)> + Send + Sync;
+
+#[derive(Clone)]
+struct ConfigSource(std::sync::Arc<ConfigFn>);
+
+impl std::fmt::Debug for ConfigSource {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("ConfigSource")
+    }
+}
+
 impl CliGit {
     pub fn new(binary: impl Into<PathBuf>) -> Self {
         Self {
             binary: binary.into(),
             extra_config: Vec::new(),
+            config_source: None,
             tracer: None,
         }
     }
@@ -108,6 +121,18 @@ impl CliGit {
 
     pub fn with_config(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.extra_config.push((key.into(), value.into()));
+        self
+    }
+
+    /// Settings read again before every command, for values that change
+    /// while the app runs, such as an access token that expires. They come
+    /// after [`CliGit::with_config`] settings and, like them, are passed
+    /// through the environment.
+    pub fn with_config_source(
+        mut self,
+        source: impl Fn() -> Vec<(String, String)> + Send + Sync + 'static,
+    ) -> Self {
+        self.config_source = Some(ConfigSource(std::sync::Arc::new(source)));
         self
     }
 
@@ -147,10 +172,12 @@ impl CliGit {
             .env("GIT_CONFIG_NOSYSTEM", "1")
             .env("GIT_CONFIG_GLOBAL", NULL_DEVICE);
 
+        let dynamic = self.config_source.as_ref().map(|s| (s.0)()).unwrap_or_default();
         let config: Vec<(&str, &str)> = FIXED_CONFIG
             .iter()
             .copied()
             .chain(self.extra_config.iter().map(|(k, v)| (k.as_str(), v.as_str())))
+            .chain(dynamic.iter().map(|(k, v)| (k.as_str(), v.as_str())))
             .collect();
         cmd.env("GIT_CONFIG_COUNT", config.len().to_string());
         for (i, (key, value)) in config.iter().enumerate() {
@@ -716,6 +743,24 @@ mod tests {
             "{:?}",
             calls[1]
         );
+    }
+
+    #[test]
+    fn reads_the_config_source_before_every_command() {
+        let counter = std::sync::Arc::new(AtomicU64::new(0));
+        let seen = counter.clone();
+        let git = CliGit::from_path().with_config_source(move || {
+            let n = seen.fetch_add(1, Ordering::SeqCst) + 1;
+            vec![("docsync.test".into(), format!("value-{n}"))]
+        });
+        let read = || {
+            let out = git
+                .exec(None, &["config", "--get", "docsync.test"], None, &[])
+                .unwrap();
+            String::from_utf8(out.stdout).unwrap().trim().to_string()
+        };
+        assert_eq!(read(), "value-1");
+        assert_eq!(read(), "value-2");
     }
 
     #[test]

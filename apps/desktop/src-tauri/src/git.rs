@@ -82,7 +82,9 @@ pub fn find_git() -> Result<CliGit, String> {
                 let description = format!("{} {version}", path.display());
                 devlog::info("app", format!("Using git: {description}"));
                 *DESCRIPTION.lock().unwrap() = Some(description);
-                return Ok(git.with_tracer(trace));
+                return Ok(git
+                    .with_config_source(crate::github::git_config)
+                    .with_tracer(trace));
             }
             Err(e @ docsync::Error::UnsupportedGitVersion { .. }) => {
                 problems.push(format!("{}: {e}", path.display()));

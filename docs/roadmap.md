@@ -27,17 +27,13 @@ straightforward building.
 - [x] **Resolving conflict blocks.** `docsync::conflicts` finds conflict
       blocks and keeps one version, so the editor and AI agents resolve them
       the same way.
-- [ ] **Signing in.** GitHub sign-in, with the token stored in the system
-      keychain and passed to Git through `CliGit::with_config`. A "create a
-      private repo for me" onboarding step using the GitHub API, so
-      non-developers never have to set up a remote themselves. Sign in with
-      the OAuth device flow or a browser redirect back to the app, through a
-      GitHub App limited to the workspace and published-site repos rather
-      than the classic `repo` scope, which reaches every private repo the
-      user has. Commits use the user's GitHub no-reply address
-      (`<id>+<login>@users.noreply.github.com`), so real emails stay out of
-      the history and pushes are not rejected when the user blocks pushes
-      that expose their email. GitLab later, the same way (`read_user`).
+- [x] **Signing in.** GitHub sign-in with the device flow through a GitHub
+      App limited to the repositories the user picks, the tokens in the
+      system keychain and renewed in the background, passed to Git per
+      command (`CliGit::with_config_source`). "Create a private repo on
+      GitHub" in the sync panel, and commits by the user's GitHub no-reply
+      address ([sync-design.md](sync-design.md#signing-in-with-github)).
+      GitLab later, the same way (`read_user`).
 - [x] **Orphaned pages.** The app shows pages whose parent was deleted at the
       top level.
 - [x] **Default location.** New and joined workspaces go in the app's local

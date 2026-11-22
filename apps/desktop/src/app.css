@@ -854,6 +854,69 @@ button.workspace-name[aria-expanded="true"] {
   font-size: inherit;
 }
 
+/* ---- GitHub ------------------------------------------------------------- */
+
+.github {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.github-account {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.github-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.avatar {
+  border-radius: 50%;
+  flex: none;
+  background: var(--border);
+}
+
+.dialog.sign-in {
+  width: min(420px, calc(100vw - 32px));
+  padding: 18px 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.dialog.sign-in h2,
+.dialog.sign-in p {
+  margin: 0;
+}
+
+.sign-in-code {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+
+.sign-in-code code {
+  font-family: var(--font-code);
+  font-size: 24px;
+  letter-spacing: 0.12em;
+  user-select: all;
+}
+
+.row.end {
+  justify-content: flex-end;
+}
+
 /* ---- main ---------------------------------------------------------------- */
 
 .main {

@@ -65,9 +65,15 @@ step). On Linux, install
   markers show as labelled lines, so the versions can also be merged by hand.
 - **Sync settings.** Click the status at the bottom of the sidebar to set the
   Git URL this device syncs with (stored per device in `.docsync/app.json`).
-  SSH URLs and local paths work. HTTPS to GitHub needs sign-in, which isn't
-  built yet. Git never prompts: SSH runs in batch mode, so the host key must
-  already be trusted and the key loaded in the agent.
+  HTTPS and SSH URLs and local paths work. Git never prompts: SSH runs in
+  batch mode, so the host key must already be trusted and the key loaded in
+  the agent.
+- **GitHub.** "Sign in with GitHub" in the sync panel (or on the welcome
+  screen) uses the device flow; the sign-in is kept in the keychain and
+  GitHub HTTPS remotes use it. "Create a private repo on GitHub" gives a
+  workspace a remote in one click. While signed in, commits are by the
+  account's no-reply address. Dev builds may ask for keychain access after
+  each rebuild, since the binary's signature changes.
 
 ## Keyboard
 
@@ -103,5 +109,5 @@ page ids.
 Release builds hide the panel. Set `DOCSYNC_DEV=1` to turn it on anyway.
 Debug builds also print every entry to the terminal.
 
-Not yet: GitHub sign-in, bundled Git, databases, the block handle, table
+Not yet: bundled Git, databases, the block handle, table
 controls, search, signing and updates. See the [roadmap](../../docs/roadmap.md).

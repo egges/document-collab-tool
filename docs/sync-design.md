@@ -197,6 +197,41 @@ obvious way to sync, and it breaks:
   unused, so git and the file watcher see files go missing.
 - `.docsync/`, which must stay on one device, would sync too.
 
+### Signing in with GitHub
+
+The app signs in through a GitHub App ("Pagemesh Desktop", the working
+title) with the device flow: it shows a code, the user enters it at
+github.com/login/device, and the app polls until it's approved. No client
+secret ships with the app and no web server is involved. The App asks for
+Contents, Metadata, Administration (to create repos) and Pages on
+repositories only; it can reach only the repositories the user installs it
+on, unlike an OAuth app's `repo` scope. Signing in and installing are two
+steps on GitHub: signing in lets the app act as the user, installing picks
+the repositories. The sync panel links to the install page until the App is
+installed.
+
+- **Tokens.** The access token lasts 8 hours and the refresh token 6 months.
+  Both are kept in the system keychain (service: the app identifier), never
+  in a file. A background thread renews the access token 15 minutes before
+  it expires; git commands never wait on the network for it. If renewing is
+  refused (revoked, or 6 months unused), the app signs out and the panel
+  offers to sign in again.
+- **Git.** `CliGit::with_config_source` reads the token before every git
+  command and passes `http.https://github.com/.extraHeader` through the
+  environment, so it reaches github.com only and never lands in
+  `.git/config`, remote URLs or process listings. GitHub HTTPS remotes need
+  nothing else; SSH remotes are unaffected.
+- **Commits.** While signed in, new commits are by the account's name and
+  no-reply address (`<id>+<login>@users.noreply.github.com`,
+  `SyncEngine::set_author`); signed out, by the device as before.
+- **A repo in one click.** "Create a private repo on GitHub" in the sync
+  panel creates `<workspace name>` (or `-2`, `-3`… when taken) on the user's
+  account, sets it as the remote and syncs. GitHub adds a repo the App
+  creates to an installation limited to chosen repositories, so it syncs at
+  once (tested with both installation settings). In case that ever changes,
+  the app checks `GET /repos/<owner>/<name>` afterwards; if it can't reach
+  the repo, the panel says so and links to the installation's settings.
+
 ### Sync targets
 
 Every target is a git remote, so the engine is the same for all of them:
@@ -328,4 +363,5 @@ Run them with `cargo test`. To use a specific git binary, set
 - **Large attachments live in the repo.** Git LFS or a separate blob store is a
   later concern.
 - **Authentication** (GitHub/GitLab sign-in, keychain storage) sits in the app
-  and reaches git through `CliGit::with_config`.
+  and reaches git through `CliGit::with_config_source`; see
+  [Signing in with GitHub](#signing-in-with-github).
