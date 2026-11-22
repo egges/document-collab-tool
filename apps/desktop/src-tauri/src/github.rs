@@ -1,9 +1,14 @@
 //! Signing in with GitHub, through the "Pagemesh Desktop" GitHub App.
 //!
-//! The app signs in with the device flow (a code the user enters at
-//! github.com/login/device), so it needs no client secret and no web
-//! server. The App can only reach repositories the user installed it on,
-//! unlike an OAuth app's `repo` scope, which reaches every private repo.
+//! The app signs in through the browser: GitHub's sign-in page with PKCE,
+//! sending the user back to a listener on 127.0.0.1 (no click at all for
+//! someone who has signed in before), then its install page if the App
+//! isn't installed yet. That needs the
+//! App's client secret, built in from a gitignored file (see build.rs); a
+//! build without it signs in with the device flow instead (a code the user
+//! enters at github.com/login/device). The App can only reach repositories
+//! the user installed it on, unlike an OAuth app's `repo` scope, which
+//! reaches every private repo.
 //!
 //! The access token lasts 8 hours and is renewed in the background with the
 //! refresh token (good for 6 months). Both live in the system keychain,
@@ -11,6 +16,8 @@
 //! setting, through the environment, so it stays out of `.git/config`,
 //! remote URLs and process listings.
 
+use std::io::{Read, Write};
+use std::net::{TcpListener, TcpStream};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
@@ -33,6 +40,25 @@ const GIT_HOST: &str = "https://github.com/";
 const KEYCHAIN_ACCOUNT: &str = "github";
 /// Renew the access token when it has less than this left.
 const RENEW_BEFORE_MS: u64 = 15 * 60 * 1000;
+/// The port in the App's callback URL, `http://127.0.0.1:48159/callback`.
+/// GitHub's install page always sends users back there (or, if the port is
+/// taken, the app notices the installation by asking); its sign-in page
+/// takes any port on 127.0.0.1.
+const CALLBACK_PORT: u16 = 48159;
+/// Marks the repositories the app creates, so they're found again.
+pub const WORKSPACE_TOPIC: &str = "pagemesh-workspace";
+
+/// The App's client secret, built in from `github-client-secret` (see
+/// build.rs). It can't be kept secret in a desktop app; PKCE and callbacks
+/// that only go to 127.0.0.1 are what protect a sign-in.
+fn client_secret() -> Option<&'static str> {
+    option_env!("PAGEMESH_GITHUB_CLIENT_SECRET").filter(|s| !s.is_empty())
+}
+
+/// Whether this build signs in through the browser, or with a code.
+pub fn browser_sign_in() -> bool {
+    client_secret().is_some()
+}
 
 /// Where to install the App, or change which repositories it can reach.
 pub fn install_url() -> String {
@@ -204,11 +230,16 @@ fn renew_if_needed() {
     }) else {
         return;
     };
-    let response = post_form(&[
+    let mut fields = vec![
         ("client_id", CLIENT_ID),
         ("grant_type", "refresh_token"),
-        ("refresh_token", &refresh),
-    ]);
+        ("refresh_token", refresh.as_str()),
+    ];
+    // Tokens from the browser sign-in can only be renewed with the secret.
+    if let Some(secret) = client_secret() {
+        fields.push(("client_secret", secret));
+    }
+    let response = post_form(&fields);
     match response.map(|r| interpret(r, now_ms())) {
         Ok(TokenPoll::Done(tokens)) => {
             devlog::info("github", "Renewed the GitHub access token");
@@ -420,6 +451,16 @@ fn api<T: serde::de::DeserializeOwned>(
     token: &str,
     body: Option<serde_json::Value>,
 ) -> Result<T, ApiError> {
+    api_with(method, path, token, body, "application/vnd.github+json")
+}
+
+fn api_with<T: serde::de::DeserializeOwned>(
+    method: &str,
+    path: &str,
+    token: &str,
+    body: Option<serde_json::Value>,
+    accept: &str,
+) -> Result<T, ApiError> {
     let unreachable = |e: ureq::Error| ApiError {
         status: 0,
         message: e.to_string(),
@@ -427,19 +468,26 @@ fn api<T: serde::de::DeserializeOwned>(
     let url = format!("{API}{path}");
     let agent = agent();
     let auth = format!("Bearer {token}");
-    let mut response = match (method, body) {
-        ("GET", _) => agent
+    let body = body.unwrap_or(json!({}));
+    let mut response = match method {
+        "GET" => agent
             .get(&url)
             .header("Authorization", &auth)
-            .header("Accept", "application/vnd.github+json")
+            .header("Accept", accept)
             .header("X-GitHub-Api-Version", "2022-11-28")
             .call(),
-        (_, body) => agent
+        "PUT" => agent
+            .put(&url)
+            .header("Authorization", &auth)
+            .header("Accept", accept)
+            .header("X-GitHub-Api-Version", "2022-11-28")
+            .send_json(body),
+        _ => agent
             .post(&url)
             .header("Authorization", &auth)
-            .header("Accept", "application/vnd.github+json")
+            .header("Accept", accept)
             .header("X-GitHub-Api-Version", "2022-11-28")
-            .send_json(body.unwrap_or(json!({}))),
+            .send_json(body),
     }
     .map_err(unreachable)?;
     let status = response.status().as_u16();
@@ -511,11 +559,22 @@ struct InstallationAccount {
     id: u64,
 }
 
+fn installations(token: &str) -> Result<Vec<Installation>, String> {
+    api::<Installations>("GET", "/user/installations?per_page=100", token, None)
+        .map(|found| found.installations)
+        .map_err(|e| e.to_string())
+}
+
+fn installed_on(token: &str, user: &GitHubUser) -> Result<bool, String> {
+    Ok(installations(token)?.iter().any(|i| i.account.id == user.id))
+}
+
 pub fn access() -> Result<Access, String> {
     let token = signed_in_token()?;
     let user = user().ok_or("Sign in with GitHub first.")?;
-    let found: Installations = api("GET", "/user/installations", &token, None).map_err(|e| e.to_string())?;
-    let own = found.installations.into_iter().find(|i| i.account.id == user.id);
+    let own = installations(&token)?
+        .into_iter()
+        .find(|i| i.account.id == user.id);
     Ok(match own {
         Some(i) => Access {
             installed: true,
@@ -572,6 +631,17 @@ pub fn create_private_repo(workspace: &str) -> Result<Repo, String> {
         match api::<Repo>("POST", "/user/repos", &token, Some(body)) {
             Ok(repo) => {
                 devlog::info("github", format!("Created the private repo {}", repo.full_name));
+                // Only for finding it again from other devices; the
+                // workspace.json check finds it without the topic too.
+                let topics = json!({ "names": [WORKSPACE_TOPIC] });
+                if let Err(e) = api::<serde_json::Value>(
+                    "PUT",
+                    &format!("/repos/{}/topics", repo.full_name),
+                    &token,
+                    Some(topics),
+                ) {
+                    devlog::info("github", format!("Couldn't tag {}: {e}", repo.full_name));
+                }
                 return Ok(repo);
             }
             Err(e) if e.status == 422 && e.message.contains("already exists") => continue,
@@ -600,6 +670,370 @@ pub fn can_reach(full_name: &str) -> Result<bool, String> {
         Err(e) if e.status == 404 || e.status == 403 => Ok(false),
         Err(e) => Err(e.to_string()),
     }
+}
+
+/// A workspace on GitHub this device could join.
+#[derive(Debug, Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RemoteWorkspace {
+    /// "ada/My-Notes".
+    pub full_name: String,
+    /// From its workspace.json.
+    pub name: String,
+    pub clone_url: String,
+}
+
+#[derive(Deserialize)]
+struct InstallationRepos {
+    repositories: Vec<ListedRepo>,
+}
+
+#[derive(Deserialize)]
+struct ListedRepo {
+    full_name: String,
+    clone_url: String,
+    #[serde(default)]
+    topics: Vec<String>,
+}
+
+/// Look in at most this many untagged repositories for a workspace.json;
+/// tagged ones are always looked at.
+const MAX_UNTAGGED_CHECKS: usize = 40;
+
+/// The workspaces in the repositories the App can reach, for joining them
+/// on this device. A repository holds one when it has a workspace.json.
+pub fn workspaces() -> Result<Vec<RemoteWorkspace>, String> {
+    let token = signed_in_token()?;
+    let mut repos = Vec::new();
+    for installation in installations(&token)? {
+        let listed: InstallationRepos = api(
+            "GET",
+            &format!(
+                "/user/installations/{}/repositories?per_page=100",
+                installation.id
+            ),
+            &token,
+            None,
+        )
+        .map_err(|e| e.to_string())?;
+        repos.extend(listed.repositories);
+    }
+    let (tagged, untagged): (Vec<_>, Vec<_>) = repos
+        .into_iter()
+        .partition(|r| r.topics.iter().any(|t| t == WORKSPACE_TOPIC));
+    let candidates: Vec<ListedRepo> = tagged
+        .into_iter()
+        .chain(untagged.into_iter().take(MAX_UNTAGGED_CHECKS))
+        .collect();
+    let mut found: Vec<RemoteWorkspace> = std::thread::scope(|scope| {
+        let checks: Vec<_> = candidates
+            .iter()
+            .map(|repo| {
+                let token = &token;
+                scope.spawn(move || workspace_name(token, &repo.full_name).map(|name| (repo, name)))
+            })
+            .collect();
+        checks
+            .into_iter()
+            .filter_map(|c| c.join().ok().flatten())
+            .map(|(repo, name)| RemoteWorkspace {
+                full_name: repo.full_name.clone(),
+                name,
+                clone_url: repo.clone_url.clone(),
+            })
+            .collect()
+    });
+    found.sort_by_key(|w| w.name.to_lowercase());
+    Ok(found)
+}
+
+/// The workspace's name if `full_name` holds a workspace.
+fn workspace_name(token: &str, full_name: &str) -> Option<String> {
+    let path = format!("/repos/{full_name}/contents/{}", docsync::layout::WORKSPACE_FILE);
+    let json: serde_json::Value =
+        api_with("GET", &path, token, None, "application/vnd.github.raw+json").ok()?;
+    let name = json
+        .get("name")
+        .and_then(|n| n.as_str())
+        .map(str::trim)
+        .unwrap_or("");
+    Some(if name.is_empty() {
+        full_name.rsplit('/').next().unwrap_or(full_name).to_string()
+    } else {
+        name.to_string()
+    })
+}
+
+// ---- signing in through the browser ----------------------------------------
+
+/// What GitHub sent back to the listener.
+#[derive(Debug, Default, PartialEq)]
+struct Callback {
+    code: Option<String>,
+    state: Option<String>,
+    error: Option<String>,
+}
+
+/// Sign in through the browser with GitHub's sign-in page, saving the
+/// sign-in; then, if the App isn't installed on the user's account, have
+/// them install it. Someone who has signed in before comes straight back
+/// without a click; someone new clicks Authorize, then Install. `open`
+/// opens a URL in the browser, `installing` is called when the install
+/// page opens. `Ok(None)` when cancelled.
+pub fn sign_in_with_browser(
+    open: impl Fn(&str) -> Result<(), String>,
+    installing: impl Fn(),
+    cancelled: impl Fn() -> bool,
+) -> Result<Option<GitHubUser>, String> {
+    let secret = client_secret().ok_or("This build can't sign in through the browser.")?;
+    let state = random_token();
+    let listener =
+        TcpListener::bind(("127.0.0.1", 0)).map_err(|e| format!("Can't listen for GitHub: {e}"))?;
+    let port = listener.local_addr().map_err(|e| e.to_string())?.port();
+    let redirect = format!("http://127.0.0.1:{port}/callback");
+    let verifier = random_token();
+    let url = format!(
+        "https://github.com/login/oauth/authorize?client_id={CLIENT_ID}&redirect_uri={}&state={state}\
+         &code_challenge={}&code_challenge_method=S256",
+        percent_encode(&redirect),
+        pkce_challenge(&verifier)
+    );
+    open(&url)?;
+    let Some(callback) = wait_for_callback(&listener, &state, &cancelled, || false)? else {
+        return Ok(None);
+    };
+    drop(listener);
+    let code = callback.code.ok_or("GitHub didn't send a sign-in code.")?;
+    let tokens = exchange_code(secret, &code, Some((&verifier, &redirect)))?;
+    let user = fetch_user(&tokens.access_token)?;
+    let token = tokens.access_token.clone();
+    devlog::info("github", format!("Signed in as @{}", user.login));
+    set_account(Some(Account {
+        user: user.clone(),
+        tokens,
+    }));
+
+    if !installed_on(&token, &user)? {
+        devlog::info(
+            "github",
+            "Pagemesh isn't installed on the account yet; opening the install page",
+        );
+        // The install page always returns to the callback URL's fixed port.
+        let listener = TcpListener::bind(("127.0.0.1", CALLBACK_PORT))
+            .map_err(|e| devlog::info("github", format!("Port {CALLBACK_PORT} is taken ({e})")))
+            .ok();
+        installing();
+        let state = random_token();
+        open(&format!(
+            "https://github.com/apps/{APP_SLUG}/installations/new/permissions?target_id={}&state={state}",
+            user.id
+        ))?;
+        // Done when GitHub sends the browser back, or, if the port was
+        // taken, when the installation shows up.
+        let mut last_check = std::time::Instant::now();
+        let installed = || {
+            if last_check.elapsed() < Duration::from_secs(4) {
+                return false;
+            }
+            last_check = std::time::Instant::now();
+            installed_on(&token, &user).unwrap_or(false)
+        };
+        // If they cancel here they're still signed in; onboarding and the
+        // sync panel then offer to install.
+        match &listener {
+            Some(listener) => {
+                wait_for_callback(listener, &state, &cancelled, installed)?;
+            }
+            None => {
+                wait_until(&cancelled, installed);
+            }
+        }
+    }
+    Ok(Some(user))
+}
+
+fn exchange_code(secret: &str, code: &str, pkce: Option<(&str, &str)>) -> Result<Tokens, String> {
+    let mut fields = vec![
+        ("client_id", CLIENT_ID),
+        ("client_secret", secret),
+        ("code", code),
+    ];
+    if let Some((verifier, redirect)) = pkce {
+        fields.push(("code_verifier", verifier));
+        fields.push(("redirect_uri", redirect));
+    }
+    match interpret(post_form(&fields)?, now_ms()) {
+        TokenPoll::Done(tokens) => Ok(tokens),
+        TokenPoll::Failed(error) => Err(format!("GitHub didn't accept the sign-in: {error}")),
+        TokenPoll::Pending | TokenPoll::SlowDown(_) => Err("GitHub didn't accept the sign-in.".into()),
+    }
+}
+
+/// Give up waiting for the browser after this long.
+const BROWSER_TIMEOUT: Duration = Duration::from_secs(15 * 60);
+
+/// Wait until `done` says so, checking `cancelled` meanwhile. False when
+/// cancelled or timed out.
+fn wait_until(cancelled: &impl Fn() -> bool, mut done: impl FnMut() -> bool) -> bool {
+    let started = std::time::Instant::now();
+    while started.elapsed() < BROWSER_TIMEOUT {
+        if cancelled() {
+            return false;
+        }
+        if done() {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    }
+    false
+}
+
+/// Answer requests on `listener` until GitHub's callback with `state`
+/// arrives (`Some`), or `cancelled` or `also_done` says to stop (`None`,
+/// or `Some` of an empty callback when `also_done`).
+fn wait_for_callback(
+    listener: &TcpListener,
+    state: &str,
+    cancelled: &impl Fn() -> bool,
+    mut also_done: impl FnMut() -> bool,
+) -> Result<Option<Callback>, String> {
+    listener.set_nonblocking(true).map_err(|e| e.to_string())?;
+    let started = std::time::Instant::now();
+    loop {
+        match listener.accept() {
+            Ok((stream, _)) => {
+                if let Some(callback) = answer(stream, state) {
+                    if let Some(error) = callback.error {
+                        return Err(if error == "access_denied" {
+                            "Signing in was cancelled on GitHub.".into()
+                        } else {
+                            format!("GitHub said: {error}")
+                        });
+                    }
+                    return Ok(Some(callback));
+                }
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                if cancelled() || started.elapsed() > BROWSER_TIMEOUT {
+                    return Ok(None);
+                }
+                if also_done() {
+                    return Ok(Some(Callback::default()));
+                }
+                std::thread::sleep(Duration::from_millis(200));
+            }
+            Err(e) => return Err(format!("Stopped listening for GitHub: {e}")),
+        }
+    }
+}
+
+/// Read one request and answer it. The callback (with the right state)
+/// gets a page saying to return to the app; anything else (a favicon, a
+/// stale tab) a 404.
+fn answer(mut stream: TcpStream, state: &str) -> Option<Callback> {
+    let _ = stream.set_nonblocking(false);
+    let _ = stream.set_read_timeout(Some(Duration::from_secs(5)));
+    let mut buf = [0u8; 4096];
+    let n = stream.read(&mut buf).unwrap_or(0);
+    let request = String::from_utf8_lossy(&buf[..n]);
+    let callback =
+        parse_callback(request.lines().next().unwrap_or("")).filter(|c| c.state.as_deref() == Some(state));
+    let (status, body) = match &callback {
+        Some(c) if c.error.is_none() => (
+            "200 OK",
+            CALLBACK_PAGE.replace(
+                "{message}",
+                "You're signed in. You can close this tab and go back to Pagemesh.",
+            ),
+        ),
+        Some(_) => (
+            "200 OK",
+            CALLBACK_PAGE.replace(
+                "{message}",
+                "Signing in didn't finish. Go back to Pagemesh to try again.",
+            ),
+        ),
+        None => (
+            "404 Not Found",
+            CALLBACK_PAGE.replace("{message}", "Nothing here."),
+        ),
+    };
+    let _ = write!(
+        stream,
+        "HTTP/1.1 {status}\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+        body.len()
+    );
+    callback
+}
+
+const CALLBACK_PAGE: &str = "<!doctype html><html><head><meta charset=utf-8><title>Pagemesh</title>\
+<style>body{font:16px -apple-system,system-ui,sans-serif;display:grid;place-items:center;height:90vh;\
+margin:0;color:#222;background:#fafafa}@media(prefers-color-scheme:dark){body{color:#eee;background:#1e1e1e}}\
+</style></head><body><p>{message}</p></body></html>";
+
+/// The query of `GET /callback?…` from a request line.
+fn parse_callback(request_line: &str) -> Option<Callback> {
+    let target = request_line.strip_prefix("GET ")?.split(' ').next()?;
+    let query = target.strip_prefix("/callback")?.strip_prefix('?').unwrap_or("");
+    let mut callback = Callback::default();
+    for pair in query.split('&') {
+        let (key, value) = pair.split_once('=').unwrap_or((pair, ""));
+        let value = percent_decode(value);
+        match key {
+            "code" => callback.code = Some(value),
+            "state" => callback.state = Some(value),
+            "error" => callback.error = Some(value),
+            _ => {}
+        }
+    }
+    Some(callback)
+}
+
+fn random_token() -> String {
+    let mut bytes = [0u8; 32];
+    getrandom::fill(&mut bytes).expect("the system has randomness");
+    base64url(&bytes)
+}
+
+fn pkce_challenge(verifier: &str) -> String {
+    use sha2::Digest;
+    base64url(&sha2::Sha256::digest(verifier.as_bytes()))
+}
+
+fn base64url(bytes: &[u8]) -> String {
+    base64(bytes)
+        .trim_end_matches('=')
+        .replace('+', "-")
+        .replace('/', "_")
+}
+
+fn percent_encode(text: &str) -> String {
+    text.bytes()
+        .map(|b| match b {
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'_' | b'.' | b'~' => (b as char).to_string(),
+            _ => format!("%{b:02X}"),
+        })
+        .collect()
+}
+
+fn percent_decode(text: &str) -> String {
+    let bytes = text.as_bytes();
+    let mut out = Vec::with_capacity(bytes.len());
+    let mut i = 0;
+    while i < bytes.len() {
+        let hex = bytes.get(i + 1..i + 3).and_then(|h| std::str::from_utf8(h).ok());
+        match (bytes[i], hex.and_then(|h| u8::from_str_radix(h, 16).ok())) {
+            (b'%', Some(b)) => {
+                out.push(b);
+                i += 3;
+                continue;
+            }
+            (b'+', _) => out.push(b' '),
+            (b, _) => out.push(b),
+        }
+        i += 1;
+    }
+    String::from_utf8_lossy(&out).into_owned()
 }
 
 // ---- the keychain ----------------------------------------------------------
@@ -699,6 +1133,81 @@ mod tests {
         let sent = serde_json::to_value(&code).unwrap();
         assert_eq!(sent["userCode"], "6A1F-24A3");
         assert!(sent.get("deviceCode").is_none(), "the device code stays in Rust");
+    }
+
+    #[test]
+    fn reads_callbacks() {
+        assert_eq!(
+            parse_callback(
+                "GET /callback?code=abc&installation_id=1&setup_action=install&state=x%2By HTTP/1.1"
+            ),
+            Some(Callback {
+                code: Some("abc".into()),
+                state: Some("x+y".into()),
+                error: None,
+            })
+        );
+        assert_eq!(
+            parse_callback("GET /callback?error=access_denied&state=s HTTP/1.1")
+                .unwrap()
+                .error
+                .as_deref(),
+            Some("access_denied")
+        );
+        assert_eq!(parse_callback("GET /favicon.ico HTTP/1.1"), None);
+        assert_eq!(parse_callback("POST /callback?code=a HTTP/1.1"), None);
+    }
+
+    #[test]
+    fn makes_pkce_challenges() {
+        // RFC 7636, appendix B.
+        assert_eq!(
+            pkce_challenge("dBjftJeZ4CVP-mB92K27uhbUJU1p1r_wW1gFWFOEjXk"),
+            "E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM"
+        );
+        let token = random_token();
+        assert_eq!(token.len(), 43);
+        assert!(
+            token
+                .chars()
+                .all(|c| c.is_ascii_alphanumeric() || c == '-' || c == '_')
+        );
+    }
+
+    #[test]
+    fn percent_codes() {
+        assert_eq!(
+            percent_encode("http://127.0.0.1:5/callback"),
+            "http%3A%2F%2F127.0.0.1%3A5%2Fcallback"
+        );
+        assert_eq!(percent_decode("a%20b+c%2"), "a b c%2");
+    }
+
+    #[test]
+    fn answers_the_browser() {
+        let listener = TcpListener::bind(("127.0.0.1", 0)).unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let browser = std::thread::spawn(move || {
+            let mut favicon = TcpStream::connect(("127.0.0.1", port)).unwrap();
+            favicon.write_all(b"GET /favicon.ico HTTP/1.1\r\n\r\n").unwrap();
+            let mut reply = String::new();
+            favicon.read_to_string(&mut reply).unwrap();
+            assert!(reply.starts_with("HTTP/1.1 404"), "{reply}");
+            let mut tab = TcpStream::connect(("127.0.0.1", port)).unwrap();
+            tab.write_all(b"GET /callback?code=c0de&state=st HTTP/1.1\r\nHost: x\r\n\r\n")
+                .unwrap();
+            let mut reply = String::new();
+            tab.read_to_string(&mut reply).unwrap();
+            assert!(
+                reply.starts_with("HTTP/1.1 200") && reply.contains("signed in"),
+                "{reply}"
+            );
+        });
+        let callback = wait_for_callback(&listener, "st", &|| false, || false)
+            .unwrap()
+            .unwrap();
+        browser.join().unwrap();
+        assert_eq!(callback.code.as_deref(), Some("c0de"));
     }
 
     #[test]

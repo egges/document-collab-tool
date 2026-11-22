@@ -96,6 +96,23 @@ export interface GitHubAccess {
   manageUrl: string;
 }
 
+/** A workspace on GitHub this device could join. */
+export interface RemoteWorkspace {
+  /** "ada/My-Notes". */
+  fullName: string;
+  name: string;
+  cloneUrl: string;
+}
+
+export interface NewGitHubWorkspace {
+  workspace: WorkspaceInfo;
+  fullName: string | null;
+  /** Why the repo wasn't created; the workspace is then only on this device. */
+  problem: string | null;
+  reachable: boolean;
+  manageUrl: string | null;
+}
+
 export interface CreatedRepo {
   workspace: WorkspaceInfo;
   /** "ada/My-Notes". */
@@ -133,6 +150,13 @@ export const api = {
   setRemote: (url: string | null) => invoke<WorkspaceInfo>("set_remote", { url }),
   githubAccount: () => invoke<GitHubUser | null>("github_account"),
   /** `attempt` is any number new to this run; pass it to finish and cancel too. */
+  /** "browser" when this build signs in through the browser, "code" for the device flow. */
+  githubSignInMode: () => invoke<"browser" | "code">("github_sign_in_mode"),
+  /** Sign in through the browser, then install the app if needed; null when cancelled. */
+  githubSignInBrowser: (attempt: number) => invoke<GitHubUser | null>("github_sign_in_browser", { attempt }),
+  githubWorkspaces: () => invoke<RemoteWorkspace[]>("github_workspaces"),
+  /** A new workspace that syncs with a new private repo. */
+  createGitHubWorkspace: (name: string) => invoke<NewGitHubWorkspace>("create_github_workspace", { name }),
   githubSignInStart: (attempt: number) => invoke<DeviceCode>("github_sign_in_start", { attempt }),
   /** Waits until the code is approved on GitHub; null when cancelled. */
   githubSignInFinish: (attempt: number) => invoke<GitHubUser | null>("github_sign_in_finish", { attempt }),
@@ -189,6 +213,9 @@ export const events = {
   onWorkspaceChanged: (handler: () => void): Promise<UnlistenFn> => listen("workspace-changed", () => handler()),
   /** Signed out without asking, e.g. the sign-in was revoked on GitHub. */
   onAccountChanged: (handler: () => void): Promise<UnlistenFn> => listen("account-changed", () => handler()),
+  /** The browser sign-in moved on to GitHub's install page. */
+  onGitHubSignInStep: (handler: (step: "install") => void): Promise<UnlistenFn> =>
+    listen<"install">("github-sign-in-step", (e) => handler(e.payload)),
   onDevLog: (handler: (entry: LogEntry) => void): Promise<UnlistenFn> =>
     listen<LogEntry>("dev-log", (e) => handler(e.payload)),
 };

@@ -200,15 +200,34 @@ obvious way to sync, and it breaks:
 ### Signing in with GitHub
 
 The app signs in through a GitHub App ("Pagemesh Desktop", the working
-title) with the device flow: it shows a code, the user enters it at
-github.com/login/device, and the app polls until it's approved. No client
-secret ships with the app and no web server is involved. The App asks for
-Contents, Metadata, Administration (to create repos) and Pages on
-repositories only; it can reach only the repositories the user installs it
-on, unlike an OAuth app's `repo` scope. Signing in and installing are two
-steps on GitHub: signing in lets the app act as the user, installing picks
-the repositories. The sync panel links to the install page until the App is
-installed.
+title). The App asks for Contents, Metadata, Administration (to create
+repos) and Pages on repositories only; it can reach only the repositories
+the user installs it on, unlike an OAuth app's `repo` scope. Signing in and
+installing are two steps on GitHub: signing in lets the app act as the
+user, installing picks the repositories.
+
+- **One button for everyone.** "Continue with GitHub" opens GitHub's
+  sign-in page with PKCE, sending the browser back to a listener on a
+  random port of 127.0.0.1. Someone who authorized the App before comes
+  straight back without a click. Then, if the App isn't installed on the
+  user's account, the app opens the install page for that account
+  (`installations/new/permissions?target_id=<id>`), and the dialog says so.
+  The install page always returns to the callback URL as registered,
+  `http://127.0.0.1:48159/callback` (GitHub ignores the port of 127.0.0.1
+  callbacks for the sign-in page, so one URL serves both); if that port is
+  taken, the app notices the installation by asking every few seconds.
+  Starting at the install page instead would save a new user the Authorize
+  click, but sends someone who has installed it before to their
+  installation's settings with no way back, so it isn't used.
+- **The client secret.** Exchanging a code needs the App's client secret,
+  even with PKCE. It is built in from the gitignored file
+  `apps/desktop/src-tauri/github-client-secret` or the
+  `PAGEMESH_GITHUB_CLIENT_SECRET` variable (see `build.rs`), never kept in
+  git. A desktop app can't keep it secret, and that's accepted: PKCE, the
+  state check and callbacks that only go to 127.0.0.1 protect a sign-in,
+  not the secret. Forks register their own GitHub App. A build without the
+  secret signs in with the device flow instead (a code entered at
+  github.com/login/device).
 
 - **Tokens.** The access token lasts 8 hours and the refresh token 6 months.
   Both are kept in the system keychain (service: the app identifier), never
@@ -224,8 +243,13 @@ installed.
 - **Commits.** While signed in, new commits are by the account's name and
   no-reply address (`<id>+<login>@users.noreply.github.com`,
   `SyncEngine::set_author`); signed out, by the device as before.
-- **A repo in one click.** "Create a private repo on GitHub" in the sync
-  panel creates `<workspace name>` (or `-2`, `-3`… when taken) on the user's
+- **Finding workspaces.** After signing in, onboarding lists the workspaces
+  in the repositories the App can reach, to join with one click: those with
+  the `pagemesh-workspace` topic (set on the repos the app creates) and up
+  to 40 others with a `workspace.json` at the top. Ones this device already
+  has are left out.
+- **A repo in one click.** "Start a new workspace" in onboarding, and
+  "Create a private repo on GitHub" in the sync panel, create `<workspace name>` (or `-2`, `-3`… when taken) on the user's
   account, sets it as the remote and syncs. GitHub adds a repo the App
   creates to an installation limited to chosen repositories, so it syncs at
   once (tested with both installation settings). In case that ever changes,
@@ -283,8 +307,13 @@ Onboarding asks one question, "Where should your notes sync?":
    installed (`~/Library/Mobile Documents/com~apple~CloudDocs`,
    `~/Library/CloudStorage/*`, Dropbox's `info.json`, and the Windows
    equivalents). One click creates `<name>.docsync` there.
-3. **GitHub:** sign in with the device flow; the app creates a private repo.
-   "Any Git URL" sits under "Advanced".
+3. **GitHub:** "Continue with GitHub", then join a workspace that's already
+   there or start one with a new private repo
+   ([Signing in with GitHub](#signing-in-with-github)). A Git URL or an
+   existing folder sits under "Other ways to start".
+
+Built so far: GitHub and "only on this device"; the cloud folders come with
+cloud folder remotes.
 
 Joining on another device needs no typing for cloud folders: the app looks for
 `*.docsync` in those folders and offers "Found **My Notes** in your iCloud

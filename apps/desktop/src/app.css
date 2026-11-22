@@ -282,6 +282,53 @@ kbd {
   margin: 0 0 4px;
 }
 
+.card h2 + .recent,
+.card .recent + h2,
+.github-card .github-account + h2 {
+  margin-top: 8px;
+}
+
+.github-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.github-card h2,
+.github-card p {
+  margin: 0;
+}
+
+.github-card .github-account {
+  margin-bottom: 4px;
+}
+
+.github-card .recent {
+  margin: 0;
+}
+
+.badge {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 7px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 600;
+  vertical-align: 2px;
+  color: var(--accent, #2f6feb);
+  border: 1px solid currentColor;
+}
+
+details.more > summary {
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 15px;
+}
+
+details.more[open] > summary {
+  margin-bottom: 12px;
+}
+
 .card p {
   margin: 0 0 12px;
 }

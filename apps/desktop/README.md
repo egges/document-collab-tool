@@ -68,12 +68,22 @@ step). On Linux, install
   HTTPS and SSH URLs and local paths work. Git never prompts: SSH runs in
   batch mode, so the host key must already be trusted and the key loaded in
   the agent.
-- **GitHub.** "Sign in with GitHub" in the sync panel (or on the welcome
-  screen) uses the device flow; the sign-in is kept in the keychain and
-  GitHub HTTPS remotes use it. "Create a private repo on GitHub" gives a
-  workspace a remote in one click. While signed in, commits are by the
-  account's no-reply address. Dev builds may ask for keychain access after
-  each rebuild, since the binary's signature changes.
+- **Onboarding.** "Where should it sync?": GitHub (recommended) or only
+  this device, with a Git URL or an existing folder under "Other ways to
+  start". "Add workspace…" in the switcher shows the same screen.
+- **GitHub.** "Continue with GitHub" (onboarding) or "Sign in with GitHub"
+  (sync panel) signs in through the browser and installs the GitHub App if
+  needed; the sign-in is kept in the keychain and GitHub HTTPS remotes use
+  it. Onboarding lists the workspaces already on GitHub to join, or starts
+  one with a new private repo; the sync panel gives an existing workspace a
+  private repo in one click. While signed in, commits are by the account's
+  no-reply address. Dev builds may ask for keychain access after each
+  rebuild, since the binary's signature changes.
+
+  The browser sign-in needs the GitHub App's client secret at build time:
+  put it in `src-tauri/github-client-secret` (gitignored) or set
+  `PAGEMESH_GITHUB_CLIENT_SECRET`. Without it the app signs in with a code
+  (the device flow) instead.
 
 ## Keyboard
 
