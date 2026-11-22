@@ -79,8 +79,9 @@ step). On Linux, install
   it. Onboarding lists the workspaces already on GitHub to join, or starts
   one with a new private repo; the sync panel gives an existing workspace a
   private repo in one click. While signed in, commits are by the account's
-  no-reply address. Dev builds may ask for keychain access after each
-  rebuild, since the binary's signature changes.
+  no-reply address. Debug builds keep the sign-in in `dev-sign-in.json` in
+  the app's config folder instead (readable only by you), since macOS would
+  ask for keychain access after every rebuild.
 
   The browser sign-in needs the GitHub App's client secret at build time:
   put it in `src-tauri/github-client-secret` (gitignored) or set

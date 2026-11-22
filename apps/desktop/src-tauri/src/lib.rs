@@ -27,7 +27,12 @@ pub fn run() {
             });
             devlog::info("app", format!("Started version {}", app.package_info().version));
             let handle = app.handle().clone();
-            github::init(&app.config().identifier, move || {
+            // Debug builds keep the sign-in in a file: see github::init.
+            let dev_file = cfg!(debug_assertions)
+                .then(|| app.path().app_config_dir().ok())
+                .flatten()
+                .map(|dir| dir.join("dev-sign-in.json"));
+            github::init(&app.config().identifier, dev_file, move || {
                 handle.state::<commands::AppState>().account_changed();
                 let _ = handle.emit("account-changed", ());
             });

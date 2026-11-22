@@ -12,12 +12,13 @@
 //!
 //! The access token lasts 8 hours and is renewed in the background with the
 //! refresh token (good for 6 months). Both live in the system keychain,
-//! never in a file. Git gets the token in an `http.<url>.extraHeader`
+//! never in a file, except in debug builds (see [`init`]). Git gets the token in an `http.<url>.extraHeader`
 //! setting, through the environment, so it stays out of `.git/config`,
 //! remote URLs and process listings.
 
 use std::io::{Read, Write};
 use std::net::{TcpListener, TcpStream};
+use std::path::{Path, PathBuf};
 use std::sync::mpsc::{self, RecvTimeoutError, Sender};
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
@@ -130,15 +131,23 @@ static STATE: Mutex<State> = Mutex::new(State {
 });
 /// The keychain service: the app identifier, set at startup.
 static SERVICE: OnceLock<String> = OnceLock::new();
+/// Debug builds keep the sign-in in this file instead of the keychain.
+static DEV_FILE: OnceLock<PathBuf> = OnceLock::new();
 /// Wakes the renewal thread early.
 static RENEWER: OnceLock<Sender<()>> = OnceLock::new();
 /// Told when the account changes without the window asking, e.g. when the
 /// refresh token was revoked.
 static ON_CHANGE: OnceLock<Box<dyn Fn() + Send + Sync>> = OnceLock::new();
 
-/// Call once at startup.
-pub fn init(service: &str, on_change: impl Fn() + Send + Sync + 'static) {
+/// Call once at startup. With `dev_file`, the sign-in is kept in that file
+/// instead of the keychain: macOS only lets the program that saved a
+/// keychain item read it without asking, and it recognises the program by
+/// its signature, which changes with every unsigned debug build.
+pub fn init(service: &str, dev_file: Option<PathBuf>, on_change: impl Fn() + Send + Sync + 'static) {
     let _ = SERVICE.set(service.to_string());
+    if let Some(file) = dev_file {
+        let _ = DEV_FILE.set(file);
+    }
     let _ = ON_CHANGE.set(Box::new(on_change));
     let (tx, rx) = mpsc::channel();
     if RENEWER.set(tx).is_ok() {
@@ -1092,6 +1101,9 @@ fn keychain_entry() -> Option<keyring::Entry> {
 }
 
 fn keychain_load() -> Option<Account> {
+    if let Some(file) = DEV_FILE.get() {
+        return dev_file_load(file);
+    }
     match keychain_entry()?.get_password() {
         Ok(json) => serde_json::from_str(&json)
             .map_err(|e| devlog::warn("github", format!("Ignoring an unreadable sign-in: {e}")))
@@ -1108,6 +1120,9 @@ fn keychain_load() -> Option<Account> {
 }
 
 fn keychain_save(account: &Account) {
+    if let Some(file) = DEV_FILE.get() {
+        return dev_file_save(file, account);
+    }
     let Some(entry) = keychain_entry() else { return };
     let json = serde_json::to_string(account).expect("serializable");
     if let Err(e) = entry.set_password(&json) {
@@ -1119,6 +1134,14 @@ fn keychain_save(account: &Account) {
 }
 
 fn keychain_delete() {
+    if let Some(file) = DEV_FILE.get() {
+        if let Err(e) = std::fs::remove_file(file)
+            && e.kind() != std::io::ErrorKind::NotFound
+        {
+            devlog::warn("github", format!("Couldn't remove {}: {e}", file.display()));
+        }
+        return;
+    }
     let Some(entry) = keychain_entry() else { return };
     match entry.delete_credential() {
         Ok(()) | Err(keyring::Error::NoEntry) => {}
@@ -1126,6 +1149,35 @@ fn keychain_delete() {
             "github",
             format!("Couldn't remove the sign-in from the keychain: {e}"),
         ),
+    }
+}
+
+// ---- the debug builds' file ------------------------------------------------
+
+fn dev_file_load(file: &Path) -> Option<Account> {
+    let json = std::fs::read_to_string(file).ok()?;
+    serde_json::from_str(&json)
+        .map_err(|e| devlog::warn("github", format!("Ignoring an unreadable sign-in: {e}")))
+        .ok()
+}
+
+fn dev_file_save(file: &Path, account: &Account) {
+    let json = serde_json::to_string(account).expect("serializable");
+    let written = (|| {
+        if let Some(dir) = file.parent() {
+            std::fs::create_dir_all(dir)?;
+        }
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create(true).truncate(true);
+        #[cfg(unix)]
+        std::os::unix::fs::OpenOptionsExt::mode(&mut options, 0o600);
+        options.open(file)?.write_all(json.as_bytes())
+    })();
+    if let Err(e) = written {
+        devlog::error(
+            "github",
+            format!("Couldn't save the sign-in in {}: {e}", file.display()),
+        );
     }
 }
 
@@ -1166,6 +1218,36 @@ mod tests {
         let saved = serde_json::to_string(&from_github).unwrap();
         assert!(saved.contains("\"avatarUrl\""), "{saved}");
         assert_eq!(serde_json::from_str::<GitHubUser>(&saved).unwrap(), from_github);
+    }
+
+    #[test]
+    fn debug_builds_keep_the_sign_in_in_a_private_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let file = dir.path().join("config").join("dev-sign-in.json");
+        let account = Account {
+            user: GitHubUser {
+                id: 42,
+                login: "ada".into(),
+                name: Some("Ada".into()),
+                avatar_url: String::new(),
+            },
+            tokens: Tokens {
+                access_token: "t".into(),
+                expires_at: Some(1),
+                refresh_token: Some("r".into()),
+                refresh_expires_at: None,
+            },
+        };
+        assert!(dev_file_load(&file).is_none());
+        dev_file_save(&file, &account);
+        let read = dev_file_load(&file).unwrap();
+        assert_eq!((read.user, read.tokens), (account.user, account.tokens));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&file).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600);
+        }
     }
 
     #[test]

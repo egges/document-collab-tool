@@ -243,7 +243,11 @@ user, installing picks the repositories.
 
 - **Tokens.** The access token lasts 8 hours and the refresh token 6 months.
   Both are kept in the system keychain (service: the app identifier), never
-  in a file. A background thread renews the access token 15 minutes before
+  in a file. Debug builds are the exception: they use `dev-sign-in.json` in
+  the app's config folder (mode 600), because macOS ties a keychain item to
+  the signature of the program that saved it, and an unsigned build's
+  signature changes with every rebuild, so each one would ask for the
+  keychain password. A background thread renews the access token 15 minutes before
   it expires; git commands never wait on the network for it. If renewing is
   refused (revoked, or 6 months unused), the app signs out and the panel
   offers to sign in again.
