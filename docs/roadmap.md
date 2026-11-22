@@ -53,7 +53,10 @@ straightforward building.
 - [ ] **Sync setup.** One "Where should your notes sync?" choice in
       onboarding and settings, detecting installed cloud folders, finding
       `*.docsync` workspaces to join, and a safe setup when a workspace sits
-      inside a cloud folder.
+      inside a cloud folder. Done so far: onboarding with GitHub (one
+      "Continue with GitHub" for new and returning users, joining workspaces
+      found on GitHub or starting one with a private repo) and "only on this
+      device" ([sync-design.md](sync-design.md#signing-in-with-github)).
 - [ ] **Sharing.** A "Share" button: the provider's share sheet for cloud
       folders, invite and accept for GitHub; commits record the person, not
       just the device.

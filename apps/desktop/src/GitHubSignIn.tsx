@@ -25,10 +25,15 @@ export function useGitHubAccount(): [GitHubUser | null | undefined, (user: GitHu
 }
 
 /**
- * Signing in with GitHub's device flow: show a code, open
- * github.com/login/device, and wait there for the user to approve it.
+ * Signing in with GitHub, for new and returning users alike. Through the
+ * browser when the build can: GitHub's sign-in page, which comes straight
+ * back for someone who has signed in before, then its install page if
+ * Pagemesh isn't installed yet. Otherwise with the device flow: show a
+ * code, open github.com/login/device, and wait for approval there.
  */
 export function GitHubSignIn({ onDone, onClose }: { onDone: (user: GitHubUser) => void; onClose: () => void }) {
+  const [browser, setBrowser] = useState(false);
+  const [installing, setInstalling] = useState(false);
   const [code, setCode] = useState<DeviceCode | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
@@ -45,6 +50,13 @@ export function GitHubSignIn({ onDone, onClose }: { onDone: (user: GitHubUser) =
     setError(null);
     void (async () => {
       try {
+        if ((await api.githubSignInMode()) === "browser") {
+          if (!live()) return;
+          setBrowser(true);
+          const user = await api.githubSignInBrowser(attempt);
+          if (live() && user) done.current(user);
+          return;
+        }
         const next = await api.githubSignInStart(attempt);
         if (!live()) return;
         setCode(next);
@@ -60,6 +72,11 @@ export function GitHubSignIn({ onDone, onClose }: { onDone: (user: GitHubUser) =
       void api.githubSignInCancel(attempt);
     };
   }, [retries]);
+
+  useEffect(() => {
+    const unlisten = events.onGitHubSignInStep(() => setInstalling(true));
+    return () => void unlisten.then((f) => f());
+  }, []);
 
   const cancel = () => {
     void api.githubSignInCancel(current.current);
@@ -100,6 +117,23 @@ export function GitHubSignIn({ onDone, onClose }: { onDone: (user: GitHubUser) =
               </button>
               <button className="button primary" onClick={() => setRetries(retries + 1)}>
                 Try again
+              </button>
+            </div>
+          </>
+        ) : browser ? (
+          <>
+            <p>
+              {installing
+                ? "Signed in. Now choose which repositories Pagemesh may use, and click Install."
+                : "Continue in your browser. If you've used Pagemesh before, it comes straight back here."}
+            </p>
+            <p className="muted small">
+              Pagemesh can only reach the repositories you choose, and your notes go straight from this device to
+              GitHub.
+            </p>
+            <div className="row end">
+              <button className="button" onClick={cancel}>
+                Cancel
               </button>
             </div>
           </>

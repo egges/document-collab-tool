@@ -11,7 +11,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::devlog::{self, Entry, Level};
-use crate::github::{self, Access, DeviceCode, GitHubUser};
+use crate::github::{self, Access, DeviceCode, GitHubUser, RemoteWorkspace};
 use crate::locations;
 use crate::search::{self, TextMatch};
 use crate::session::{Session, WorkspaceInfo};
@@ -206,9 +206,14 @@ pub async fn create_workspace(
     state: State<'_, AppState>,
     name: String,
 ) -> CmdResult<WorkspaceInfo> {
-    let path = locations::new_workspace_dir(&workspaces_dir(&app)?, &name);
+    let session = new_local_workspace(&app, "create_workspace", name).await?;
+    Ok(install(&app, &state, session))
+}
+
+async fn new_local_workspace(app: &AppHandle, command: &'static str, name: String) -> CmdResult<Session> {
+    let path = locations::new_workspace_dir(&workspaces_dir(app)?, &name);
     let events = WindowEvents(app.clone());
-    let session = blocking("create_workspace", move || {
+    blocking(command, move || {
         in_new_folder(path, |p| {
             let session = Session::open_or_create(p, events)?;
             // The folder name is a cleaned-up version; keep what they typed.
@@ -218,8 +223,7 @@ pub async fn create_workspace(
             Ok(session)
         })
     })
-    .await?;
-    Ok(install(&app, &state, session))
+    .await
 }
 
 /// Join the workspace at `url`, keeping this device's copy in the default
@@ -490,6 +494,108 @@ pub async fn github_sign_out(state: State<'_, AppState>) -> CmdResult<()> {
     .await?;
     state.account_changed();
     Ok(())
+}
+
+/// "browser" when this build signs in through the browser, "code" when it
+/// uses the device flow (no client secret built in).
+#[tauri::command]
+pub async fn github_sign_in_mode() -> CmdResult<&'static str> {
+    Ok(if github::browser_sign_in() {
+        "browser"
+    } else {
+        "code"
+    })
+}
+
+/// Sign in through the browser, then install the App if needed; emits
+/// `github-sign-in-step` with "install" when the install page opens. `None`
+/// when cancelled (with `github_sign_in_cancel(attempt)`).
+#[tauri::command]
+pub async fn github_sign_in_browser(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    attempt: u64,
+) -> CmdResult<Option<GitHubUser>> {
+    SIGN_IN.lock().unwrap().current = Some(attempt);
+    let emitter = app.clone();
+    let user = blocking("github_sign_in_browser", move || {
+        github::sign_in_with_browser(
+            |url| tauri_plugin_opener::open_url(url, None::<&str>).map_err(text),
+            || {
+                let _ = emitter.emit("github-sign-in-step", "install");
+            },
+            || !is_current(attempt),
+        )
+    })
+    .await?;
+    if user.is_some() {
+        state.account_changed();
+        // Back from the browser.
+        if let Some(window) = app.get_webview_window("main") {
+            let _ = window.unminimize();
+            let _ = window.set_focus();
+        }
+    }
+    Ok(user)
+}
+
+/// Workspaces in the repositories the App can reach, to join.
+#[tauri::command]
+pub async fn github_workspaces() -> CmdResult<Vec<RemoteWorkspace>> {
+    blocking("github_workspaces", github::workspaces).await
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NewGitHubWorkspace {
+    workspace: WorkspaceInfo,
+    /// The repository, unless creating it failed (then `problem` says why
+    /// and the workspace is only on this device for now).
+    full_name: Option<String>,
+    problem: Option<String>,
+    reachable: bool,
+    manage_url: Option<String>,
+}
+
+/// A new workspace that syncs with a new private repository.
+#[tauri::command]
+pub async fn create_github_workspace(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    name: String,
+) -> CmdResult<NewGitHubWorkspace> {
+    let session = new_local_workspace(&app, "create_github_workspace", name).await?;
+    let workspace_name = session.info().name;
+    install(&app, &state, session);
+    let created = blocking("create_github_workspace", move || {
+        let repo = github::create_private_repo(&workspace_name)?;
+        let reachable = github::can_reach(&repo.full_name).unwrap_or(true);
+        let manage_url = github::access().ok().map(|a| a.manage_url);
+        Ok((repo, reachable, manage_url))
+    })
+    .await;
+    let mut guard = state.session.lock().unwrap();
+    let session = guard.as_mut().ok_or("No workspace is open")?;
+    Ok(match created {
+        Ok((repo, reachable, manage_url)) => {
+            session.set_remote(Some(repo.clone_url.clone()))?;
+            session.worker.sync_now();
+            NewGitHubWorkspace {
+                workspace: session.info(),
+                full_name: Some(repo.full_name),
+                problem: None,
+                reachable,
+                manage_url,
+            }
+        }
+        Err(problem) => NewGitHubWorkspace {
+            workspace: session.info(),
+            full_name: None,
+            problem: Some(problem),
+            reachable: false,
+            manage_url: None,
+        },
+    })
 }
 
 /// Whether the GitHub App is installed on the user's account.
