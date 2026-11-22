@@ -9,6 +9,7 @@ mod search;
 mod session;
 mod tree;
 mod worker;
+mod workspaces;
 
 use tauri::{Emitter, Manager, WindowEvent};
 
@@ -51,6 +52,10 @@ pub fn run() {
             commands::workspace_info,
             commands::rename_workspace,
             commands::close_workspace,
+            commands::list_workspaces,
+            commands::forget_workspace,
+            commands::locate_workspace,
+            commands::move_workspace,
             commands::set_remote,
             commands::sync_status,
             commands::sync_now,

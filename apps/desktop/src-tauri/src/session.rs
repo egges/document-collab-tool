@@ -10,6 +10,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::devlog;
 use crate::worker::{Events, SyncWorker, Timing};
+use crate::workspaces::folder_label;
 
 /// Per-device settings, in `.docsync/app.json` (never synced).
 #[derive(Debug, Default, Clone, Serialize, Deserialize)]
@@ -187,13 +188,6 @@ impl Session {
         self.info.remote = url;
         Ok(())
     }
-}
-
-/// The folder's name, for workspaces made before names were stored.
-fn folder_label(root: &Path) -> String {
-    root.file_name()
-        .map(|n| n.to_string_lossy().into_owned())
-        .unwrap_or_else(|| "Workspace".into())
 }
 
 fn is_empty_dir(path: &Path) -> Result<bool, String> {

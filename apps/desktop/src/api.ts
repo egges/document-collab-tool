@@ -10,6 +10,19 @@ export interface WorkspaceInfo {
   remote: string | null;
 }
 
+/** A workspace this device knows, for the switcher. */
+export interface WorkspaceEntry {
+  path: string;
+  /** Read fresh when the folder is there, else the name last seen. */
+  name: string;
+  /** The folder is gone or no longer holds a workspace: offer "Locate…". */
+  missing: boolean;
+  /** Open in the window now. */
+  current: boolean;
+  /** Milliseconds since the Unix epoch. */
+  lastOpened: number;
+}
+
 export interface PageSummary {
   id: string;
   title: string;
@@ -73,6 +86,17 @@ export const api = {
   /** Rename the workspace on every device; folders and remotes keep their names. */
   renameWorkspace: (name: string) => invoke<WorkspaceInfo>("rename_workspace", { name }),
   closeWorkspace: () => invoke<void>("close_workspace"),
+  /** Known workspaces, most recently opened first. */
+  listWorkspaces: () => invoke<WorkspaceEntry[]>("list_workspaces"),
+  /** Take a workspace off the list; its files stay where they are. */
+  forgetWorkspace: (path: string) => invoke<void>("forget_workspace", { path }),
+  /** The workspace listed at `from` is now in `to`: open it there. */
+  locateWorkspace: (from: string, to: string) => invoke<WorkspaceInfo>("locate_workspace", { from, to }),
+  /**
+   * Move the open workspace into a new folder inside `parent`. On failure
+   * it reopens where it was (or nothing is open): ask `workspaceInfo`.
+   */
+  moveWorkspace: (parent: string) => invoke<WorkspaceInfo>("move_workspace", { parent }),
   setRemote: (url: string | null) => invoke<WorkspaceInfo>("set_remote", { url }),
   syncStatus: () => invoke<SyncStatus | null>("sync_status"),
   syncNow: () => invoke<void>("sync_now"),

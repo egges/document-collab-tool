@@ -19,6 +19,8 @@ import { Welcome } from "./Welcome.tsx";
 export function App() {
   const [workspace, setWorkspace] = useState<WorkspaceInfo | null>(null);
   const [starting, setStarting] = useState(true);
+  // "Add workspace…": the welcome screen over the open workspace.
+  const [adding, setAdding] = useState(false);
 
   useEffect(() => {
     api
@@ -29,10 +31,40 @@ export function App() {
 
   if (starting) return <div className="splash" />;
   if (!workspace) return <Welcome onOpened={setWorkspace} />;
-  return <WorkspaceView key={workspace.path} workspace={workspace} onChange={setWorkspace} />;
+  return (
+    <>
+      <WorkspaceView
+        key={workspace.path}
+        workspace={workspace}
+        covered={adding}
+        onChange={setWorkspace}
+        onAddWorkspace={() => setAdding(true)}
+      />
+      {adding && (
+        <Welcome
+          onOpened={(w) => {
+            setAdding(false);
+            setWorkspace(w);
+          }}
+          onCancel={() => setAdding(false)}
+        />
+      )}
+    </>
+  );
 }
 
-function WorkspaceView({ workspace, onChange }: { workspace: WorkspaceInfo; onChange: (w: WorkspaceInfo | null) => void }) {
+function WorkspaceView({
+  workspace,
+  covered,
+  onChange,
+  onAddWorkspace,
+}: {
+  workspace: WorkspaceInfo;
+  /** Another screen is shown over it: no shortcuts. */
+  covered: boolean;
+  onChange: (w: WorkspaceInfo | null) => void;
+  onAddWorkspace: () => void;
+}) {
   const [pages, setPages] = useState<PageSummary[]>([]);
   const [selected, setSelected] = useState<string | null>(null);
   // The open page's title while it's typed, for the title bar.
@@ -113,6 +145,20 @@ function WorkspaceView({ workspace, onChange }: { workspace: WorkspaceInfo; onCh
     }
   };
 
+  // Opening another workspace (or moving this one): save the open page first,
+  // so its last edits land in this workspace.
+  const switchTo = async (open: () => Promise<WorkspaceInfo>) => {
+    try {
+      await page.current?.flush();
+      onChange(await open());
+    } catch (e) {
+      setError(errorText(e));
+      // A failed move reopens the workspace where it was, or leaves none open.
+      const now = await api.workspaceInfo().catch(() => null);
+      if (now?.path !== workspace.path) onChange(now);
+    }
+  };
+
   const step = (by: 1 | -1) => {
     const order = displayOrder(pages);
     if (!order.length) return;
@@ -134,7 +180,7 @@ function WorkspaceView({ workspace, onChange }: { workspace: WorkspaceInfo; onCh
     else if (target.kind === "external") openUrl(target.url).catch((e) => setError(`Couldn't open ${target.url}: ${errorText(e)}`));
   };
 
-  useShortcuts({
+  useShortcuts(covered ? {} : {
     search: () => setDialog((d) => (d === "search" ? null : "search")),
     toggleSidebar: sidebar.toggle,
     // In a code block, ⌘/ comments lines out, as in a code editor.
@@ -154,6 +200,7 @@ function WorkspaceView({ workspace, onChange }: { workspace: WorkspaceInfo; onCh
 
   return (
     <div
+      inert={covered}
       className={"layout" + (sidebar.hidden ? " sidebar-hidden" : "")}
       style={{ gridTemplateColumns: `${sidebar.hidden ? 0 : sidebar.width}px 1fr` }}
     >
@@ -165,6 +212,8 @@ function WorkspaceView({ workspace, onChange }: { workspace: WorkspaceInfo; onCh
         onSelect={select}
         onCreate={create}
         onWorkspaceChange={onChange}
+        onSwitch={switchTo}
+        onAddWorkspace={() => void Promise.resolve(page.current?.flush()).then(onAddWorkspace)}
         onError={setError}
         onShowShortcuts={() => setDialog("shortcuts")}
         onSearch={() => setDialog("search")}

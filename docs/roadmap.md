@@ -46,8 +46,11 @@ straightforward building.
 - [x] **Renaming workspaces.** The name lives in `workspace.json` and syncs;
       folders and remotes keep theirs. Click the name in the sidebar to
       rename ([sync-design.md](sync-design.md#renaming)).
-- [ ] **Workspace list and moving.** Known workspaces in `settings.json`, a
-      switcher, "Locate…" for a missing folder, and "Move…" in settings.
+- [x] **Workspace list and moving.** Known workspaces in `settings.json`;
+      clicking the workspace name opens a switcher (with Rename and "Add
+      workspace…"), a missing folder shows "Locate…", the welcome screen
+      lists recent workspaces, and "Move…" in the sync panel moves the
+      folder ([sync-design.md](sync-design.md#the-workspace-list)).
 - [ ] **Cloud folder remotes.** A bare repo in iCloud Drive, Dropbox or
       OneDrive with one ref per device, tested with delayed, unordered
       copying ([sync-design.md](sync-design.md#cloud-folder-remotes)).

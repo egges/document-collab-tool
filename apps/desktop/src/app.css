@@ -195,10 +195,74 @@ kbd {
   height: 100%;
 }
 
+.welcome-screen {
+  height: 100%;
+  overflow-y: auto;
+}
+
+/* "Add workspace…": over the open workspace, which stays as it was. */
+.welcome-screen.over-workspace {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  background: var(--bg);
+}
+
 .welcome {
+  position: relative;
   max-width: 560px;
   margin: 0 auto;
   padding: 72px 24px;
+}
+
+.welcome-close {
+  position: absolute;
+  top: 40px;
+  right: 16px;
+}
+
+.recent {
+  list-style: none;
+  margin: 4px -8px 0;
+  padding: 0;
+}
+
+.recent-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-right: 4px;
+  border-radius: 6px;
+}
+
+.recent-row:hover {
+  background: var(--hover);
+}
+
+.recent-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 6px 8px;
+  border: 0;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.recent-name {
+  font-weight: 500;
+}
+
+.recent-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.recent-row.missing .recent-name {
+  color: var(--muted);
 }
 
 .welcome h1 {
@@ -444,6 +508,15 @@ body.resizing {
   user-select: none;
 }
 
+/* ---- workspace switcher (WorkspaceSwitcher.tsx) ---------------------------- */
+
+.switcher {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
 .workspace-name {
   flex: 1;
   min-width: 0;
@@ -460,8 +533,115 @@ body.resizing {
   cursor: pointer;
 }
 
-button.workspace-name:hover {
+button.workspace-name {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 1 auto;
+}
+
+button.workspace-name:hover,
+button.workspace-name[aria-expanded="true"] {
   background: var(--hover);
+}
+
+.workspace-name-text {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.workspace-name-chevron {
+  flex: none;
+  color: var(--muted);
+}
+
+/*
+ * Over the header's "+" button too, but inside the sidebar, which cuts off
+ * anything wider (the header's right padding and the button: 10 + 26 + 2).
+ */
+.switcher-menu {
+  top: calc(100% + 4px);
+  left: -7px;
+  width: calc(100% + 7px + 30px);
+}
+
+.switcher-row {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.switcher-row.missing .menu-label {
+  color: var(--muted);
+}
+
+/* ---- pop-up menus ---------------------------------------------------------- */
+
+.menu {
+  position: absolute;
+  z-index: 20;
+  padding: 4px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  box-shadow: 0 8px 28px rgb(0 0 0 / 0.18);
+  display: flex;
+  flex-direction: column;
+}
+
+.menu-item {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 28px;
+  padding: 0 8px 0 4px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-item:hover,
+.menu-item:focus-visible,
+.menu .icon-button:focus-visible {
+  background: var(--hover);
+  outline: none;
+}
+
+.menu-check {
+  display: inline-flex;
+  justify-content: center;
+  width: 18px;
+  flex: none;
+  color: var(--muted);
+}
+
+.menu-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.menu-note {
+  font-size: 12px;
+  color: var(--warn);
+}
+
+/* In a row (with buttons beside it) the item fills it; in the menu's column it keeps its height. */
+.menu > .menu-item {
+  flex: none;
+}
+
+.menu-separator {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--border);
 }
 
 .workspace-name.editing {
@@ -611,7 +791,9 @@ button.workspace-name:hover {
   position: absolute;
   bottom: 100%;
   left: 8px;
-  width: 340px;
+  /* No wider than the sidebar, which cuts off anything wider (.sync is
+     the sidebar's width less the 36px of buttons beside it). */
+  width: min(340px, calc(100% + 20px));
   padding: 14px;
   background: var(--bg);
   border: 1px solid var(--border);

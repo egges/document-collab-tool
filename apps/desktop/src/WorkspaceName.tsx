@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { type WorkspaceInfo, api, errorText } from "./api.ts";
 
 /** The name to save after editing, or null when nothing should change. */
 export function renameTo(draft: string, current: string): string | null {
@@ -8,43 +7,26 @@ export function renameTo(draft: string, current: string): string | null {
 }
 
 /**
- * The workspace name in the sidebar header. Click it to rename: Enter or
- * leaving the field saves, Escape cancels, and an empty name keeps the old
- * one. The name syncs to every device; folders and remotes keep theirs.
+ * Editing the workspace name in the sidebar header: Enter or leaving the
+ * field saves, Escape cancels, and an empty name keeps the old one. The name
+ * syncs to every device; folders and remotes keep theirs.
  */
-export function WorkspaceName({
-  workspace,
-  onRenamed,
-  onError,
+export function WorkspaceNameInput({
+  name,
+  onDone,
 }: {
-  workspace: WorkspaceInfo;
-  onRenamed: (w: WorkspaceInfo) => void;
-  onError: (message: string) => void;
+  name: string;
+  /** The new name, or null when nothing should change. */
+  onDone: (name: string | null) => void;
 }) {
-  const [draft, setDraft] = useState<string | null>(null);
-
-  const finish = async (save: boolean) => {
-    const name = save && draft !== null ? renameTo(draft, workspace.name) : null;
-    setDraft(null);
-    if (!name) return;
-    try {
-      onRenamed(await api.renameWorkspace(name));
-    } catch (e) {
-      onError(errorText(e));
-    }
+  const [draft, setDraft] = useState(name);
+  // Enter saves, and then the field's blur would save again.
+  const [done, setDone] = useState(false);
+  const finish = (save: boolean) => {
+    if (done) return;
+    setDone(true);
+    onDone(save ? renameTo(draft, name) : null);
   };
-
-  if (draft === null) {
-    return (
-      <button
-        className="workspace-name"
-        title={`Rename “${workspace.name}”`}
-        onClick={() => setDraft(workspace.name)}
-      >
-        {workspace.name}
-      </button>
-    );
-  }
   return (
     <input
       autoFocus
@@ -53,15 +35,15 @@ export function WorkspaceName({
       aria-label="Workspace name"
       value={draft}
       onChange={(e) => setDraft(e.target.value)}
-      onBlur={() => void finish(true)}
+      onBlur={() => finish(true)}
       onKeyDown={(e) => {
         if (e.key === "Enter") {
           e.preventDefault();
-          void finish(true);
+          finish(true);
         } else if (e.key === "Escape") {
           e.preventDefault();
           e.stopPropagation();
-          void finish(false);
+          finish(false);
         }
       }}
       spellCheck={false}

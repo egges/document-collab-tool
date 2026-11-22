@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { FolderOpen, LogOut, RefreshCw } from "lucide-react";
 import { type SyncStatus, type WorkspaceInfo, api } from "./api.ts";
 import { showInFolderLabel } from "./fileManager.ts";
+import { pickFolder } from "./menu.ts";
 import { tip } from "./shortcuts.ts";
 
 function ago(ms: number, now: number): string {
@@ -38,11 +39,14 @@ export function SyncStatusBar({
   workspace,
   status,
   onWorkspaceChange,
+  onSwitch,
   onSetRemote,
 }: {
   workspace: WorkspaceInfo;
   status: SyncStatus | null;
   onWorkspaceChange: (w: WorkspaceInfo | null) => void;
+  /** Saves the open page, then opens the workspace `open` returns. */
+  onSwitch: (open: () => Promise<WorkspaceInfo>) => Promise<void>;
   onSetRemote: (url: string | null) => Promise<void>;
 }) {
   const [open, setOpen] = useState(false);
@@ -103,6 +107,21 @@ export function SyncStatusBar({
             <dd title={workspace.path}>
               <button type="button" className="link folder-path" onClick={() => void api.showWorkspaceFolder()}>
                 {workspace.path}
+              </button>
+              <button
+                type="button"
+                className="link"
+                title="Move the workspace's files to another folder on this device"
+                onClick={() =>
+                  void (async () => {
+                    const parent = await pickFolder(`Move “${workspace.name}” into…`);
+                    if (!parent) return;
+                    setOpen(false);
+                    await onSwitch(() => api.moveWorkspace(parent));
+                  })()
+                }
+              >
+                Move…
               </button>
             </dd>
           </dl>
