@@ -1,13 +1,9 @@
-import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
-import { FolderOpen, LogOut, RefreshCw } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { CloudAlert, CloudCheck, CloudOff, Laptop, RefreshCw, Settings } from "lucide-react";
 import { type SyncStatus, type WorkspaceInfo, api, errorText } from "./api.ts";
-import { showInFolderLabel } from "./fileManager.ts";
-import { useGitHubAccount } from "./GitHubSignIn.tsx";
-import { pickFolder } from "./menu.ts";
+import { pickFolder, useDismiss } from "./menu.ts";
 import { tip } from "./shortcuts.ts";
 import { folderName, isFolderRemote } from "./remotes.ts";
-import { Welcome } from "./Welcome.tsx";
 
 function ago(ms: number, now: number): string {
   const s = Math.max(0, Math.round((now - ms) / 1000));
@@ -38,24 +34,50 @@ function describe(status: SyncStatus | null, workspace: WorkspaceInfo, now: numb
   }
 }
 
-/** Sync state at the bottom of the sidebar; click it for sync settings. */
+/** A small picture of where the pages are: on this device, synced, or not reaching the others. */
+function SyncIcon({
+  status,
+  workspace,
+  tone,
+  size = 15,
+}: {
+  status: SyncStatus | null;
+  workspace: WorkspaceInfo;
+  tone: string;
+  size?: number;
+}) {
+  const state = status?.state ?? (workspace.remote ? "synced" : "localOnly");
+  const Icon =
+    state === "localOnly" ? Laptop : state === "offline" ? CloudOff : tone === "warn" ? CloudAlert : CloudCheck;
+  return <Icon size={size} className={"sync-icon " + tone} aria-hidden />;
+}
+
+/**
+ * Sync state at the bottom of the sidebar. Click it for a short popup: how
+ * things stand, anything that needs doing, and Sync now. Everything else
+ * about the workspace (where it's kept, its folder, the account) is in
+ * Settings.
+ */
 export function SyncStatusBar({
   workspace,
   status,
   onWorkspaceChange,
   onSwitch,
+  onOpenSettings,
 }: {
   workspace: WorkspaceInfo;
   status: SyncStatus | null;
   onWorkspaceChange: (w: WorkspaceInfo | null) => void;
   /** Saves the open page, then opens the workspace `open` returns. */
   onSwitch: (open: () => Promise<WorkspaceInfo | null>) => Promise<void>;
+  /** Opens the workspace's settings. */
+  onOpenSettings: () => void;
 }) {
   const [open, setOpen] = useState(false);
-  // The wizard's "change where it syncs", over the whole window.
-  const [changing, setChanging] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
+  const root = useRef<HTMLDivElement>(null);
+  useDismiss(root, open, () => setOpen(false));
   useEffect(() => {
     const timer = setInterval(() => setNow(Date.now()), 30_000);
     return () => clearInterval(timer);
@@ -63,7 +85,7 @@ export function SyncStatusBar({
 
   const [described, label] = describe(status, workspace, now);
   // A workspace inside a cloud folder can get damaged, and one that moved
-  // elsewhere no longer reaches the other devices: worth a dot.
+  // elsewhere no longer reaches the other devices: worth a warning colour.
   const tone = workspace.insideCloud || workspace.movedTo ? "warn" : described;
   const locate = async (name: string) => {
     const folder = await pickFolder(`Where is “${name}” now?`);
@@ -76,9 +98,20 @@ export function SyncStatusBar({
     }
   };
   return (
-    <div className="sync">
+    <div className="sync" ref={root}>
       {open && (
         <div className="sync-panel">
+          <div className="sync-summary">
+            <span className={"sync-badge " + tone} aria-hidden>
+              <SyncIcon status={status} workspace={workspace} tone={tone} size={17} />
+            </span>
+            <div className="sync-summary-text">
+              <span className="sync-summary-label">{label}</span>
+              <span className="muted small">
+                {workspace.keptIn ? `Kept in ${workspace.keptIn}` : "Kept on this computer only"}
+              </span>
+            </div>
+          </div>
           {status?.state === "offline" &&
             !workspace.movedTo &&
             (isFolderRemote(workspace.remote) ? (
@@ -95,8 +128,12 @@ export function SyncStatusBar({
             ) : (
               <p>Changes are saved on this device and sync when the connection is back.</p>
             ))}
-          {status?.state === "error" && <p>Changes are saved on this device. Syncing will try again shortly.</p>}
-          {status?.message && <p className="sync-message">{status.message}</p>}
+          {status?.state === "error" && (
+            <>
+              <p>Changes are saved on this device. Syncing will try again shortly.</p>
+              {status.message && <p className="sync-message">{status.message}</p>}
+            </>
+          )}
           {status?.conflicts ? (
             <p className="muted">
               The last sync kept both versions of {status.conflicts} edit{status.conflicts === 1 ? "" : "s"}. Pages with
@@ -141,124 +178,29 @@ export function SyncStatusBar({
               </button>
             </div>
           )}
-          <div className="sync-target">
-            <div className="sync-target-text">
-              <span className="muted small">Kept in</span>
-              <span title={workspace.remote ?? undefined}>{workspace.keptIn ?? "On this computer"}</span>
-            </div>
+          <div className="sync-actions">
+            {workspace.remote && (
+              <button className="button small" title={tip("Sync now", "syncNow")} onClick={() => void api.syncNow()}>
+                <RefreshCw size={13} aria-hidden /> Sync now
+              </button>
+            )}
             <button
-              className="button"
+              className="button small"
+              title="Where it's kept, its folder, and more"
               onClick={() => {
                 setOpen(false);
-                setChanging(true);
+                onOpenSettings();
               }}
             >
-              Change…
-            </button>
-          </div>
-          <GitHubAccountRow />
-          <dl className="facts">
-            <dt>This device</dt>
-            <dd>{workspace.device}</dd>
-            <dt>Folder</dt>
-            <dd title={workspace.path}>
-              <button type="button" className="link folder-path" onClick={() => void api.showWorkspaceFolder()}>
-                {workspace.path}
-              </button>
-              <button
-                type="button"
-                className="link"
-                title="Move the workspace's files to another folder on this device"
-                onClick={() =>
-                  void (async () => {
-                    const parent = await pickFolder(`Move “${workspace.name}” into…`);
-                    if (!parent) return;
-                    setOpen(false);
-                    await onSwitch(() => api.moveWorkspace(parent));
-                  })()
-                }
-              >
-                Move…
-              </button>
-            </dd>
-          </dl>
-          <div className="row">
-            <button
-              className="icon-button"
-              aria-label="Sync now"
-              title={tip("Sync now", "syncNow")}
-              disabled={!workspace.remote}
-              onClick={() => void api.syncNow()}
-            >
-              <RefreshCw size={15} />
-            </button>
-            <button
-              className="icon-button"
-              aria-label={showInFolderLabel()}
-              title={showInFolderLabel()}
-              onClick={() => void api.showWorkspaceFolder()}
-            >
-              <FolderOpen size={15} />
-            </button>
-            <span className="spacer" />
-            <button
-              className="icon-button"
-              aria-label="Close workspace"
-              title="Close workspace"
-              onClick={() => void api.closeWorkspace().finally(() => onWorkspaceChange(null))}
-            >
-              <LogOut size={15} />
+              <Settings size={13} aria-hidden /> Settings
             </button>
           </div>
         </div>
       )}
       <button className="sync-bar" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <span className={"dot " + tone} aria-hidden />
+        <SyncIcon status={status} workspace={workspace} tone={tone} />
         <span>{label}</span>
       </button>
-      {changing &&
-        createPortal(
-          <Welcome
-            change={workspace}
-            onOpened={(w) => {
-              setChanging(false);
-              onWorkspaceChange(w);
-            }}
-            onCancel={() => setChanging(false)}
-          />,
-          document.body,
-        )}
-    </div>
-  );
-}
-
-/** The GitHub account this device is signed in with, to sign out. */
-function GitHubAccountRow() {
-  const [user, setUser] = useGitHubAccount();
-  const [problem, setProblem] = useState<string | null>(null);
-  if (!user) return null;
-  return (
-    <div className="github">
-      <div className="github-account">
-        <img className="avatar" src={user.avatarUrl} alt="" width={20} height={20} />
-        <span className="github-name" title={`Signed in to GitHub as @${user.login}`}>
-          {user.name?.trim() || user.login} <span className="muted">@{user.login}</span>
-        </span>
-        <button
-          type="button"
-          className="link"
-          title="Sign out on this device. Commits from now on are by this device."
-          onClick={() =>
-            void api
-              .githubSignOut()
-              .then(() => setUser(null))
-              .catch((e) => setProblem(errorText(e)))
-          }
-        >
-          Sign out
-        </button>
-      </div>
-      {problem && <p className="error small">{problem}</p>}
     </div>
   );
 }

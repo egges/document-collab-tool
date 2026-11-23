@@ -101,6 +101,7 @@ pub fn run() {
             commands::write_page,
             commands::create_page,
             commands::rename_page,
+            commands::set_page_display,
             commands::delete_page,
             commands::resolve_conflict,
             commands::dev_info,

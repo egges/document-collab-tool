@@ -1,13 +1,24 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { X } from "lucide-react";
+import { Plus, X } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
-import { type PageSummary, type SyncStatus, type WorkspaceInfo, api, errorText, events } from "./api.ts";
+import {
+  type PageDisplay,
+  type PageDisplayKey,
+  type PageSummary,
+  type SyncStatus,
+  type WorkspaceInfo,
+  api,
+  errorText,
+  events,
+} from "./api.ts";
 import { DevPanel, useDevPanel } from "./DevPanel.tsx";
+import { PagesArt } from "./Graphics.tsx";
 import { log } from "./devlog.ts";
 import { PageView, type PageViewHandle } from "./PageView.tsx";
 import { linkTarget } from "./links.ts";
 import { displayOrder, trail } from "./pageTree.ts";
 import { Search } from "./Search.tsx";
+import { Settings, type SettingsSection } from "./Settings.tsx";
 import type { SearchAction } from "./search.ts";
 import { inCodeBlock, useShortcuts } from "./shortcuts.ts";
 import { ShortcutsHelp } from "./ShortcutsHelp.tsx";
@@ -69,12 +80,19 @@ function WorkspaceView({
   const [selected, setSelected] = useState<string | null>(null);
   // The open page's title while it's typed, for the title bar.
   const [draftTitle, setDraftTitle] = useState<{ id: string; title: string } | null>(null);
+  // The open page's display options (text size, width), for the page and its menu.
+  const [display, setDisplay] = useState<{ id: string; display: PageDisplay } | null>(null);
   // Text to select once the open page loads, when it was opened from a search.
   const [reveal, setReveal] = useState<string | null>(null);
   const sidebar = useSidebarLayout();
   const [status, setStatus] = useState<SyncStatus | null>(null);
   const [error, setErrorState] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<"search" | "shortcuts" | null>(null);
+  const [dialog, setDialog] = useState<"search" | "shortcuts" | "settings" | null>(null);
+  const [settingsSection, setSettingsSection] = useState<SettingsSection | undefined>();
+  const openSettings = (section?: SettingsSection) => {
+    setSettingsSection(section);
+    setDialog("settings");
+  };
   const setError = useCallback((message: string | null) => {
     if (message) log("error", "ui", `Shown to the user: ${message}`);
     setErrorState(message);
@@ -166,6 +184,20 @@ function WorkspaceView({
     }
   };
 
+  const onDisplay = useCallback((id: string, d: PageDisplay) => setDisplay({ id, display: d }), []);
+  const changeDisplay = async <K extends PageDisplayKey>(key: K, value: PageDisplay[K]) => {
+    if (!selected || display?.id !== selected) return;
+    const before = display.display;
+    setDisplay({ id: selected, display: { ...before, [key]: value } });
+    try {
+      await api.setPageDisplay(selected, key, value);
+    } catch (e) {
+      setDisplay((now) => (now?.id === selected ? { id: selected, display: before } : now));
+      setError(errorText(e));
+    }
+  };
+  const openDisplay = display && display.id === selected ? display.display : null;
+
   const step = (by: 1 | -1) => {
     const order = displayOrder(pages);
     if (!order.length) return;
@@ -192,6 +224,7 @@ function WorkspaceView({
     toggleSidebar: sidebar.toggle,
     // In a code block, ⌘/ comments lines out, as in a code editor.
     showShortcuts: () => (inCodeBlock() ? false : setDialog((d) => (d === "shortcuts" ? null : "shortcuts"))),
+    openSettings: () => (dialog === "settings" ? setDialog(null) : openSettings()),
     newPage: () => void create(null),
     newSubpage: selected ? () => void create(selected) : undefined,
     previousPage: () => step(-1),
@@ -222,7 +255,7 @@ function WorkspaceView({
         onSwitch={switchTo}
         onAddWorkspace={() => void Promise.resolve(page.current?.flush()).then(onAddWorkspace)}
         onError={setError}
-        onShowShortcuts={() => setDialog("shortcuts")}
+        onOpenSettings={openSettings}
         onSearch={() => setDialog("search")}
         width={sidebar.width}
         hidden={sidebar.hidden}
@@ -237,6 +270,8 @@ function WorkspaceView({
           onSearch={() => setDialog("search")}
           onSelect={(id) => id !== selected && void select(id)}
           onDelete={selected ? () => void page.current?.remove() : undefined}
+          display={openDisplay}
+          onDisplayChange={(key, value) => void changeDisplay(key, value)}
         />
         {error && (
           <div className="banner banner-error" role="alert">
@@ -257,6 +292,8 @@ function WorkspaceView({
               onOpenLink={openLink}
               onRenamed={reload}
               onTitleChange={(title) => setDraftTitle({ id: selected, title })}
+              display={openDisplay}
+              onDisplay={(d) => onDisplay(selected, d)}
               onDeleted={async () => {
                 setSelected(null);
                 await reload();
@@ -265,9 +302,11 @@ function WorkspaceView({
             />
           ) : (
             <div className="empty">
-              <p>{pages.length ? "Pick a page on the left." : "This workspace has no pages yet."}</p>
-              <button className="button" onClick={() => void create(null)}>
-                New page
+              <PagesArt />
+              <h2>{pages.length ? "Pick up where you left off" : "A fresh, empty workspace"}</h2>
+              <p>{pages.length ? "Choose a page on the left, or start a new one." : "Start your first page: notes, plans, anything."}</p>
+              <button className="button primary" onClick={() => void create(null)}>
+                <Plus size={15} aria-hidden /> New page
               </button>
             </div>
           )}
@@ -277,6 +316,16 @@ function WorkspaceView({
       {dev.open && <DevPanel maximized={dev.maximized} onToggleSize={dev.toggleSize} onClose={dev.toggle} />}
       {dialog === "search" && <Search pages={pages} onAction={runSearch} onClose={() => setDialog(null)} />}
       {dialog === "shortcuts" && <ShortcutsHelp devPanel={dev.enabled} onClose={() => setDialog(null)} />}
+      {dialog === "settings" && (
+        <Settings
+          section={settingsSection}
+          workspace={workspace}
+          onWorkspaceChange={onChange}
+          onSwitch={switchTo}
+          onShowShortcuts={() => setDialog("shortcuts")}
+          onClose={() => setDialog(null)}
+        />
+      )}
     </div>
   );
 }

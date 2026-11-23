@@ -240,6 +240,22 @@ export function insertBlock(state: EditorState, block: Block, { above = false, t
   return tr.setSelection(TextSelection.create(tr.doc, cursor)).scrollIntoView();
 }
 
+/**
+ * Clicking below the last block, as in Notion: a cursor in an empty
+ * paragraph at the end of the page. The last block is reused when it's an
+ * empty paragraph already, so clicking twice doesn't pile them up.
+ */
+export function continueAtEnd(state: EditorState): Transaction {
+  const { doc, schema } = state;
+  const last = doc.lastChild;
+  const tr = state.tr;
+  if (last?.type.name === "paragraph" && last.content.size === 0) {
+    return tr.setSelection(TextSelection.create(doc, doc.content.size - 1)).scrollIntoView();
+  }
+  tr.insert(doc.content.size, schema.nodes.paragraph.create());
+  return tr.setSelection(TextSelection.create(tr.doc, tr.doc.content.size - 1)).scrollIntoView();
+}
+
 /** Puts a text cursor inside `block` (at the end of its first line of text), for "Turn into". */
 export function focusBlock(state: EditorState, block: Block, at: "start" | "end" = "end"): Transaction | null {
   let textblock: number | null = null;

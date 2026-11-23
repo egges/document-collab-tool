@@ -1,6 +1,6 @@
 <img src="assets/icon.svg" width="64" height="64" alt="">
 
-# document_collab_tool
+# Pagemesh
 
 A free, open-source workspace for humans and AI agents. Your pages and
 databases are plain files in a git repository you own.

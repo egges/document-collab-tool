@@ -1,26 +1,34 @@
 // Developer panel: the live log of everything the app did, with filters and
-// a Copy button for bug reports. Only in debug builds (or with
-// DOCSYNC_DEV=1); toggle with ⌘J / Ctrl+J.
+// a Copy button for bug reports. In debug builds (or with DOCSYNC_DEV=1),
+// or when turned on in Settings; toggle with ⌘J / Ctrl+J.
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Check, Copy, Maximize2, Minimize2, Trash2, X } from "lucide-react";
 import { type DevInfo, type LogEntry, type LogLevel, devApi, events } from "./api.ts";
+import { devLog } from "./preferences.ts";
 import { tip, useShortcuts } from "./shortcuts.ts";
 import { WINDOW_MOVE_ONLY } from "./windowChrome.ts";
 
 /** Whether the panel is available, and its open and size state. Shortcuts are in App. */
 export function useDevPanel() {
-  const [enabled, setEnabled] = useState(false);
+  const [builtIn, setBuiltIn] = useState(false);
+  const turnedOn = devLog.use() === "on";
+  const enabled = builtIn || turnedOn;
   const [open, setOpen] = useState(false);
   const [maximized, setMaximized] = useState(false);
   useEffect(() => {
     devApi
       .info()
-      .then((info) => setEnabled(info.enabled))
+      .then((info) => setBuiltIn(info.enabled))
       .catch(() => {});
   }, []);
+  // Turned off in Settings while open.
+  useEffect(() => {
+    if (!enabled) setOpen(false);
+  }, [enabled]);
   return {
     enabled,
+    builtIn,
     open,
     maximized,
     toggle: () => setOpen((o) => !o),
@@ -92,7 +100,7 @@ function line(e: LogEntry): string {
 /** Everything someone debugging needs, as plain text. */
 export function report(info: DevInfo | null, entries: LogEntry[]): string {
   const header = [
-    `Document Collab Tool ${info?.version ?? "?"}${info?.debugBuild ? " (debug build)" : ""} on ${info?.os ?? "?"}`,
+    `Pagemesh ${info?.version ?? "?"}${info?.debugBuild ? " (debug build)" : ""} on ${info?.os ?? "?"}`,
     `Git: ${info?.git ?? "not found"}`,
     info?.workspace
       ? `Workspace: ${info.workspace.path} · device "${info.workspace.device}" · remote ${info.workspace.remote ?? "none"}`

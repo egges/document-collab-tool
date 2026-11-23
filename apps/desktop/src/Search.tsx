@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { FilePlus, FileText, TextSearch } from "lucide-react";
+import { FilePlus, FileText, Search as SearchIcon, TextSearch } from "lucide-react";
 import { type PageSummary, type TextMatch, api } from "./api.ts";
 import { log } from "./devlog.ts";
 import { type SearchAction, type SearchResult, highlight, searchSections } from "./search.ts";
@@ -36,6 +36,8 @@ export function Search({
   return (
     <div className="overlay" onMouseDown={onClose}>
       <div className="dialog search" role="dialog" aria-label="Search" onMouseDown={(e) => e.stopPropagation()}>
+        <div className="search-field">
+        <SearchIcon size={17} className="search-field-icon" aria-hidden />
         <input
           autoFocus
           className="search-input"
@@ -58,6 +60,7 @@ export function Search({
             e.preventDefault();
           }}
         />
+        </div>
         <ul className="search-list" id="search-results" role="listbox" ref={list}>
           {sections.map((section) => (
             <li key={section.label} role="presentation">

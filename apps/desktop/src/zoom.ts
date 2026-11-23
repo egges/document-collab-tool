@@ -5,6 +5,7 @@
 // buttons don't, and stay where they are, so the bar keeps its height and the
 // room for them the same on screen, with its contents centred on them. The
 // styles do that with `--chrome-zoom` (see app.css).
+import { useEffect, useState } from "react";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import { errorText } from "./api.ts";
 import { log } from "./devlog.ts";
@@ -48,19 +49,48 @@ function saved(): number {
   }
 }
 
+let level = 1;
+const listeners = new Set<(level: number) => void>();
+
+async function apply() {
+  document.documentElement.style.setProperty("--chrome-zoom", String(1 / level));
+  if (!("__TAURI_INTERNALS__" in window)) return;
+  try {
+    await getCurrentWebview().setZoom(level);
+  } catch (e) {
+    log("warn", "ui", `Couldn't zoom to ${level}: ${errorText(e)}`);
+  }
+}
+
+/** Zoom by a key's step (as ⌘+ / ⌘− / ⌘0 do), and keep the level for next time. */
+export function zoom(key: ZoomKey) {
+  const next = nextZoom(level, key);
+  if (next === level) return;
+  level = next;
+  void apply();
+  listeners.forEach((f) => f(level));
+  try {
+    localStorage.setItem(KEY, String(level));
+  } catch {
+    // Not kept: it resets on the next start, nothing worse.
+  }
+}
+
+/** The current level, kept up to date (for Settings). */
+export function useZoom(): number {
+  const [now, setNow] = useState(level);
+  useEffect(() => {
+    listeners.add(setNow);
+    setNow(level);
+    return () => void listeners.delete(setNow);
+  }, []);
+  return now;
+}
+
 /** Restores the saved level and listens for the keys. Only in the app. */
 export function setUpZoom() {
   if (!("__TAURI_INTERNALS__" in window)) return;
-  const webview = getCurrentWebview();
-  let level = saved();
-  const apply = async () => {
-    document.documentElement.style.setProperty("--chrome-zoom", String(1 / level));
-    try {
-      await webview.setZoom(level);
-    } catch (e) {
-      log("warn", "ui", `Couldn't zoom to ${level}: ${errorText(e)}`);
-    }
-  };
+  level = saved();
   if (level !== 1) void apply();
 
   window.addEventListener(
@@ -70,15 +100,7 @@ export function setUpZoom() {
       if (!key) return;
       event.preventDefault();
       event.stopPropagation();
-      const next = nextZoom(level, key);
-      if (next === level) return;
-      level = next;
-      void apply();
-      try {
-        localStorage.setItem(KEY, String(level));
-      } catch {
-        // Not kept: it resets on the next start, nothing worse.
-      }
+      zoom(key);
     },
     // Before the editor and the app's other shortcuts.
     true,

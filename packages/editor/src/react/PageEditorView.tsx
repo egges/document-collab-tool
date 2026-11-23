@@ -29,7 +29,7 @@ export type KeyHandler = (event: KeyboardEvent) => boolean;
  * The page editor with its toolbar (on selection), slash menu, block
  * handle (drag to move, click for the block menu) and table handles (insert
  * and delete rows and columns). Styles:
- * import "@document-collab-tool/editor/style.css".
+ * import "@pagemesh/editor/style.css".
  */
 export function PageEditorView({ markdown, onReady, onDirtyChange, onChange, onOpenLink, className }: PageEditorViewProps) {
   const container = useRef<HTMLDivElement>(null);

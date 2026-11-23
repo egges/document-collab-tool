@@ -1,3 +1,4 @@
+import { Keyboard } from "lucide-react";
 import { BLOCK_KEYS, CODE_BLOCK_KEYS, SHORTCUTS, keysLabel } from "./shortcuts.ts";
 
 /** ⌘/: every shortcut. */
@@ -14,7 +15,12 @@ export function ShortcutsHelp({ devPanel, onClose }: { devPanel: boolean; onClos
         onKeyDown={(e) => e.key === "Escape" && onClose()}
         onMouseDown={(e) => e.stopPropagation()}
       >
-        <h2>Keyboard shortcuts</h2>
+        <h2>
+          <span className="dialog-icon" aria-hidden>
+            <Keyboard size={16} />
+          </span>
+          Keyboard shortcuts
+        </h2>
         <dl>
           {rows.map(([id, s]) => (
             <div key={id} className="shortcut-row">
