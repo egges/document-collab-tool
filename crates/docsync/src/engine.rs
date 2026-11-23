@@ -30,6 +30,20 @@ pub enum RemoteLayout {
     DeviceRefs { device_id: String },
 }
 
+/// What a remote holds, compared with this workspace's history: see
+/// [`SyncEngine::check_remote`].
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum RemoteCheck {
+    /// It shares history with this workspace.
+    SameWorkspace,
+    /// No commits yet (for a folder remote: none that have fully arrived).
+    Empty,
+    /// Commits with no history in common: a different workspace.
+    OtherWorkspace,
+    /// It can't be reached right now, with git's reason.
+    Unreachable(String),
+}
+
 /// Settings for one device's copy of a workspace.
 #[derive(Debug, Clone)]
 pub struct SyncConfig {
@@ -154,7 +168,15 @@ impl SyncEngine {
         git.init(&root, &config.branch)?;
         let engine = Self::new(git, root, config, clock);
         engine.write_initial_files()?;
-        engine.commit_local("Create workspace")?;
+        // The id makes every workspace's first commit unique, even two
+        // made on one device in the same second, so they're never taken
+        // for the same workspace. In the message, so no file differs: two
+        // devices starting one workspace on an empty remote still merge
+        // without a conflict.
+        engine.commit_local(&format!(
+            "Create workspace\n\nWorkspace {}",
+            crate::workspace::new_id()
+        ))?;
         Ok(engine)
     }
 
@@ -201,7 +223,15 @@ impl SyncEngine {
             }
             None => {
                 engine.write_initial_files()?;
-                engine.commit_local("Create workspace")?;
+                // The id makes every workspace's first commit unique, even two
+                // made on one device in the same second, so they're never taken
+                // for the same workspace. In the message, so no file differs: two
+                // devices starting one workspace on an empty remote still merge
+                // without a conflict.
+                engine.commit_local(&format!(
+                    "Create workspace\n\nWorkspace {}",
+                    crate::workspace::new_id()
+                ))?;
             }
         }
         Ok(engine)
@@ -264,31 +294,60 @@ impl SyncEngine {
     /// Holds the sync lock, so no sync runs against `url` before it's
     /// checked. On failure the previous remote is kept.
     pub fn switch_remote(&self, url: &str, layout: RemoteLayout) -> Result<()> {
+        match self.switch_if(url, layout, |check| *check != RemoteCheck::OtherWorkspace)? {
+            RemoteCheck::OtherWorkspace => Err(Error::DifferentWorkspace(
+                "That already holds a different workspace. Join that one instead, or choose an empty one."
+                    .into(),
+            )),
+            _ => Ok(()),
+        }
+    }
+
+    /// What `url` holds, shared as `layout`, without switching to it.
+    pub fn check_remote(&self, url: &str, layout: RemoteLayout) -> Result<RemoteCheck> {
+        self.switch_if(url, layout, |_| false)
+    }
+
+    /// Switch to `url` only if it already holds this workspace's history,
+    /// e.g. to follow another device that moved the workspace there. An
+    /// empty remote, or one that can't be reached yet, keeps the current
+    /// one. Returns what `url` holds.
+    pub fn follow_remote(&self, url: &str, layout: RemoteLayout) -> Result<RemoteCheck> {
+        self.switch_if(url, layout, |check| *check == RemoteCheck::SameWorkspace)
+    }
+
+    /// Point the remote at `url`, check what it holds, and keep it there if
+    /// `keep` says so; otherwise go back to the previous remote. Under the
+    /// sync lock, so no sync runs against `url` meanwhile.
+    fn switch_if(
+        &self,
+        url: &str,
+        layout: RemoteLayout,
+        keep: impl FnOnce(&RemoteCheck) -> bool,
+    ) -> Result<RemoteCheck> {
         let _lock = self.lock()?;
         let old_url = self.git.remote_url(&self.root, &self.config.remote)?;
         let old_layout = self.remote_layout();
         self.git.set_remote_url(&self.root, &self.config.remote, url)?;
         self.set_remote_layout(layout);
-        let problem = match self.holds_other_workspace() {
-            Ok(false) => return Ok(()),
-            Ok(true) => Error::DifferentWorkspace(
-                "That already holds a different workspace. Join that one instead, or choose an empty one."
-                    .into(),
-            ),
-            Err(e) => e,
-        };
+        let check = self.check_current_remote();
+        if let Ok(check) = &check
+            && keep(check)
+        {
+            return Ok(check.clone());
+        }
         if let Some(old) = old_url {
             self.git.set_remote_url(&self.root, &self.config.remote, &old)?;
         }
         self.set_remote_layout(old_layout);
-        Err(problem)
+        check
     }
 
-    /// Whether the remote has commits and none of them share this
-    /// workspace's history. Unreachable counts as no.
-    fn holds_other_workspace(&self) -> Result<bool> {
+    /// What the remote holds, compared with this workspace's history. A
+    /// folder remote that isn't there is an [`Error::Network`].
+    fn check_current_remote(&self) -> Result<RemoteCheck> {
         let Some(local) = self.head()? else {
-            return Ok(false);
+            return Ok(RemoteCheck::Empty);
         };
         let tips = match self.remote_layout() {
             RemoteLayout::SharedBranch => {
@@ -297,25 +356,31 @@ impl SyncEngine {
                     .fetch(&self.root, &self.config.remote, &self.config.branch)
                 {
                     Ok(tip) => tip.into_iter().collect(),
-                    Err(Error::Network(_)) => return Ok(false),
+                    Err(Error::Network(reason)) => return Ok(RemoteCheck::Unreachable(reason)),
                     Err(e) => return Err(e),
                 }
             }
             RemoteLayout::DeviceRefs { .. } => {
+                // Unlike a server that's down, a folder that isn't there is
+                // an error: it's usually the wrong folder.
                 prepare_folder_remote(&self.folder_path()?).map_err(Error::Network)?;
                 match self.fetch_device_refs(&mut SyncReport::default()) {
                     Ok(tips) => tips.into_iter().map(|(_, oid)| oid).collect::<Vec<_>>(),
-                    Err(Error::Network(_)) => return Ok(false),
+                    Err(Error::Network(reason)) => return Ok(RemoteCheck::Unreachable(reason)),
                     Err(e) => return Err(e),
                 }
             }
         };
         for tip in &tips {
             if self.git.merge_base(&self.root, &local, tip)?.is_some() {
-                return Ok(false);
+                return Ok(RemoteCheck::SameWorkspace);
             }
         }
-        Ok(!tips.is_empty())
+        Ok(if tips.is_empty() {
+            RemoteCheck::Empty
+        } else {
+            RemoteCheck::OtherWorkspace
+        })
     }
 
     /// How history is shared through the remote, e.g. after switching from

@@ -10,7 +10,7 @@ test("a copied report has the app details, then one line per entry", () => {
       debugBuild: true,
       os: "macos aarch64",
       git: "/opt/homebrew/bin/git 2.56.1",
-      workspace: { path: "/w", name: "w", device: "Laptop", remote: null, keptIn: null, insideCloud: null },
+      workspace: { path: "/w", name: "w", device: "Laptop", remote: null, keptIn: null, insideCloud: null, movedTo: null },
     },
     [
       { id: 1, time, level: "info", source: "sync", message: "Sync started (interval)" },

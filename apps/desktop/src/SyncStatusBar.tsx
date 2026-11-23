@@ -62,34 +62,32 @@ export function SyncStatusBar({
   }, []);
 
   const [described, label] = describe(status, workspace, now);
-  // A workspace inside a cloud folder can get damaged: worth a dot.
-  const tone = workspace.insideCloud ? "warn" : described;
+  // A workspace inside a cloud folder can get damaged, and one that moved
+  // elsewhere no longer reaches the other devices: worth a dot.
+  const tone = workspace.insideCloud || workspace.movedTo ? "warn" : described;
+  const locate = async (name: string) => {
+    const folder = await pickFolder(`Where is “${name}” now?`);
+    if (!folder) return;
+    setProblem(null);
+    try {
+      onWorkspaceChange(await api.locateSyncFolder(folder));
+    } catch (e) {
+      setProblem(errorText(e));
+    }
+  };
   return (
     <div className="sync">
       {open && (
         <div className="sync-panel">
           {status?.state === "offline" &&
+            !workspace.movedTo &&
             (isFolderRemote(workspace.remote) ? (
               <div className="sync-warning">
                 <p>Can't reach the sync folder. Changes are saved on this device and sync once it's back.</p>
                 <p className="small">
                   If it's on a drive, connect it. If you moved it, show Pagemesh where it is now.
                 </p>
-                <button
-                  className="button"
-                  onClick={() =>
-                    void (async () => {
-                      const folder = await pickFolder(`Where is “${folderName(workspace.remote!)}” now?`);
-                      if (!folder) return;
-                      setProblem(null);
-                      try {
-                        onWorkspaceChange(await api.locateSyncFolder(folder));
-                      } catch (e) {
-                        setProblem(errorText(e));
-                      }
-                    })()
-                  }
-                >
+                <button className="button" onClick={() => void locate(folderName(workspace.remote!))}>
                   Locate…
                 </button>
                 {problem && <p className="error small">{problem}</p>}
@@ -105,6 +103,25 @@ export function SyncStatusBar({
               a conflict show it at the top.
             </p>
           ) : null}
+          {workspace.movedTo && (
+            <div className="sync-warning">
+              <p>
+                Another device moved this workspace to {workspace.movedTo.label}. This device follows as soon as it can
+                reach it; until then, its changes don't reach the devices that moved.
+              </p>
+              {workspace.movedTo.folder ? (
+                <>
+                  <p className="small">If that folder is on this computer, show Pagemesh where.</p>
+                  <button className="button" onClick={() => void locate(workspace.name)}>
+                    Locate…
+                  </button>
+                </>
+              ) : (
+                <p className="small">Check that this device is signed in and has access to it.</p>
+              )}
+              {problem && <p className="error small">{problem}</p>}
+            </div>
+          )}
           {workspace.insideCloud && (
             <div className="sync-warning">
               <p>

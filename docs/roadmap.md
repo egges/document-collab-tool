@@ -63,10 +63,12 @@ straightforward building.
       pages always live in the app's data folder, and "Change…" in the sync
       panel moves the workspace elsewhere, taking the whole history along
       ([sync-design.md](sync-design.md#setting-it-up)).
-- [ ] **Following a switch.** When one device moves sync somewhere else, it
-      leaves a note at the old place ("moved to …") so other devices follow
-      on their next sync. Until then each device switches by hand; nothing is
-      lost, since the histories are shared and merge cleanly.
+- [x] **Following a switch.** A device that moves sync somewhere else
+      leaves a note in `workspace.json` and syncs it to the old place, and
+      the other devices follow on their next sync once the new place holds
+      the workspace. A device that can't reach it yet keeps syncing where
+      it was and says where the workspace went
+      ([sync-design.md](sync-design.md#following-a-move)).
 - [ ] **Sharing.** A "Share" button that invites people to the GitHub
       repo, and accepting the invitation on their device; commits record the
       person, not just the device.

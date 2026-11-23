@@ -66,6 +66,28 @@ impl Workspace {
         })
     }
 
+    /// Where the workspace is kept besides each device, from
+    /// `workspace.json`: written by the device that last moved it, so the
+    /// others follow (see "Following a move" in docs/sync-design.md). The
+    /// app chooses the format; a single string, so a merge never mixes two
+    /// places.
+    pub fn kept_in(&self) -> Option<String> {
+        let value = self.read_json(&self.root.join(layout::WORKSPACE_FILE)).ok()?;
+        let place = value.get("kept_in")?.as_str()?.trim();
+        (!place.is_empty()).then(|| place.to_string())
+    }
+
+    /// Record where the workspace is kept now. Doesn't commit.
+    pub fn set_kept_in(&self, place: &str) -> Result<()> {
+        let path = self.root.join(layout::WORKSPACE_FILE);
+        if !path.exists() {
+            return self.write_json(&path, &json!({ "kept_in": place }));
+        }
+        self.update_json(&path, |settings| {
+            settings.insert("kept_in".into(), place.into());
+        })
+    }
+
     // ---- pages ---------------------------------------------------------
 
     pub fn create_page(&self, title: &str, parent: Option<&str>) -> Result<String> {

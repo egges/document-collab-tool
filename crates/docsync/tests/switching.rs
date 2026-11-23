@@ -164,3 +164,140 @@ fn a_folder_that_isnt_there_is_refused_then_reported_as_offline() {
         .switch_remote(&plain.to_string_lossy(), folder_layout("a"));
     assert!(matches!(refused, Err(Error::Network(_))), "{refused:?}");
 }
+
+#[test]
+fn following_a_move_waits_until_the_new_place_holds_the_workspace() {
+    let net = Net::new();
+    let (a, b) = (net.device("a"), net.device("b"));
+    let moved = net.path().join("moved.git");
+    bare(&moved);
+    let url = moved.to_string_lossy().to_string();
+
+    // Nothing there yet: b stays where it is.
+    assert_eq!(
+        b.engine.follow_remote(&url, RemoteLayout::SharedBranch).unwrap(),
+        docsync::RemoteCheck::Empty
+    );
+    b.ws.create_page_with_id("p", "Still syncing the old way", None)
+        .unwrap();
+    b.commit();
+    assert!(b.sync().pushed);
+    assert_eq!(rev(&net.remote, "main"), Some(b.head().to_string()));
+
+    // a moves the workspace there; now b follows, and gets a's changes.
+    a.sync();
+    a.engine.switch_remote(&url, RemoteLayout::SharedBranch).unwrap();
+    a.ws.create_page_with_id("q", "After the move", None).unwrap();
+    a.commit();
+    assert!(a.sync().pushed);
+    assert_eq!(
+        b.engine.follow_remote(&url, RemoteLayout::SharedBranch).unwrap(),
+        docsync::RemoteCheck::SameWorkspace
+    );
+    b.sync();
+    assert!(b.ws.page_exists("q"));
+    assert_eq!(rev(&moved, "main"), Some(b.head().to_string()));
+}
+
+#[test]
+fn following_refuses_a_different_workspace_and_a_missing_place() {
+    let (ours, theirs) = (Net::new(), Net::new());
+    let a = ours.device("a");
+    let stranger = theirs.device("stranger");
+    stranger
+        .ws
+        .create_page_with_id("x", "Someone else's", None)
+        .unwrap();
+    stranger.commit();
+    stranger.sync();
+    assert_eq!(
+        a.engine
+            .follow_remote(&theirs.url(), RemoteLayout::SharedBranch)
+            .unwrap(),
+        docsync::RemoteCheck::OtherWorkspace
+    );
+    assert_eq!(
+        a.engine
+            .check_remote(&theirs.url(), RemoteLayout::SharedBranch)
+            .unwrap(),
+        docsync::RemoteCheck::OtherWorkspace
+    );
+    let missing = ours.path().join("Gone").join("Notes.docsync");
+    assert!(
+        a.engine
+            .follow_remote(&missing.to_string_lossy(), folder_layout("a"))
+            .is_err()
+    );
+
+    // Still where it was.
+    a.ws.create_page_with_id("p", "Ours", None).unwrap();
+    a.commit();
+    assert!(a.sync().pushed);
+    assert_eq!(rev(&ours.remote, "main"), Some(a.head().to_string()));
+    assert!(!a.ws.page_exists("x"));
+}
+
+#[test]
+fn following_into_a_folder_waits_for_the_movers_files_to_arrive() {
+    let net = Net::new();
+    let (a, b) = (net.device("a"), net.device("b"));
+    let folder = net.path().join("Dropbox").join("Notes.docsync");
+    std::fs::create_dir_all(folder.parent().unwrap()).unwrap();
+    SyncEngine::create_folder_remote(&real_git(), &folder).unwrap();
+    let url = folder.to_string_lossy().to_string();
+
+    // Created, but a hasn't published there yet.
+    assert_eq!(
+        b.engine.follow_remote(&url, folder_layout("b")).unwrap(),
+        docsync::RemoteCheck::Empty
+    );
+    a.engine.switch_remote(&url, folder_layout("a")).unwrap();
+    assert!(a.sync().pushed);
+    assert_eq!(
+        b.engine.follow_remote(&url, folder_layout("b")).unwrap(),
+        docsync::RemoteCheck::SameWorkspace
+    );
+    assert_eq!(b.engine.remote_layout(), folder_layout("b"));
+    assert!(b.sync().pushed);
+    assert!(folder.join("refs/heads/devices/b").is_file());
+}
+
+#[test]
+fn kept_in_is_a_synced_workspace_setting() {
+    let net = Net::new();
+    let (a, b) = (net.device("a"), net.device("b"));
+    assert_eq!(a.ws.kept_in(), None);
+    a.ws.set_kept_in("folder:Dropbox/Notes.docsync").unwrap();
+    a.ws.set_name("Notes").unwrap();
+    a.commit();
+    a.sync();
+    b.sync();
+    assert_eq!(b.ws.kept_in().as_deref(), Some("folder:Dropbox/Notes.docsync"));
+    assert_eq!(b.ws.name().as_deref(), Some("Notes"));
+}
+
+#[test]
+fn two_workspaces_made_at_the_same_moment_are_still_different() {
+    let dir = tempfile::tempdir().unwrap();
+    let clock = std::sync::Arc::new(docsync::ManualClock::new(1_700_000_000));
+    let make = |name: &str| {
+        SyncEngine::init(
+            std::sync::Arc::new(real_git()),
+            dir.path().join(name),
+            docsync::SyncConfig::new("laptop"),
+            clock.clone(),
+        )
+        .unwrap()
+    };
+    let (ours, theirs) = (make("ours"), make("theirs"));
+    assert_ne!(ours.head().unwrap(), theirs.head().unwrap());
+    let remote = dir.path().join("theirs.git");
+    bare(&remote);
+    theirs.set_remote(&remote.to_string_lossy()).unwrap();
+    theirs.sync().unwrap();
+    assert_eq!(
+        ours.check_remote(&remote.to_string_lossy(), RemoteLayout::SharedBranch)
+            .unwrap(),
+        docsync::RemoteCheck::OtherWorkspace
+    );
+}

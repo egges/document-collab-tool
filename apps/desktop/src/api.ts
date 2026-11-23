@@ -12,6 +12,16 @@ export interface WorkspaceInfo {
   keptIn: string | null;
   /** The cloud folder the workspace's own folder is in, which damages it. */
   insideCloud: string | null;
+  /** Another device moved the workspace somewhere this device can't follow yet. */
+  movedTo: MovedTo | null;
+}
+
+/** Where another device moved the workspace. */
+export interface MovedTo {
+  /** "Dropbox › Work", "GitHub", ... */
+  label: string;
+  /** A folder (offer "Locate…") rather than a Git repository. */
+  folder: boolean;
 }
 
 /** An installed cloud folder: iCloud Drive, Dropbox, OneDrive, ... */
@@ -276,6 +286,9 @@ export const events = {
     listen<SyncStatus>("sync-status", (e) => handler(e.payload)),
   /** Files changed on disk: a sync pulled changes in, or another program edited them. */
   onWorkspaceChanged: (handler: () => void): Promise<UnlistenFn> => listen("workspace-changed", () => handler()),
+  /** Where the workspace is kept changed: this device followed a move, or can't yet. */
+  onWorkspaceInfo: (handler: (info: WorkspaceInfo) => void): Promise<UnlistenFn> =>
+    listen<WorkspaceInfo>("workspace-info", (e) => handler(e.payload)),
   /** Signed out without asking, e.g. the sign-in was revoked on GitHub. */
   onAccountChanged: (handler: () => void): Promise<UnlistenFn> => listen("account-changed", () => handler()),
   /** The browser sign-in moved on to GitHub's install page. */

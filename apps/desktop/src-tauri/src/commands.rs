@@ -3,6 +3,7 @@
 //! thread for a sync to finish.
 
 use std::path::{Path, PathBuf};
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use docsync::conflicts::find_conflicts;
@@ -15,9 +16,9 @@ use crate::devlog::{self, Entry, Level};
 use crate::github::{self, Access, DeviceCode, GitHubUser, RemoteWorkspace};
 use crate::locations;
 use crate::search::{self, TextMatch};
-use crate::session::{Session, WorkspaceInfo};
+use crate::session::{self, Session, WorkspaceInfo};
 use crate::tree::{self, PageSummary};
-use crate::worker::{Events, SyncStatus};
+use crate::worker::{Events, SyncState, SyncStatus};
 use crate::workspaces::{self, AppSettings, WorkspaceEntry};
 
 type CmdResult<T> = Result<T, String>;
@@ -25,6 +26,8 @@ type CmdResult<T> = Result<T, String>;
 #[derive(Default)]
 pub struct AppState {
     session: Mutex<Option<Session>>,
+    /// A check for a move by another device is running; see [`follow_move`].
+    following: AtomicBool,
 }
 
 impl AppState {
@@ -58,6 +61,11 @@ struct WindowEvents(AppHandle);
 impl Events for WindowEvents {
     fn status(&self, status: &SyncStatus) {
         let _ = self.0.emit("sync-status", status);
+        // A sync may have brought a note that the workspace moved; offline
+        // too, since the old place may be gone once everyone has moved.
+        if matches!(status.state, SyncState::Synced | SyncState::Offline) {
+            tauri::async_runtime::spawn(follow_move(self.0.clone()));
+        }
     }
     fn workspace_changed(&self) {
         let _ = self.0.emit("workspace-changed", ());
@@ -557,22 +565,34 @@ pub async fn locate_sync_folder(state: State<'_, AppState>, folder: PathBuf) -> 
 }
 
 /// Point the open workspace at `url` (or no remote), refusing one that
-/// holds a different workspace. The check fetches, so it runs without
-/// holding the session: other commands carry on meanwhile.
+/// holds a different workspace, and leave a note so the other devices
+/// follow (`session::prepare_move`). That fetches and syncs, so it runs
+/// without holding the session: other commands carry on meanwhile.
 async fn switch_remote(state: &State<'_, AppState>, url: Option<String>) -> CmdResult<WorkspaceInfo> {
-    let (engine, plan) = {
+    let (engine, plan, old) = {
         let guard = state.session.lock().unwrap();
         let session = guard.as_ref().ok_or("No workspace is open")?;
-        (session.engine.clone(), session.plan_remote(url))
+        (
+            session.engine.clone(),
+            session.plan_remote(url),
+            session.info().remote,
+        )
     };
-    if let Some(url) = plan.url.clone() {
-        let layout = plan.layout.clone();
+    let plan = if plan.url.is_some() {
+        let mut plan = plan;
         let checked = engine.clone();
         blocking("switch_remote", move || {
-            checked.switch_remote(&url, layout).map_err(|e| e.to_string())
+            session::prepare_move(&checked, old.as_deref(), &mut plan)?;
+            let url = plan.url.as_deref().unwrap_or_default();
+            checked
+                .switch_remote(url, plan.layout.clone())
+                .map_err(|e| e.to_string())?;
+            Ok(plan)
         })
-        .await?;
-    }
+        .await?
+    } else {
+        plan
+    };
     let mut guard = state.session.lock().unwrap();
     let session = guard.as_mut().ok_or("No workspace is open")?;
     if !Arc::ptr_eq(&session.engine, &engine) {
@@ -581,6 +601,56 @@ async fn switch_remote(state: &State<'_, AppState>, url: Option<String>) -> CmdR
     session.remote_switched(plan)?;
     session.worker.sync_now();
     Ok(session.info())
+}
+
+/// After a sync: if another device moved the workspace, follow it there
+/// once this device can reach the new place, and tell the window either
+/// way. One check at a time; the next sync tries again.
+async fn follow_move(app: AppHandle) {
+    let state = app.state::<AppState>();
+    if state.following.swap(true, Ordering::SeqCst) {
+        return;
+    }
+    let result = follow_move_now(&app, &state).await;
+    state.following.store(false, Ordering::SeqCst);
+    if let Err(e) = result {
+        devlog::warn("sync", format!("Couldn't follow the workspace: {e}"));
+    }
+}
+
+async fn follow_move_now(app: &AppHandle, state: &AppState) -> CmdResult<()> {
+    let (engine, note, current, was_moved) = {
+        let mut guard = state.session.lock().unwrap();
+        let Some(session) = guard.as_mut() else {
+            return Ok(());
+        };
+        let was_moved = session.info().moved_to.is_some();
+        let Some(note) = session.pending_move() else {
+            if was_moved {
+                let _ = app.emit("workspace-info", session.info());
+            }
+            return Ok(());
+        };
+        (session.engine.clone(), note, session.info().remote, was_moved)
+    };
+    let found = {
+        let (engine, note) = (engine.clone(), note.clone());
+        blocking("follow_move", move || {
+            Ok(session::follow(&engine, &note, current.as_deref()))
+        })
+        .await?
+    };
+    let mut guard = state.session.lock().unwrap();
+    let Some(session) = guard.as_mut() else {
+        return Ok(());
+    };
+    if !Arc::ptr_eq(&session.engine, &engine) {
+        return Ok(());
+    }
+    if session.moved(&note, found)? || was_moved != session.info().moved_to.is_some() {
+        let _ = app.emit("workspace-info", session.info());
+    }
+    Ok(())
 }
 
 /// For a workspace whose folder is inside a cloud folder, which damages it:
