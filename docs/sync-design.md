@@ -8,7 +8,7 @@ conflict markers.
 
 ```text
 workspace.json                      workspace settings: {"format", "name"}
-pages/<page-id>/meta.json           {"id", "title", "parent", "properties": {...}}
+pages/<page-id>/meta.json           {"id", "title", "parent", "properties": {...}, "display": {...}}
 pages/<page-id>/page.md             page body (Markdown)
 pages/<page-id>/assets/...          attachments
 databases/<db-id>/schema.json       {"id", "name", "columns": [...]}

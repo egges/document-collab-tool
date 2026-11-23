@@ -6,7 +6,8 @@
 // right of those, whether the sidebar is open or not.
 import { Fragment, type ReactNode } from "react";
 import { ChevronRight, PanelLeftClose, PanelLeftOpen, Search, Trash2 } from "lucide-react";
-import type { PageSummary } from "./api.ts";
+import type { PageDisplay, PageDisplayKey, PageSummary } from "./api.ts";
+import { PageStyleMenu } from "./PageStyleMenu.tsx";
 import { tip } from "./shortcuts.ts";
 import { WINDOW_DRAG } from "./windowChrome.ts";
 
@@ -44,6 +45,8 @@ export function PageTitleBar({
   onSearch,
   onSelect,
   onDelete,
+  display,
+  onDisplayChange,
 }: {
   /** The open page and its ancestors, outermost first; empty with no page open. */
   trail: PageSummary[];
@@ -53,6 +56,9 @@ export function PageTitleBar({
   onSearch: () => void;
   onSelect: (id: string) => void;
   onDelete?: () => void;
+  /** The open page's display options (null while it loads). */
+  display: PageDisplay | null;
+  onDisplayChange: <K extends PageDisplayKey>(key: K, value: PageDisplay[K]) => void;
 }) {
   return (
     <TitleBar className="titlebar-page">
@@ -81,6 +87,7 @@ export function PageTitleBar({
         })}
       </nav>
       <div className="spacer" />
+      {trail.length > 0 && <PageStyleMenu display={display} onChange={onDisplayChange} />}
       {onDelete && (
         <button className="icon-button danger" title={tip("Delete page", "deletePage")} aria-label="Delete page" onClick={onDelete}>
           <Trash2 size={15} />

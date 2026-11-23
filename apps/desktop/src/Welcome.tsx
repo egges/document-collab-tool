@@ -16,6 +16,7 @@ import {
   errorText,
 } from "./api.ts";
 import { GitHubSignIn, useGitHubAccount } from "./GitHubSignIn.tsx";
+import { Wordmark } from "./Graphics.tsx";
 import { pickFolder } from "./menu.ts";
 import { folderOfRemote, isFolderRemote } from "./remotes.ts";
 
@@ -212,12 +213,15 @@ function Choices({ children }: { children: ReactNode }) {
 
 function Choice({
   icon,
+  tint = "accent",
   title,
   text,
   disabled,
   onClick,
 }: {
   icon: ReactNode;
+  /** The colour of the icon's badge. */
+  tint?: "accent" | "warm" | "green" | "blue";
   title: string;
   text: string;
   disabled?: boolean;
@@ -225,7 +229,7 @@ function Choice({
 }) {
   return (
     <button type="button" className="choice" disabled={disabled} onClick={onClick}>
-      <span className="choice-icon" aria-hidden>
+      <span className={`choice-icon tint-${tint}`} aria-hidden>
         {icon}
       </span>
       <span className="choice-text">
@@ -261,6 +265,7 @@ function StartStep({
   const recent = showKnown ? otherWorkspaces(known) : [];
   return (
     <>
+      {showKnown && <Wordmark />}
       <h1>{title}</h1>
       <p className="muted">Your pages are Markdown files in a workspace, with their whole history.</p>
       <Choices>
@@ -272,6 +277,7 @@ function StartStep({
         />
         <Choice
           icon={<LogIn size={18} />}
+          tint="warm"
           title="Join a workspace"
           text="One you already use on another device."
           onClick={onJoin}
@@ -440,7 +446,7 @@ function Places({
         onClick={() => setKind(k)}
       >
         <span className="radio" aria-hidden />
-        <span className="choice-icon" aria-hidden>
+        <span className={`choice-icon tint-${k === "folder" ? "blue" : "green"}`} aria-hidden>
           {icon}
         </span>
         <span className="choice-text">

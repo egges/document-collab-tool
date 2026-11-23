@@ -94,7 +94,17 @@ export interface Page {
   title: string;
   body: string;
   conflicts: Conflict[];
+  display: PageDisplay;
 }
+
+/** How a page is shown; null is the default. Syncs with the page. */
+export interface PageDisplay {
+  /** "full": as wide as the window. */
+  width: "full" | null;
+  textSize: "small" | "large" | null;
+}
+
+export type PageDisplayKey = keyof PageDisplay;
 
 export type WriteResult =
   | { status: "written"; conflicts: Conflict[] }
@@ -248,6 +258,8 @@ export const api = {
   writePage: (id: string, base: string, body: string) => invoke<WriteResult>("write_page", { id, base, body }),
   createPage: (title: string, parent: string | null) => invoke<string>("create_page", { title, parent }),
   renamePage: (id: string, title: string) => invoke<void>("rename_page", { id, title }),
+  setPageDisplay: <K extends PageDisplayKey>(id: string, key: K, value: PageDisplay[K]) =>
+    invoke<void>("set_page_display", { id, key, value }),
   deletePage: (id: string) => invoke<void>("delete_page", { id }),
   resolveConflict: (id: string, index: number, keep: number) =>
     invoke<Page>("resolve_conflict", { id, index, keep }),

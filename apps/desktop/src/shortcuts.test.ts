@@ -6,6 +6,12 @@ const press = ({ code, key = "", meta = false, ctrl = false, shift = false, alt 
   ({ code, key, metaKey: meta, ctrlKey: ctrl, shiftKey: shift, altKey: alt }) as KeyboardEvent;
 
 describe("matches", () => {
+  test("⌘, opens settings, whatever the comma key types", () => {
+    expect(matches(SHORTCUTS.openSettings.keys, press({ code: "Comma", key: ",", meta: true }), true)).toBe(true);
+    expect(matches(SHORTCUTS.openSettings.keys, press({ code: "Comma", key: ";", meta: true }), true)).toBe(true);
+    expect(keysLabel(SHORTCUTS.openSettings.keys, true)).toBe("⌘,");
+  });
+
   test("⌘J on a Mac, Ctrl+J elsewhere", () => {
     expect(matches("mod+j", press({ code: "KeyJ", meta: true }), true)).toBe(true);
     expect(matches("mod+j", press({ code: "KeyJ", ctrl: true }), true)).toBe(false);

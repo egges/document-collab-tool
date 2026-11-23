@@ -1,8 +1,8 @@
 import { ask } from "@tauri-apps/plugin-dialog";
-import type { PageEditor } from "@document-collab-tool/editor";
-import { PageEditorView } from "@document-collab-tool/editor/react";
+import type { PageEditor } from "@pagemesh/editor";
+import { PageEditorView } from "@pagemesh/editor/react";
 import { type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { type Conflict, type Page, api, errorText } from "./api.ts";
+import { type Conflict, type Page, type PageDisplay, api, errorText } from "./api.ts";
 import { ConflictPanel } from "./ConflictPanel.tsx";
 import { log } from "./devlog.ts";
 import { PageSaver } from "./pageSaver.ts";
@@ -24,6 +24,10 @@ interface PageViewProps {
   onRenamed: () => void;
   /** The title as it's typed (or changed on disk), before the page list has it. */
   onTitleChange?: (title: string) => void;
+  /** How the page is shown, as App has it (null until the page reports it). */
+  display: PageDisplay | null;
+  /** The page's display options as read from disk (on load, and when changed elsewhere). */
+  onDisplay: (display: PageDisplay) => void;
   onDeleted: () => void;
   onError: (message: string) => void;
   ref?: Ref<PageViewHandle>;
@@ -46,7 +50,7 @@ export function PageView(props: PageViewProps) {
   return page ? <LoadedPage {...props} initial={page} /> : <div className="page" />;
 }
 
-function LoadedPage({ id, initial, diskVersion, reveal, onOpenLink, onRenamed, onTitleChange, onDeleted, onError, ref }: PageViewProps & { initial: Page }) {
+function LoadedPage({ id, initial, diskVersion, reveal, onOpenLink, onRenamed, onTitleChange, display, onDisplay, onDeleted, onError, ref }: PageViewProps & { initial: Page }) {
   const [title, setTitle] = useState(initial.title);
   const [conflicts, setConflicts] = useState<Conflict[]>(initial.conflicts);
   const [notice, setNotice] = useState<string | null>(null);
@@ -61,6 +65,7 @@ function LoadedPage({ id, initial, diskVersion, reveal, onOpenLink, onRenamed, o
   const [busy, setBusy] = useState(false);
   const titleSaved = useRef(initial.title);
   const titleInput = useRef<HTMLInputElement>(null);
+  const editorRef = useRef<PageEditor | null>(null);
 
   const [saver] = useState(
     () =>
@@ -109,6 +114,7 @@ function LoadedPage({ id, initial, diskVersion, reveal, onOpenLink, onRenamed, o
 
   useEffect(() => {
     log("info", "ui", `Opened page ${id} (${initial.body.length} chars, ${initial.conflicts.length} conflicts)`);
+    onDisplay(initial.display);
   }, [id, initial]);
 
   // Save edits when leaving the page.
@@ -124,6 +130,7 @@ function LoadedPage({ id, initial, diskVersion, reveal, onOpenLink, onRenamed, o
       .then(async (page) => {
         if (cancelled) return;
         await saver.refresh(page);
+        onDisplay(page.display);
         if (document.activeElement !== titleInput.current && page.title !== titleSaved.current) {
           titleSaved.current = page.title;
           setTitle(page.title);
@@ -169,7 +176,22 @@ function LoadedPage({ id, initial, diskVersion, reveal, onOpenLink, onRenamed, o
   };
 
   return (
-    <article className="page">
+    <article
+      className="page"
+      data-width={(display ?? initial.display).width ?? undefined}
+      data-text-size={(display ?? initial.display).textSize ?? undefined}
+      onMouseDown={(e) => {
+        // A click in the empty space below the last block: write on at the
+        // end, as in Notion. Only on the page's background, never on text,
+        // buttons or the editor's menus.
+        const content = e.currentTarget.querySelector<HTMLElement>(".page-editor .ProseMirror");
+        if (e.button !== 0 || !content || !editorRef.current) return;
+        if (!isBackground(e.target as Element, e.currentTarget)) return;
+        if (e.clientY <= content.getBoundingClientRect().bottom) return;
+        e.preventDefault();
+        editorRef.current.commands.continueAtEnd();
+      }}
+    >
       {notice && <div className="banner banner-warn">{notice}</div>}
       <header className="page-header">
         <input
@@ -203,6 +225,7 @@ function LoadedPage({ id, initial, diskVersion, reveal, onOpenLink, onRenamed, o
         markdown={initial.body}
         onReady={(editor: PageEditor) => {
           saver.attach(editor);
+          editorRef.current = editor;
           if (reveal && editor.commands.find(reveal)) editor.view.focus();
         }}
         onChange={() => saver.changed()}
@@ -210,4 +233,9 @@ function LoadedPage({ id, initial, diskVersion, reveal, onOpenLink, onRenamed, o
       />
     </article>
   );
+}
+
+/** Whether `target` is the page's empty background rather than something in it. */
+function isBackground(target: Element, page: Element): boolean {
+  return target === page || target.matches(".page-editor, .page-editor > div:not([class*='page-'])");
 }

@@ -53,7 +53,7 @@ class FakeDisk {
 }
 
 function page(body: string): Page {
-  return { id: "p", title: "P", body, conflicts: [] };
+  return { id: "p", title: "P", body, conflicts: [], display: { width: null, textSize: null } };
 }
 
 function setup(body = "a\n") {

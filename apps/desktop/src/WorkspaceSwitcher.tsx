@@ -3,6 +3,7 @@ import { Check, ChevronDown, FolderSearch, Pencil, Plus, Trash2, X } from "lucid
 import { type WorkspaceEntry, type WorkspaceInfo, api, errorText } from "./api.ts";
 import { onMenuKeyDown, pickFolder, useDismiss } from "./menu.ts";
 import { DeleteWorkspace } from "./DeleteWorkspace.tsx";
+import { WorkspaceAvatar } from "./Graphics.tsx";
 import { WorkspaceNameInput } from "./WorkspaceName.tsx";
 
 /**
@@ -100,6 +101,7 @@ export function WorkspaceSwitcher({
           setRenaming(true);
         }}
       >
+        <WorkspaceAvatar name={workspace.name} />
         <span className="workspace-name-text">{workspace.name}</span>
         <ChevronDown size={13} className="workspace-name-chevron" aria-hidden />
       </button>
@@ -119,6 +121,7 @@ export function WorkspaceSwitcher({
                     <span className="menu-check" aria-hidden>
                       {entry.current && <Check size={14} />}
                     </span>
+                    <WorkspaceAvatar name={entry.name} size={18} />
                     <span className="menu-label">{entry.name}</span>
                     {entry.missing && <span className="menu-note">Not found</span>}
                   </button>

@@ -25,6 +25,7 @@ import { callCommand } from "@milkdown/kit/utils";
 import {
   type Block,
   blockAt,
+  continueAtEnd,
   deleteBlock,
   duplicateBlock,
   focusBlock,
@@ -310,6 +311,13 @@ export function createCommands(editor: Editor) {
     insertBlock(block: Block, options?: { above?: boolean; text?: string }): void {
       const v = view();
       v.dispatch(insertBlock(v.state, block, options));
+    },
+
+    /** Puts the cursor in an empty block at the end of the page, adding one if needed (a click below the last block). */
+    continueAtEnd(): void {
+      const v = view();
+      v.dispatch(continueAtEnd(v.state));
+      v.focus();
     },
 
     /** The block as Markdown, as it would be saved (a list item with its list marker). */

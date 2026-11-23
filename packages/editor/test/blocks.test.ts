@@ -206,6 +206,31 @@ describe("adding a block", () => {
   });
 });
 
+describe("clicking below the last block", () => {
+  test("adds a paragraph at the end and puts the cursor in it", async () => {
+    const editor = await open("# Title\n\n- item\n");
+    editor.commands.continueAtEnd();
+    editor.view.dispatch(editor.view.state.tr.insertText("More."));
+    expect(editor.save()).toBe("# Title\n\n- item\n\nMore.\n");
+  });
+
+  test("after a code block or a table too", async () => {
+    const editor = await open("```\ncode\n```\n");
+    editor.commands.continueAtEnd();
+    editor.view.dispatch(editor.view.state.tr.insertText("After."));
+    expect(editor.save()).toBe("```\ncode\n```\n\nAfter.\n");
+  });
+
+  test("an empty last paragraph is reused, so clicking again adds nothing", async () => {
+    const editor = await open("A.\n");
+    editor.commands.continueAtEnd();
+    const blocks = editor.view.state.doc.childCount;
+    editor.commands.continueAtEnd();
+    expect(editor.view.state.doc.childCount).toBe(blocks);
+    expect(editor.save()).toBeNull(); // an empty paragraph at the end doesn't change the file
+  });
+});
+
 describe("turning into", () => {
   test.each([
     ["- one\n- two\n", "two", "text", "- one\n\ntwo\n"],

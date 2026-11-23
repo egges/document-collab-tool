@@ -11,7 +11,7 @@ export function menuStep(current: number, by: 1 | -1, count: number): number {
 
 /** Arrow keys, Home and End move between a menu's enabled items. */
 export function onMenuKeyDown(e: KeyboardEvent<HTMLElement>) {
-  const items = [...e.currentTarget.querySelectorAll<HTMLElement>("[role=menuitem]:not(:disabled)")];
+  const items = [...e.currentTarget.querySelectorAll<HTMLElement>("[role^=menuitem]:not(:disabled)")];
   const at = items.indexOf(document.activeElement as HTMLElement);
   const next =
     e.key === "ArrowDown"

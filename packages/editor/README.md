@@ -51,8 +51,8 @@ In React, `<PageEditorView>` is the editor with its menus:
   again, and ⌘A selects just the code.
 
 ```tsx
-import { PageEditorView } from "@document-collab-tool/editor/react";
-import "@document-collab-tool/editor/style.css";
+import { PageEditorView } from "@pagemesh/editor/react";
+import "@pagemesh/editor/style.css";
 
 <PageEditorView
   markdown={pageMd}                          // changing it loads the new version
@@ -65,8 +65,8 @@ Saving goes through the editor object from `onReady`, the same as without
 React:
 
 ```ts
-import { createPageEditor, SaveRefusedError } from "@document-collab-tool/editor";
-import "@document-collab-tool/editor/style.css";
+import { createPageEditor, SaveRefusedError } from "@pagemesh/editor";
+import "@pagemesh/editor/style.css";
 
 const editor = await createPageEditor({
   root: element,

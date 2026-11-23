@@ -164,6 +164,27 @@ fn different_properties_of_one_page_merge() {
 }
 
 #[test]
+fn display_options_of_one_page_merge_and_reset() {
+    let net = Net::new();
+    let a = net.device("a");
+    let page = a.ws.create_page("Wide notes", None).unwrap();
+    a.sync();
+    let b = net.device("b");
+    a.ws.set_page_display(&page, "width", Some(json!("full"))).unwrap();
+    b.ws.set_page_display(&page, "textSize", Some(json!("small"))).unwrap();
+    a.sync();
+    assert!(b.sync().conflicts.is_empty());
+    settle(&[&a, &b]);
+    let meta = a.ws.read_page_meta(&page).unwrap();
+    assert_eq!(meta["display"], json!({"width": "full", "textSize": "small"}));
+
+    // Back to the defaults: the field goes away.
+    a.ws.set_page_display(&page, "width", None).unwrap();
+    a.ws.set_page_display(&page, "textSize", None).unwrap();
+    assert!(a.ws.read_page_meta(&page).unwrap().get("display").is_none());
+}
+
+#[test]
 fn same_property_most_recent_edit_wins_regardless_of_sync_order() {
     for later_device_syncs_first in [false, true] {
         let net = Net::new();

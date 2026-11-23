@@ -1,7 +1,8 @@
 import { useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, Keyboard, Plus, Search, SquareTerminal } from "lucide-react";
+import { ChevronDown, ChevronRight, FileText, Files, Plus, Search, Settings, SquareTerminal } from "lucide-react";
 import type { PageSummary, SyncStatus, WorkspaceInfo } from "./api.ts";
 import { childrenOf } from "./pageTree.ts";
+import type { SettingsSection } from "./Settings.tsx";
 import { SHORTCUTS, keysLabel, tip } from "./shortcuts.ts";
 import { SIDEBAR_WIDTH } from "./sidebarLayout.ts";
 import { SyncStatusBar } from "./SyncStatusBar.tsx";
@@ -20,7 +21,7 @@ interface SidebarProps {
   onSwitch: (open: () => Promise<WorkspaceInfo | null>) => Promise<void>;
   onAddWorkspace: () => void;
   onError: (message: string) => void;
-  onShowShortcuts: () => void;
+  onOpenSettings: (section?: SettingsSection) => void;
   onSearch: () => void;
   width: number;
   hidden: boolean;
@@ -71,7 +72,10 @@ export function Sidebar(props: SidebarProps) {
                 />
               ))}
             </ul>
-            {pages.length === 0 && <p className="muted tree-empty">No pages yet.</p>}
+            <button className="tree-new" onClick={() => props.onCreate(null)}>
+              <Plus size={14} aria-hidden />
+              <span>New page</span>
+            </button>
           </nav>
           <div className="sidebar-footer">
             <SyncStatusBar
@@ -79,14 +83,15 @@ export function Sidebar(props: SidebarProps) {
               status={status}
               onWorkspaceChange={props.onWorkspaceChange}
               onSwitch={props.onSwitch}
+              onOpenSettings={() => props.onOpenSettings("workspace")}
             />
             <button
               className="icon-button"
-              title={tip("Keyboard shortcuts", "showShortcuts")}
-              aria-label="Keyboard shortcuts"
-              onClick={props.onShowShortcuts}
+              title={tip("Settings", "openSettings")}
+              aria-label="Settings"
+              onClick={() => props.onOpenSettings()}
             >
-              <Keyboard size={15} />
+              <Settings size={15} />
             </button>
             {props.onOpenDevPanel && (
               <button
@@ -186,6 +191,9 @@ function TreeItem({
         >
           {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </button>
+        <span className="tree-icon" aria-hidden>
+          {kids.length ? <Files size={15} /> : <FileText size={15} />}
+        </span>
         <span className={"tree-title" + (page.title ? "" : " untitled")}>{page.title || "Untitled"}</span>
         <button
           className="icon-button add-child"

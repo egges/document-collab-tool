@@ -13,6 +13,7 @@ export const SHORTCUTS = {
   deletePage: { keys: "mod+shift+backspace", label: "Delete page" },
   syncNow: { keys: "mod+s", label: "Save and sync now" },
   showShortcuts: { keys: "mod+/", label: "Keyboard shortcuts" },
+  openSettings: { keys: "mod+,", label: "Settings" },
   // Handled in zoom.ts, which also takes ⌘= and the number pad.
   zoomIn: { keys: "mod+plus", label: "Zoom in" },
   zoomOut: { keys: "mod+minus", label: "Zoom out" },
@@ -61,6 +62,7 @@ function keyOf(event: KeyboardEvent): string {
   if (/^Digit\d$/.test(code)) return code.slice(5);
   if (code === "Slash") return "/";
   if (code === "Backslash") return "\\";
+  if (code === "Comma") return ",";
   return event.key.toLowerCase();
 }
 

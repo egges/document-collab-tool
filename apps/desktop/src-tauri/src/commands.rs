@@ -1033,6 +1033,27 @@ pub struct Page {
     title: String,
     body: String,
     conflicts: Vec<Conflict>,
+    display: PageDisplay,
+}
+
+/// How a page is shown; `None` is the default. Kept in its meta.json, so it
+/// syncs with the page.
+#[derive(Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PageDisplay {
+    /// "full": as wide as the window.
+    width: Option<String>,
+    /// "small" or "large".
+    text_size: Option<String>,
+}
+
+/// The values each display option may take (anything else reads as the default).
+const DISPLAY_OPTIONS: &[(&str, &[&str])] = &[("width", &["full"]), ("textSize", &["small", "large"])];
+
+fn display_option(meta: &serde_json::Value, key: &str) -> Option<String> {
+    let value = meta["display"][key].as_str()?;
+    let allowed = DISPLAY_OPTIONS.iter().find(|(k, _)| *k == key)?.1;
+    allowed.contains(&value).then(|| value.to_string())
 }
 
 #[derive(Debug, Serialize)]
@@ -1073,6 +1094,10 @@ fn read_page_from(ws: &Workspace, id: &str) -> CmdResult<Page> {
         title: meta["title"].as_str().unwrap_or_default().to_string(),
         conflicts: conflicts_in(&body),
         body,
+        display: PageDisplay {
+            width: display_option(&meta, "width"),
+            text_size: display_option(&meta, "textSize"),
+        },
     })
 }
 
@@ -1185,6 +1210,33 @@ pub async fn rename_page(state: State<'_, AppState>, id: String, title: String) 
     .await
 }
 
+/// Change how a page is shown: `key` is "width" or "textSize", and `value`
+/// null puts it back to the default.
+#[tauri::command]
+pub async fn set_page_display(
+    state: State<'_, AppState>,
+    id: String,
+    key: String,
+    value: Option<String>,
+) -> CmdResult<()> {
+    let Some((_, allowed)) = DISPLAY_OPTIONS.iter().find(|(k, _)| *k == key) else {
+        return Err(format!("Unknown page option “{key}”."));
+    };
+    if value.as_deref().is_some_and(|v| !allowed.contains(&v)) {
+        return Err(format!("“{}” isn't a choice for {key}.", value.unwrap_or_default()));
+    }
+    let (engine, edited) = state.engine()?;
+    blocking("set_page_display", move || {
+        Workspace::new(engine.root())
+            .set_page_display(&id, &key, value.clone().map(serde_json::Value::from))
+            .map_err(text)?;
+        devlog::debug("app", format!("Page {id}: {key} = {}", value.as_deref().unwrap_or("default")));
+        edited();
+        Ok(())
+    })
+    .await
+}
+
 /// Delete a page. Its child pages move to the top level.
 #[tauri::command]
 pub async fn delete_page(state: State<'_, AppState>, id: String) -> CmdResult<()> {
@@ -1262,4 +1314,18 @@ pub async fn dev_log_clear() -> CmdResult<()> {
 pub async fn dev_log_add(level: Level, source: String, message: String) -> CmdResult<()> {
     devlog::log(level, &source, message);
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::display_option;
+    use serde_json::json;
+
+    #[test]
+    fn display_options_outside_the_known_choices_read_as_the_default() {
+        let meta = json!({"display": {"width": "full", "textSize": "huge"}});
+        assert_eq!(display_option(&meta, "width").as_deref(), Some("full"));
+        assert_eq!(display_option(&meta, "textSize"), None);
+        assert_eq!(display_option(&json!({"title": "x"}), "width"), None);
+    }
 }

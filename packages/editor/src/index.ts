@@ -10,3 +10,4 @@ export { BLOCK_KEYS, blockAt, blockStartingAt, dropTarget, selectedBlock, setDra
 export type { Block, DropTarget } from "./blocks.ts";
 export { canEditTable, canMoveTableLine, editTable, moveTableLine, tableCellAt } from "./tables.ts";
 export type { TableCell, TableEdit, TableLine } from "./tables.ts";
+export { WRITE_HINT, placeholderAt } from "./placeholder.ts";

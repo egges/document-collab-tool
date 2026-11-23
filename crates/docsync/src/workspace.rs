@@ -136,6 +136,26 @@ impl Workspace {
         })
     }
 
+    /// How the page is shown (`"width"`, `"textSize"`, ...), in the
+    /// `display` field of its meta.json. `None` removes the option, which
+    /// means the default. Options merge one by one, like properties.
+    pub fn set_page_display(&self, id: &str, key: &str, value: Option<Value>) -> Result<()> {
+        self.update_json(&self.page_dir(id).join(PAGE_META), |meta| {
+            let display = meta.entry("display").or_insert_with(|| json!({}));
+            if !display.is_object() {
+                *display = json!({});
+            }
+            let display = display.as_object_mut().expect("object");
+            match value {
+                Some(value) => display.insert(key.into(), value),
+                None => display.remove(key),
+            };
+            if display.is_empty() {
+                meta.remove("display");
+            }
+        })
+    }
+
     pub fn read_body(&self, id: &str) -> Result<String> {
         let path = self.page_dir(id).join(PAGE_BODY);
         fs::read_to_string(&path).at(&path)
