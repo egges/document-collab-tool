@@ -89,7 +89,8 @@ editor.load(newerPageMd);                 // after sync pulled a newer version
 ```
 
 The menus are built on the framework-free core: `editor.commands` (toggle a
-format, set a block type, set a link, tick a to-do) and `formatState()` /
+format, set a block type, set a link, tick a to-do, add or remove a table row
+or column, move one) and `formatState()` /
 `slashState()` for what's active. Those are tested without a browser, so the
 React layer stays thin. Theme it by overriding the `--page-*` custom
 properties on `.page-editor` in `style.css`.
@@ -104,6 +105,10 @@ writing, timing and syncing to the app.
   page is only rewritten in our house style on its first real edit.
 - **House style.** `-` for bullets and rules, and tables without column
   padding, so editing one table cell changes one line (`src/markdown.ts`).
+- **Tables stay valid GFM.** A table keeps its header row first, with at
+  least one row under it: nothing is inserted or moved above the header, the
+  header doesn't move, and neither can be deleted. Deleting the only column deletes the table. New rows take their
+  column's alignment; new columns have none (`src/tables.ts`).
 - **Front matter is kept as-is.** The editor can't show YAML front matter, so
   it's set aside on open and put back on save.
 - **Exactly one newline at the end of the file.**

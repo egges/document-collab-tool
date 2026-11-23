@@ -298,3 +298,155 @@ describe("block handle", () => {
     expect(container.querySelector(".page-block-ghost")).toBeNull();
   });
 });
+
+describe("table handles", () => {
+  const TABLE = "| Name | Role |\n| - | - |\n| Ada | Lead |\n| Alan | Staff |\n";
+  const hover = (text: string) =>
+    act(() => {
+      const cell = [...container.querySelectorAll("td, th")].find((c) => c.textContent === text)!;
+      cell.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+    });
+  const button = (selector: string) => container.querySelector<HTMLButtonElement>(selector);
+  const item = (label: string) =>
+    [...container.querySelectorAll<HTMLButtonElement>(".page-table-menu button")].find((b) => b.textContent === label)!;
+
+  test("appear on the cell under the pointer and edit its row and column", async () => {
+    const editor = await mount(TABLE);
+    expect(button(".page-table-grip")).toBeNull();
+    await hover("Lead");
+    expect(button(".page-table-grip.row")).not.toBeNull();
+    // The block handle steps aside meanwhile.
+    expect(container.querySelector(".page-editor")!.classList.contains("page-table-hover")).toBe(true);
+    expect(button(".page-table-grip.column")).not.toBeNull();
+
+    await act(() => button(".page-table-grip.row")!.click());
+    expect(item("Insert above").disabled).toBe(false);
+    await act(() => item("Delete row").click());
+    expect(editor.save()).toBe("| Name | Role |\n| - | - |\n| Alan | Staff |\n");
+    expect(container.querySelector(".page-table-menu")).toBeNull();
+
+    await hover("Staff");
+    await act(() => button(".page-table-grip.column")!.click());
+    await act(() => item("Insert left").click());
+    expect(editor.save()).toBe("| Name | | Role |\n| - | - | - |\n| Alan | | Staff |\n");
+  });
+
+  test("the header row can't move or go, nor can the last row under it", async () => {
+    await mount("| Name |\n| - |\n| Ada |\n");
+    await hover("Name");
+    await act(() => button(".page-table-grip.row")!.click());
+    expect(item("Insert above").disabled).toBe(true);
+    expect(item("Delete row").disabled).toBe(true);
+    expect(item("Delete row").title).toContain("header");
+    expect(item("Insert below").disabled).toBe(false);
+    await act(() => button(".page-table-grip.row")!.click()); // the grip closes its menu
+    expect(container.querySelector(".page-table-menu")).toBeNull();
+    await hover("Ada");
+    await act(() => button(".page-table-grip.row")!.click());
+    expect(item("Delete row").title).toContain("at least one row");
+  });
+
+  test("the + bars add a row and a column at the end", async () => {
+    const editor = await mount(TABLE);
+    await hover("Ada");
+    await act(() => button(".page-table-add.row")!.click());
+    expect(editor.save()).toBe("| Name | Role |\n| - | - |\n| Ada | Lead |\n| Alan | Staff |\n| | |\n");
+    await hover("Ada");
+    await act(() => button(".page-table-add.column")!.click());
+    expect(editor.save()).toContain("| Name | Role | |");
+  });
+
+  /** Gives the table's rows and header cells a layout: rows 20px tall, columns 100px wide. */
+  const layOut = () => {
+    const rows = [...container.querySelectorAll("tr")];
+    rows.forEach((row, i) => {
+      Object.defineProperty(row, "getBoundingClientRect", { configurable: true, value: () => new DOMRect(0, i * 20, 200, 20) });
+      [...row.cells].forEach((cell, j) =>
+        Object.defineProperty(cell, "getBoundingClientRect", { configurable: true, value: () => new DOMRect(j * 100, i * 20, 100, 20) }),
+      );
+    });
+  };
+  const gripEvent = (type: string, target: Element, x = 0, y = 0) =>
+    act(() => {
+      target.dispatchEvent(new PointerEvent(type, { bubbles: true, button: 0, pointerId: 1, clientX: x, clientY: y }));
+    });
+
+  test("pressing a grip opens its menu", async () => {
+    await mount(TABLE);
+    await hover("Ada");
+    await gripEvent("pointerdown", button(".page-table-grip.row")!);
+    await gripEvent("pointerup", button(".page-table-grip.row")!);
+    expect(container.querySelector(".page-table-menu")?.getAttribute("aria-label")).toBe("Row");
+  });
+
+  test("dragging a row's grip moves the row, with a line where it goes", async () => {
+    const editor = await mount(TABLE);
+    await hover("Ada");
+    layOut();
+    const grip = button(".page-table-grip.row")!;
+    await gripEvent("pointerdown", grip, 0, 30);
+    await gripEvent("pointermove", grip, 0, 55); // below Alan's middle
+    expect(container.querySelector(".page-table-drop")).not.toBeNull();
+    expect(container.querySelector(".page-table-dragged")).not.toBeNull();
+    // A copy of the row follows the pointer, moving only up and down.
+    const ghost = container.querySelector<HTMLElement>(".page-table-ghost")!;
+    expect(ghost.textContent).toBe("AdaLead");
+    expect(ghost.style.transform).toBe("translate(0px, 45px)");
+    await gripEvent("pointerup", grip, 0, 55);
+    expect(container.querySelector(".page-table-ghost")).toBeNull();
+    expect(container.querySelector(".page-table-menu")).toBeNull();
+    expect(editor.save()).toBe("| Name | Role |\n| - | - |\n| Alan | Staff |\n| Ada | Lead |\n");
+  });
+
+  test("dragging a column's grip moves the column", async () => {
+    const editor = await mount(TABLE);
+    await hover("Role");
+    layOut();
+    const grip = button(".page-table-grip.column")!;
+    await gripEvent("pointerdown", grip, 150, 0);
+    await gripEvent("pointermove", grip, 20, 0);
+    expect(container.querySelector(".page-table-ghost")!.textContent).toBe("RoleLeadStaff");
+    // Released anywhere, not just over the grip.
+    await gripEvent("pointerup", document.body, 20, 0);
+    expect(editor.save()).toBe("| Role | Name |\n| - | - |\n| Lead | Ada |\n| Staff | Alan |\n");
+  });
+
+  test("the header row doesn't drag, nothing drops above it, and Escape cancels", async () => {
+    const editor = await mount(TABLE);
+    await hover("Name");
+    layOut();
+    let grip = button(".page-table-grip.row")!;
+    expect(grip.classList.contains("fixed")).toBe(true);
+    await gripEvent("pointerdown", grip, 0, 10);
+    await gripEvent("pointermove", grip, 0, 55);
+    expect(container.querySelector(".page-table-drop")).toBeNull();
+    await gripEvent("pointerup", grip, 0, 55);
+    expect(editor.save()).toBeNull();
+
+    await act(() => button(".page-table-grip.row")!.click()); // close the menu that opened
+    await hover("Alan");
+    layOut();
+    grip = button(".page-table-grip.row")!;
+    await gripEvent("pointerdown", grip, 0, 50);
+    await gripEvent("pointermove", grip, 0, 2); // above the header: lands under it
+    expect(container.querySelector(".page-table-drop")).not.toBeNull();
+    await act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape" }));
+    });
+    expect(container.querySelector(".page-table-drop")).toBeNull();
+    await gripEvent("pointerup", grip, 0, 2);
+    expect(editor.save()).toBeNull();
+  });
+
+  /** Gives the table's rows and header cells a layout: rows 20px tall, columns 100px wide. */
+  test("the menu works from the keyboard", async () => {
+    const editor = await mount(TABLE);
+    await hover("Ada");
+    await act(() => button(".page-table-grip.row")!.click());
+    const menu = container.querySelector<HTMLElement>(".page-table-menu")!;
+    const key = (k: string) => act(() => menu.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true })));
+    await key("ArrowDown"); // Insert below
+    await key("Enter");
+    expect(editor.save()).toBe("| Name | Role |\n| - | - |\n| Ada | Lead |\n| | |\n| Alan | Staff |\n");
+  });
+});
