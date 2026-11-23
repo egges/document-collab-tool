@@ -468,3 +468,43 @@
   --page-menu-from: translateX(-4px);
 }
 .page-block-menu-current { color: var(--page-accent); font-size: 13px; }
+
+/* --- Tables: grips on the row and column under the pointer, "+" to add ----- */
+
+.page-table-ui > button {
+  position: absolute;
+  z-index: 5;
+  display: grid;
+  place-items: center;
+  padding: 0;
+  color: var(--page-muted);
+  background: var(--page-menu-bg);
+  border: 1px solid var(--page-border);
+  border-radius: 4px;
+  cursor: pointer;
+  animation: page-handle-in 120ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) { .page-table-ui > button { animation: none; } }
+.page-table-ui > button:hover,
+.page-table-ui > button[aria-expanded="true"] { color: var(--page-text); background: var(--page-menu-hover); }
+.page-table-grip { width: 10px; height: 22px; border-radius: 5px; cursor: grab; touch-action: none; }
+.page-table-grip.fixed { cursor: pointer; }
+.page-table-grip.dragging { cursor: grabbing; color: var(--page-text); background: var(--page-menu-hover); }
+.page-table-grip.column { width: 22px; height: 10px; }
+.page-table-grip.column svg { transform: rotate(90deg); }
+/* The "+" bars stay quiet until the pointer is on them. */
+.page-table-add { opacity: 0.45; transition: opacity 120ms; }
+.page-table-add:hover { opacity: 1; }
+.page-table-add.row { height: 16px; }
+.page-table-add.column { width: 16px; }
+.page-table-menu { position: absolute; min-width: 190px; }
+/* Only one set of handles at a time: over a table, its grips. */
+.page-table-hover .page-block-handle:not(.active) { visibility: hidden; }
+/* While a row or column is dragged: it's shaded, and a line shows where it goes. */
+.page-table-dragged,
+.page-table-drop { position: absolute; z-index: 4; pointer-events: none; }
+.page-table-dragged { background: color-mix(in srgb, var(--page-accent) 12%, transparent); }
+.page-table-drop { border-radius: 2px; background: var(--page-accent); opacity: 0.7; }
+/* The copy of a dragged row or column: no fade at the bottom, unlike a block's. */
+.page-table-ghost { -webkit-mask-image: none; mask-image: none; max-height: none; }
+.page-table-ghost table { border-collapse: collapse; }

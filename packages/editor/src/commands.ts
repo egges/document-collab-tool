@@ -34,6 +34,7 @@ import {
   selectBlock,
 } from "./blocks.ts";
 import { prepareForSave } from "./markdown.ts";
+import { type TableCell, type TableEdit, type TableLine, editTable, moveTableLine, tableCellAt } from "./tables.ts";
 
 export type InlineFormat = "bold" | "italic" | "strikethrough" | "code";
 
@@ -240,6 +241,35 @@ export function createCommands(editor: Editor) {
       const range = findText(v.state.doc, text);
       if (!range) return false;
       v.dispatch(v.state.tr.setSelection(TextSelection.create(v.state.doc, range.from, range.to)).scrollIntoView());
+      return true;
+    },
+
+    /** The table cell at document position `pos` (by default the cursor). */
+    tableCellAt(pos?: number): TableCell | null {
+      const { state } = view();
+      return tableCellAt(state, pos ?? state.selection.from);
+    },
+
+    /**
+     * Adds or removes a row or column at `cell` (see tables.ts for what's
+     * allowed), and puts the cursor in the new row or column.
+     */
+    editTable(cell: TableCell, edit: TableEdit): boolean {
+      const v = view();
+      const tr = editTable(v.state, cell, edit);
+      if (!tr) return false;
+      v.dispatch(tr);
+      v.focus();
+      return true;
+    },
+
+    /** Moves the row or column through `cell` to index `to` (see tables.ts). */
+    moveTableLine(cell: TableCell, line: TableLine, to: number): boolean {
+      const v = view();
+      const tr = moveTableLine(v.state, cell, line, to);
+      if (!tr) return false;
+      v.dispatch(tr);
+      v.focus();
       return true;
     },
 

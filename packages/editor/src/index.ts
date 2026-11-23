@@ -8,3 +8,5 @@ export { LANGUAGES, detectLanguage, findLanguage } from "./code/index.ts";
 export type { Language } from "./code/index.ts";
 export { BLOCK_KEYS, blockAt, blockStartingAt, dropTarget, selectedBlock, setDragging } from "./blocks.ts";
 export type { Block, DropTarget } from "./blocks.ts";
+export { canEditTable, canMoveTableLine, editTable, moveTableLine, tableCellAt } from "./tables.ts";
+export type { TableCell, TableEdit, TableLine } from "./tables.ts";

@@ -77,6 +77,15 @@ export const GripIcon = (p: IconProps) => (
   </Icon>
 );
 
+/** Three dots in a column, for the slim grips on table rows and columns. */
+export const DotsIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <circle cx="12" cy="5" r="1" />
+    <circle cx="12" cy="12" r="1" />
+    <circle cx="12" cy="19" r="1" />
+  </Icon>
+);
+
 export const TrashIcon = (p: IconProps) => (
   <Icon {...p}>
     <path d="M3 6h18" />
@@ -105,6 +114,20 @@ export const ArrowDownIcon = (p: IconProps) => (
   <Icon {...p}>
     <path d="M12 5v14" />
     <path d="m19 12-7 7-7-7" />
+  </Icon>
+);
+
+export const ArrowLeftIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="m12 19-7-7 7-7" />
+    <path d="M19 12H5" />
+  </Icon>
+);
+
+export const ArrowRightIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M5 12h14" />
+    <path d="m12 5 7 7-7 7" />
   </Icon>
 );
 

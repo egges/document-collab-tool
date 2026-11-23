@@ -69,9 +69,6 @@ straightforward building.
       the workspace. A device that can't reach it yet keeps syncing where
       it was and says where the workspace went
       ([sync-design.md](sync-design.md#following-a-move)).
-- [ ] **Sharing.** A "Share" button that invites people to the GitHub
-      repo, and accepting the invitation on their device; commits record the
-      person, not just the device.
 
 ## 3. Desktop app (the bulk of the work)
 
@@ -96,7 +93,12 @@ straightforward building.
       block menu (turn into, duplicate, copy, move, delete), and keys (Esc
       selects a block, ⌘D duplicates, ⌘⇧↑ / ⌘⇧↓ move). Turning a list item
       or quote into text now takes it out of the list or quote.
-- [ ] **Editor: tables.** Add and remove rows and columns.
+- [x] **Editor: tables.** As in Notion: on the table under the pointer, a
+      grip on the row and one on the column. Drag one to move the row or
+      column, or click it for a menu to insert above, below, left or right,
+      or delete; "+" bars add a row or column at the end. The header row
+      stays first and keeps at least one row under it, so the Markdown is
+      always a valid table.
 - [x] **Links and search.** Clicking a link opens it (in the browser, or the
       page it points to); hovering shows it with copy and edit (text, address, remove).
       ⌘K searches page titles and text. The sidebar can
@@ -194,6 +196,10 @@ and identity is trusted rather than verified, as in a shared folder.
       as the device. Agents get a profile too, so their edits and comments
       show up like anyone else's. Device-only settings (theme, window,
       sidebar) stay out of the workspace.
+- [ ] **Sharing.** A "Share" button that invites people to the GitHub
+      repo, and accepting the invitation on their device. Here rather than
+      with sync, since it needs people: commits then record the person, not
+      just the device.
 - [ ] **Profiles from GitHub or GitLab.** On first sign-in, fill in the
       profile from the account (`GET /user` on GitHub, `GET /api/v4/user` on
       GitLab): name and picture, with the picture downloaded and resized like

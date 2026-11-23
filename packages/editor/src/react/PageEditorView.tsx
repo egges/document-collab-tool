@@ -4,6 +4,7 @@ import { BlockHandle } from "./BlockHandle.tsx";
 import { LinkPopover } from "./LinkPopover.tsx";
 import { SelectionToolbar } from "./SelectionToolbar.tsx";
 import { SlashMenu } from "./SlashMenu.tsx";
+import { TableHandles } from "./TableHandles.tsx";
 
 export interface PageEditorViewProps {
   /** Contents of page.md. When this changes, the editor loads it (`load()`). */
@@ -25,8 +26,9 @@ export interface PageEditorViewProps {
 export type KeyHandler = (event: KeyboardEvent) => boolean;
 
 /**
- * The page editor with its toolbar (on selection), slash menu and block
- * handle (drag to move, click for the block menu). Styles:
+ * The page editor with its toolbar (on selection), slash menu, block
+ * handle (drag to move, click for the block menu) and table handles (insert
+ * and delete rows and columns). Styles:
  * import "@document-collab-tool/editor/style.css".
  */
 export function PageEditorView({ markdown, onReady, onDirtyChange, onChange, onOpenLink, className }: PageEditorViewProps) {
@@ -126,6 +128,7 @@ export function PageEditorView({ markdown, onReady, onDirtyChange, onChange, onO
       {editor && <LinkPopover editor={editor} container={container} onOpen={openLink} />}
       {editor && <SlashMenu editor={editor} container={container} keyHandler={keyHandler} />}
       {editor && <BlockHandle editor={editor} container={container} />}
+      {editor && <TableHandles editor={editor} container={container} />}
     </div>
   );
 }
