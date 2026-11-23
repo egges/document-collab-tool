@@ -67,9 +67,9 @@ straightforward building.
       leaves a note at the old place ("moved to …") so other devices follow
       on their next sync. Until then each device switches by hand; nothing is
       lost, since the histories are shared and merge cleanly.
-- [ ] **Sharing.** A "Share" button: the provider's share sheet for cloud
-      folders, invite and accept for GitHub; commits record the person, not
-      just the device.
+- [ ] **Sharing.** A "Share" button that invites people to the GitHub
+      repo, and accepting the invitation on their device; commits record the
+      person, not just the device.
 
 ## 3. Desktop app (the bulk of the work)
 
@@ -306,6 +306,11 @@ Ideas we want, in roughly this order, once the steps above are done.
   optional relay), with git still the record.
 - **Signed commits.** Signing with each person's key, so names in the
   history can be verified.
+- **Sharing cloud folders from the app.** The Share button for a cloud
+  folder workspace: macOS's share window for iCloud Drive, and for Dropbox
+  and OneDrive (which have no such API) showing the folder with a hint to
+  share it there. Until then people share the `.docsync` folder from the
+  cloud service themselves, and joining already finds it.
 - **Docs in code repos.** Edit a code repo's `docs/` folder or README in the
   app, working on a branch and opening a pull request instead of syncing to
   `main`.
