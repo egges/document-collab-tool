@@ -85,6 +85,8 @@ function WorkspaceView({
   const page = useRef<PageViewHandle>(null);
   const nameRef = useRef(workspace.name);
   nameRef.current = workspace.name;
+  const pathRef = useRef(workspace.path);
+  pathRef.current = workspace.path;
 
   const reload = useCallback(async () => {
     try {
@@ -104,6 +106,10 @@ function WorkspaceView({
         setDiskVersion((n) => n + 1);
         // Another device may have renamed the workspace.
         void api.workspaceInfo().then((w) => w && w.name !== nameRef.current && onChange(w));
+      }),
+      events.onWorkspaceInfo((w) => {
+        log("info", "ui", w.movedTo ? `Moved to ${w.movedTo.label}; not followed yet` : `Kept in ${w.keptIn}`);
+        if (w.path === pathRef.current) onChange(w);
       }),
     ];
     // The first sync may have reported before we listened.

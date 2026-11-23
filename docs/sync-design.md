@@ -380,9 +380,66 @@ The sync panel shows "Kept in On this computer", "Kept in Dropbox › Work"
 or "Kept in GitHub". Its "Change…" shows the same two blocks; going back
 to "On this computer" stops syncing and leaves the old copy where it is.
 The local repo has the whole history, so a new place gets all of it on the
-next sync (`switching_where_it_syncs_takes_the_history_along`). Other
-devices keep using the old place until they're switched too. Nothing is
-lost meanwhile: the histories are shared and merge cleanly.
+next sync (`switching_where_it_syncs_takes_the_history_along`). The other
+devices follow on their own: see [Following a move](#following-a-move).
+
+#### Following a move
+
+When one device moves the workspace, it leaves a note in the workspace
+itself, so the others follow on their next sync without anyone switching
+them by hand. The code is in `apps/desktop/src-tauri/src/session.rs`
+(`prepare_move`, `pending_move`, `follow`), with the engine's part in
+`SyncEngine::check_remote` and `SyncEngine::follow_remote`.
+
+- **The note is a synced setting:** `kept_in` in `workspace.json`. It's
+  one string, so a merge never mixes two places, and it describes the
+  place the same way on every device: `folder:Dropbox/Work/Notes.docsync`
+  (the service without its account, which differs per person),
+  `folder:~/Backups/Notes.docsync`, `folder:/Volumes/USB/Notes.docsync`, or
+  a Git URL without any password (`cloud::portable_place`).
+- **Each folder remote has an id,** a random `place-id` file inside the
+  `.docsync` folder, made when the workspace first moves there, and the
+  note ends with it (`…/Notes.docsync#3f9a…`). Old places keep their
+  folders, usually with the same name, so without the id a device looking
+  for the new place could find an old one, which holds the same history,
+  and move back to it. With the id, only that folder counts, wherever it
+  appears.
+- **Moving** first checks that the new place doesn't hold a different
+  workspace, then writes the note and syncs once more with the old place.
+  That last sync is how the note reaches devices that still sync there,
+  and it works the same for folders and Git hosts. If the old place
+  can't be reached, those devices switch by hand; nothing is lost. Going
+  back to "On this computer" leaves no note: it stops syncing on this
+  device only.
+- **Following.** After every sync (and when offline, since the old place
+  may be gone once everyone has moved), a device whose remote isn't the
+  note's place looks for it. For a folder it tries the same path in each
+  cloud folder of that service, then folders with the same name in every
+  cloud folder, since a folder shared with you usually appears somewhere
+  else in your Dropbox; either way the folder's id must match the note's. It switches only to a place that already holds
+  this workspace's history (`RemoteCheck::SameWorkspace`). It never
+  switches to an empty remote (the mover's files haven't arrived), one it
+  can't reach (Dropbox not installed, not signed in to GitHub), or a
+  different workspace. Until it can, it keeps syncing where it did, and
+  the sync panel says where the workspace moved, with "Locate…" for a
+  folder.
+- **Once per move.** Each copy remembers the last note it acted on
+  (`followed` in `.docsync/app.json`), so a device whose shared folder sits
+  at a different path doesn't search again on every sync.
+- **Two moves at once.** If two devices move the workspace to different
+  places before either hears of the other, the newer note wins for the
+  devices still at the old place. The two movers don't sync with each
+  other until one of them is switched by hand. That's rare, and nothing
+  is lost, since the histories merge.
+- **Tested on real cloud folders:** `real_cloud_folders_follow_a_move` in
+  `session.rs` runs the whole scenario through this computer's Dropbox and
+  OneDrive (`cargo test --lib real_cloud -- --ignored --nocapture`). It
+  found the old-place problem above. It waits before deleting its folders,
+  since Dropbox puts back a folder deleted while it's still uploading.
+- **Unique workspaces.** A new workspace's first commit has a random id in
+  its message. Two workspaces made on one device in the same second would
+  otherwise have the same first commit, and would be taken for one
+  workspace when switching or following.
 
 Knowing the cloud folders is a convenience, not a requirement. The app
 detects them in these places:
