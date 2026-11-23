@@ -516,6 +516,10 @@ Run them with `cargo test`. To use a specific git binary, set
   database's columns resolve as one value (newest wins).
 - **No live collaboration.** This is asynchronous sync: no live cursors and no
   character-by-character merging.
+- **Code and other text files merge as opaque files.** Only `.md` and
+  `.json` get a real merge, and `git add -A` commits everything that isn't
+  ignored. Tasks need a plain-text merge kind and stricter rules for what
+  gets committed; see [tasks-design.md](tasks-design.md#what-it-changes-in-the-sync-engine).
 - **Large attachments live in the repo.** Git LFS or a separate blob store is a
   later concern.
 - **Authentication** (GitHub/GitLab sign-in, keychain storage) sits in the app

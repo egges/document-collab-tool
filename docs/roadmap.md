@@ -269,16 +269,35 @@ and identity is trusted rather than verified, as in a shared folder.
 - [ ] **Without a git host.** For workspaces synced through a cloud folder:
       direct upload to Cloudflare Pages or Netlify.
 
+## Tasks (being designed)
+
+Agents doing work in the workspace: a task is a block with a UI, an agent
+session (the user's own Claude Code or Codex), skills and a folder of code,
+settings and assets. The direction, the decisions so far and the open
+questions are in [tasks-design.md](tasks-design.md); where this goes in the
+order above isn't decided yet.
+
+- [ ] **Sync changes.** A plain-text merge kind for code, tasks as entities,
+      broader ignore rules with a size limit and a secrets check, and
+      holding back auto-commit while an agent session runs.
+- [ ] **Task format.** `tasks/<id>/` with `task.json`, skills, databases and
+      an optional `ui/`; device-only state in `.docsync/`.
+- [ ] **Agent adapters.** Claude Code and Codex over stdio, working in the
+      task's folder, with the MCP server (step 4) for workspace access.
+- [ ] **Standard views.** Approval queue, table, chart, metric tiles.
+- [ ] **First task: email.** Triage, drafts and sending after approval.
+- [ ] **Later: scheduled triggers,** which need something running while the
+      app is closed and one device chosen to run them.
+
 ## Later
 
 Ideas we want, in roughly this order, once the steps above are done.
 
 - **Runnable code blocks.** A run button on shell code blocks, with the
   output shown in the page, for runbooks.
-- **AI-built blocks.** Custom UI blocks an agent builds, which read and
-  write databases. Each block is a file in the workspace (HTML/JS and a
-  manifest saying which databases it may use), runs in a sandboxed iframe,
-  and reaches data only through a narrow API.
+- **AI-built blocks.** Now part of tasks: a task's optional `ui/`, which runs
+  in a sandboxed iframe and reaches data only through a narrow API
+  ([tasks-design.md](tasks-design.md)).
 - **Writing commands.** "Improve writing" and similar, using the user's own
   agent or API key, with the result shown as a suggested change to accept.
 - **Live presence and co-editing.** Who is viewing a page, live cursors and
