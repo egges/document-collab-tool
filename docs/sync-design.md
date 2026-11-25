@@ -99,6 +99,12 @@ field, so the app should call `commit_local()` shortly after each edit. Commit
 times come from the device clocks, so a device with a badly wrong clock can win
 ties it shouldn't. The losing value always remains in history.
 
+Column widths of a table, which GFM can't express, are an HTML comment on
+the line above it: `<!-- table-widths: 120px 200px -->` for fixed widths, or
+`<!-- table-widths: 40% 60% -->` for a table as wide as the page, or
+`<!-- table-widths: full -->` for one as wide as the page with its columns
+shared by content. A table that follows its content has none. Changing widths changes only that line.
+
 Conflict blocks are HTML comments, so a page is still valid Markdown:
 
 ```markdown

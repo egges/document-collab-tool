@@ -104,6 +104,13 @@ chat in step 8. The app is for our own team until step 10.
       or delete; "+" bars add a row or column at the end. The header row
       stays first and keeps at least one row under it, so the Markdown is
       always a valid table.
+      Column edges drag to resize (the right edge widens the table), and
+      two buttons on the table's top right, "Fit to content" and "Full
+      width", are highlighted while on and can be combined. In a full-width
+      table, dragging an inner edge moves width between two columns. Widths
+      are kept in an
+      HTML comment above the table (`<!-- table-widths: 120px 200px -->`,
+      or percentages for full width), so the table stays plain GFM.
 - [x] **Links and search.** Clicking a link opens it (in the browser, or the
       page it points to); hovering shows it with copy and edit (text, address, remove).
       ⌘K searches page titles and text. The sidebar can

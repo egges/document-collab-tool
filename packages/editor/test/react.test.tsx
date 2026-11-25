@@ -411,6 +411,89 @@ describe("table handles", () => {
     expect(editor.save()).toBe("| Role | Name |\n| - | - |\n| Lead | Ada |\n| Staff | Alan |\n");
   });
 
+  test("dragging a column's right edge widens it, and the table with it", async () => {
+    const editor = await mount(TABLE);
+    await hover("Ada");
+    layOut();
+    const edges = [...container.querySelectorAll<HTMLElement>(".page-table-resize")];
+    expect(edges).toHaveLength(2); // between the columns, and the right edge
+    await gripEvent("pointerdown", edges[1], 200, 10);
+    await gripEvent("pointermove", document.body, 260, 10);
+    // Drawn as it moves, saved when released.
+    const table = container.querySelector("table")!;
+    expect(table.style.width).toBe("260px");
+    expect(editor.save()).toBeNull();
+    await gripEvent("pointerup", document.body, 260, 10);
+    expect(editor.save()).toBe(`<!-- table-widths: 100px 160px -->\n\n${TABLE}`);
+    // Now it can go back to fitting its content, or go full width.
+    await hover("Ada");
+    expect(container.querySelectorAll(".page-table-size button")).toHaveLength(2);
+    await act(() => button('.page-table-size [aria-label="Fit table to content"]')!.click());
+    expect(editor.save()).toBeNull();
+  });
+
+  test("Escape puts a column's width back", async () => {
+    const editor = await mount(TABLE);
+    await hover("Ada");
+    layOut();
+    const edge = container.querySelector<HTMLElement>(".page-table-resize")!;
+    await gripEvent("pointerdown", edge, 100, 10);
+    await gripEvent("pointermove", document.body, 60, 10);
+    expect(container.querySelector("table")!.style.width).toBe("160px");
+    await act(() => {
+      window.dispatchEvent(new KeyboardEvent("keydown", { key: "Escape", bubbles: true }));
+    });
+    expect(container.querySelector("table")!.style.width).toBe("");
+    await gripEvent("pointerup", document.body, 60, 10);
+    expect(editor.save()).toBeNull();
+  });
+
+  test("full width keeps its edges at the page's, and an inner edge moves width between columns", async () => {
+    const editor = await mount(TABLE);
+    await hover("Ada");
+    layOut();
+    // Two buttons on the table's top right, each highlighted while it's on.
+    const fit = () => button('.page-table-size [aria-label="Fit table to content"]')!;
+    const full = () => button('.page-table-size [aria-label="Full-width table"]')!;
+    const on = (b: HTMLButtonElement) => b.getAttribute("aria-pressed") === "true";
+    expect([on(fit()), on(full())]).toEqual([true, false]);
+
+    // Full width, still sharing the width by content.
+    await act(() => full().click());
+    expect(editor.save()).toBe(`<!-- table-widths: full -->\n\n${TABLE}`);
+    expect(container.querySelector("table")!.style.width).toBe("100%");
+    expect([on(fit()), on(full())]).toEqual([true, true]);
+
+    // Dragging the edge between the columns sets their widths.
+    await hover("Ada");
+    layOut();
+    const edges = [...container.querySelectorAll<HTMLElement>(".page-table-resize")];
+    expect(edges).toHaveLength(1); // only the one between the columns
+    await gripEvent("pointerdown", edges[0], 100, 10);
+    await gripEvent("pointermove", document.body, 130, 10);
+    await gripEvent("pointerup", document.body, 130, 10);
+    expect(editor.save()).toBe(`<!-- table-widths: 65% 35% -->\n\n${TABLE}`);
+    expect([on(fit()), on(full())]).toEqual([false, true]);
+
+    // Fit to content keeps it full width.
+    await act(() => fit().click());
+    expect(editor.save()).toBe(`<!-- table-widths: full -->\n\n${TABLE}`);
+
+    // Full width again turns it off.
+    await act(() => full().click());
+    expect(editor.save()).toBeNull();
+    expect([on(fit()), on(full())]).toEqual([true, false]);
+  });
+
+  test("a table with dragged widths keeps its proportions when it goes full width", async () => {
+    const editor = await mount(`<!-- table-widths: 100px 300px -->\n\n${TABLE}`);
+    await hover("Ada");
+    layOut(); // as drawn here: 100px each
+    expect(button('.page-table-size [aria-label="Fit table to content"]')!.getAttribute("aria-pressed")).toBe("false");
+    await act(() => button('.page-table-size [aria-label="Full-width table"]')!.click());
+    expect(editor.save()).toBe(`<!-- table-widths: 50% 50% -->\n\n${TABLE}`);
+  });
+
   test("the header row doesn't drag, nothing drops above it, and Escape cancels", async () => {
     const editor = await mount(TABLE);
     await hover("Name");

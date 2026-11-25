@@ -8,6 +8,18 @@ export { LANGUAGES, detectLanguage, findLanguage } from "./code/index.ts";
 export type { Language } from "./code/index.ts";
 export { BLOCK_KEYS, blockAt, blockStartingAt, dropTarget, selectedBlock, setDragging } from "./blocks.ts";
 export type { Block, DropTarget } from "./blocks.ts";
-export { canEditTable, canMoveTableLine, editTable, moveTableLine, tableCellAt } from "./tables.ts";
-export type { TableCell, TableEdit, TableLine } from "./tables.ts";
+export {
+  DEFAULT_COLUMN_WIDTH,
+  MIN_COLUMN_WIDTH,
+  canEditTable,
+  canMoveTableLine,
+  editTable,
+  fitsContent,
+  moveTableLine,
+  setTableWidths,
+  tableCellAt,
+  tableWidths,
+} from "./tables.ts";
+export type { TableCell, TableEdit, TableLayout, TableLine, TableWidths } from "./tables.ts";
+export { parseWidthsComment, widthsComment } from "./tableView.ts";
 export { WRITE_HINT, placeholderAt } from "./placeholder.ts";

@@ -2,8 +2,30 @@ import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { TableMap } from "@milkdown/kit/prose/tables";
 import type { EditorView } from "@milkdown/kit/prose/view";
 import type { PageEditor } from "../editor.ts";
-import { type TableCell, type TableEdit, type TableLine, canEditTable, canMoveTableLine, tableCellAt } from "../tables.ts";
-import { ArrowDownIcon, ArrowLeftIcon, ArrowRightIcon, ArrowUpIcon, DotsIcon, PlusIcon, TrashIcon } from "./icons.tsx";
+import {
+  MIN_COLUMN_WIDTH,
+  type TableCell,
+  type TableEdit,
+  type TableWidths,
+  type TableLine,
+  canEditTable,
+  canMoveTableLine,
+  fitsContent,
+  tableCellAt,
+  tableWidths,
+} from "../tables.ts";
+import { applyWidths } from "../tableView.ts";
+import {
+  ArrowDownIcon,
+  ArrowLeftIcon,
+  ArrowRightIcon,
+  ArrowUpIcon,
+  DotsIcon,
+  FitWidthIcon,
+  FullWidthIcon,
+  PlusIcon,
+  TrashIcon,
+} from "./icons.tsx";
 
 /**
  * How far below and right of a table the pointer can go before its handles
@@ -53,6 +75,28 @@ interface Drag {
   gap: number | null;
 }
 
+/**
+ * A column edge being dragged. The new widths are drawn straight into the
+ * table's <colgroup> as the pointer moves, and go into the document (one
+ * undo step) when it's released.
+ */
+interface Resize {
+  cell: TableCell;
+  /** The edge is on the right of this column. */
+  col: number;
+  table: HTMLTableElement;
+  /** "full" stays full; otherwise the columns get fixed widths. */
+  layout: "fixed" | "full";
+  /** Column widths in pixels when the drag started, and now. */
+  start: number[];
+  widths: number[];
+  startX: number;
+  /** How wide a fixed table can get: the page's width. */
+  max: number;
+  pointerId: number;
+  stop: () => void;
+}
+
 interface Menu {
   line: Line;
   cell: TableCell;
@@ -72,6 +116,8 @@ export function TableHandles({ editor, container }: { editor: PageEditor; contai
   const [menu, setMenu] = useState<Menu | null>(null);
   const [drag, setDrag] = useState<Drag | null>(null);
   const press = useRef<Press | null>(null);
+  const [resize, setResize] = useState<Resize | null>(null);
+  const resizing = useRef<Resize | null>(null);
   const hoverRef = useRef(hover);
   hoverRef.current = hover;
 
@@ -85,6 +131,21 @@ export function TableHandles({ editor, container }: { editor: PageEditor; contai
     return current;
   };
   useEffect(() => () => void endPress(), []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  /** Ends a column resize; `keep` false puts the widths back as they were. */
+  const endResize = (keep: boolean) => {
+    const current = resizing.current;
+    resizing.current = null;
+    setResize(null);
+    if (!current) return;
+    current.stop();
+    const node = view.state.doc.nodeAt(current.cell.table);
+    const moved = current.widths.some((w, i) => w !== current.start[i]);
+    if (keep && moved && commands.setTableWidths(current.cell, current.layout, current.widths)) return;
+    // Nothing changed in the document: draw the widths it has.
+    if (node?.type.name === "table") applyWidths(current.table, tableWidths(node));
+  };
+  useEffect(() => () => endResize(false), []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const el = container.current;
@@ -113,7 +174,7 @@ export function TableHandles({ editor, container }: { editor: PageEditor; contai
   }, [container, view]);
 
   // The table may have changed since the pointer was over it.
-  const shown = drag?.cell ?? menu?.cell ?? current(view, hover);
+  const shown = resize?.cell ?? drag?.cell ?? menu?.cell ?? current(view, hover);
   // The block handle hides meanwhile: next to the row grip it looks like a
   // second one. Moving into the gutter brings it back, to drag the table.
   const showing = !!shown;
@@ -122,6 +183,9 @@ export function TableHandles({ editor, container }: { editor: PageEditor; contai
   }, [container, showing]);
   const box = container.current?.getBoundingClientRect();
   const table = shown && tableElement(view, shown);
+  const tableNode = shown && view.state.doc.nodeAt(shown.table);
+  const sizing: TableWidths = tableNode?.type.name === "table" ? tableWidths(tableNode) : { layout: "auto", widths: [] };
+  const { layout } = sizing;
   if (!shown || !table || !box) return null;
   const rowEl = table.rows[shown.row];
   const cellEl = rowEl?.cells[shown.col];
@@ -134,6 +198,70 @@ export function TableHandles({ editor, container }: { editor: PageEditor; contai
     commands.editTable(cell, change);
     setHover(null);
     setMenu(null);
+  };
+  // The buttons on the table's top right, each highlighted while it's on.
+  // "Fit to content" removes the widths: the columns follow their content,
+  // across the page when the table is full width. "Full width" turns full
+  // width on or off; a table with widths keeps its proportions.
+  const size = (cell: TableCell, to: "fit" | "full") => {
+    setMenu(null);
+    if (to === "fit") commands.setTableWidths(cell, layout === "full" ? "full" : "auto");
+    else if (layout === "full") commands.setTableWidths(cell, "auto");
+    else if (layout === "auto") commands.setTableWidths(cell, "full");
+    else commands.setTableWidths(cell, "full", columnWidths(table));
+  };
+
+  // The edges between columns, and the right edge, can be dragged to resize.
+  // In a full-width table the right edge stays at the page's edge, and an
+  // edge between two columns moves width from one to the other.
+  const startResize = (col: number, event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    event.stopPropagation();
+    endResize(false);
+    setMenu(null);
+    const pointerId = event.pointerId;
+    const onMove = (e: PointerEvent) => e.pointerId === pointerId && followResize(e.clientX);
+    const onUp = (e: PointerEvent) => e.pointerId === pointerId && endResize(true);
+    const onCancel = (e: PointerEvent) => e.pointerId === pointerId && endResize(false);
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Escape") return;
+      e.preventDefault();
+      e.stopPropagation();
+      endResize(false);
+    };
+    window.addEventListener("pointermove", onMove, true);
+    window.addEventListener("pointerup", onUp, true);
+    window.addEventListener("pointercancel", onCancel, true);
+    window.addEventListener("keydown", onKey, true);
+    const start = columnWidths(table);
+    const page = innerWidth(table.parentElement);
+    resizing.current = {
+      cell: shown,
+      col,
+      table,
+      layout: layout === "full" ? "full" : "fixed",
+      start,
+      widths: start,
+      startX: event.clientX,
+      max: page > 0 ? page : Infinity,
+      pointerId,
+      stop: () => {
+        window.removeEventListener("pointermove", onMove, true);
+        window.removeEventListener("pointerup", onUp, true);
+        window.removeEventListener("pointercancel", onCancel, true);
+        window.removeEventListener("keydown", onKey, true);
+      },
+    };
+    setResize(resizing.current);
+  };
+  const followResize = (x: number) => {
+    const current = resizing.current;
+    if (!current) return;
+    const widths = resized(current, x - current.startX);
+    resizing.current = { ...current, widths };
+    applyWidths(current.table, { layout: current.layout, widths });
+    setResize(resizing.current);
   };
   const last = (cell: TableCell, line: Line): TableCell =>
     line === "row" ? { ...cell, row: cell.rows - 1 } : { ...cell, col: cell.cols - 1 };
@@ -243,6 +371,28 @@ export function TableHandles({ editor, container }: { editor: PageEditor; contai
         <DotsIcon size={12} />
       </button>
       {drag && <DragMarks table={table} box={box} drag={drag} />}
+      {!drag &&
+        edges(table, "column").map((edge, col, all) => {
+          // A full-width table's right edge is the page's.
+          if (layout === "full" && col === all.length - 1) return null;
+          return (
+            <div
+              key={col}
+              className={`page-table-resize${resize?.col === col ? " active" : ""}`}
+              style={{
+                left: edge.end - box.left - 4,
+                top: t.top - box.top,
+                height: t.height,
+              }}
+              role="separator"
+              aria-orientation="vertical"
+              aria-label="Column width"
+              title="Drag to resize"
+              onMouseDown={keepFocus}
+              onPointerDown={(event) => startResize(col, event)}
+            />
+          );
+        })}
       <button
         type="button"
         className="page-table-add row"
@@ -257,7 +407,11 @@ export function TableHandles({ editor, container }: { editor: PageEditor; contai
       <button
         type="button"
         className="page-table-add column"
-        style={{ left: t.right - box.left + 2, top: t.top - box.top, height: t.height }}
+        style={{
+          left: t.right - box.left + 6,
+          top: t.top - box.top,
+          height: t.height,
+        }}
         aria-label="Add a column"
         title="Add a column"
         onMouseDown={keepFocus}
@@ -265,9 +419,69 @@ export function TableHandles({ editor, container }: { editor: PageEditor; contai
       >
         <PlusIcon size={12} />
       </button>
-      {menu && <TableMenu menu={menu} onEdit={(change) => edit(menu.cell, change)} onClose={() => setMenu(null)} />}
+      <div
+        className="page-table-size"
+        role="group"
+        aria-label="Table width"
+        style={{ left: t.right - box.left - 6, top: t.top - box.top + 5 }}
+      >
+        <button
+          type="button"
+          aria-label="Fit table to content"
+          title={layout === "full" ? "Fit columns to content, keeping full width" : "Fit table to content"}
+          aria-pressed={fitsContent(sizing)}
+          onMouseDown={keepFocus}
+          onClick={() => size(shown, "fit")}
+        >
+          <FitWidthIcon size={13} />
+        </button>
+        <button
+          type="button"
+          aria-label="Full-width table"
+          title={layout === "full" ? "Turn off full width" : "Full-width table"}
+          aria-pressed={layout === "full"}
+          onMouseDown={keepFocus}
+          onClick={() => size(shown, "full")}
+        >
+          <FullWidthIcon size={13} />
+        </button>
+      </div>
+      {menu && (
+        <TableMenu menu={menu} onEdit={(change) => edit(menu.cell, change)} onClose={() => setMenu(null)} />
+      )}
     </div>
   );
+}
+
+/** The width inside an element's padding: the room the table has. */
+function innerWidth(element: HTMLElement | null): number {
+  if (!element) return 0;
+  const style = getComputedStyle(element);
+  return element.clientWidth - (parseFloat(style.paddingLeft) || 0) - (parseFloat(style.paddingRight) || 0);
+}
+
+/** The table's column widths in pixels, as drawn now. */
+function columnWidths(table: HTMLTableElement): number[] {
+  return [...(table.rows[0]?.cells ?? [])].map((cell) => cell.getBoundingClientRect().width);
+}
+
+/** The column widths after the edge being resized has moved `dx` pixels. */
+function resized({ layout, col, start, max }: Resize, dx: number): number[] {
+  const widths = [...start];
+  if (layout === "full") {
+    // Between two columns: one gets what the other loses.
+    const next = col + 1;
+    if (next >= widths.length) return widths;
+    const d = Math.min(Math.max(dx, MIN_COLUMN_WIDTH - start[col]), start[next] - MIN_COLUMN_WIDTH);
+    widths[col] = start[col] + d;
+    widths[next] = start[next] - d;
+    return widths;
+  }
+  // The table grows or shrinks, up to the page's width (or as it is, if wider).
+  const total = start.reduce((a, b) => a + b, 0);
+  const most = start[col] + Math.max(0, max - total);
+  widths[col] = Math.min(Math.max(start[col] + dx, Math.min(MIN_COLUMN_WIDTH, start[col])), most);
+  return widths;
 }
 
 /**

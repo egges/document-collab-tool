@@ -35,7 +35,16 @@ import {
   selectBlock,
 } from "./blocks.ts";
 import { prepareForSave } from "./markdown.ts";
-import { type TableCell, type TableEdit, type TableLine, editTable, moveTableLine, tableCellAt } from "./tables.ts";
+import {
+  type TableCell,
+  type TableEdit,
+  type TableLayout,
+  type TableLine,
+  editTable,
+  moveTableLine,
+  setTableWidths,
+  tableCellAt,
+} from "./tables.ts";
 
 export type InlineFormat = "bold" | "italic" | "strikethrough" | "code";
 
@@ -271,6 +280,18 @@ export function createCommands(editor: Editor) {
       if (!tr) return false;
       v.dispatch(tr);
       v.focus();
+      return true;
+    },
+
+    /**
+     * Sizes the columns of the table at `cell` (see "Column widths" in
+     * tables.ts), as one undo step. Keeps the cursor where it is.
+     */
+    setTableWidths(cell: TableCell, layout: TableLayout, widths?: number[]): boolean {
+      const v = view();
+      const tr = setTableWidths(v.state, cell.table, layout, widths);
+      if (!tr) return false;
+      v.dispatch(tr);
       return true;
     },
 
