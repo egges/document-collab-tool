@@ -100,6 +100,12 @@
 .page-editor .ProseMirror > * + * { margin-top: 0.55em; }
 .page-editor .ProseMirror > :is(h1, h2, h3, h4) { margin-top: 1.25em; }
 .page-editor .ProseMirror > :is(h1, h2, h3, h4) + * { margin-top: 0.35em; }
+/*
+ * A table gets more room than text around it, and a little more below for
+ * the "+" bar that adds a row. Under a heading it stays closer.
+ */
+.page-editor .ProseMirror .page-table { margin-top: 1.1em; margin-bottom: 1.5em; }
+.page-editor .ProseMirror > :is(h1, h2, h3, h4) + .page-table { margin-top: 0.6em; }
 .page-editor .ProseMirror > :first-child { margin-top: 0; }
 .page-editor .ProseMirror :is(h1, h2, h3, h4) { line-height: 1.3; }
 .page-editor .ProseMirror li + li,
@@ -243,7 +249,14 @@
   text-decoration: line-through;
 }
 .page-editor .ProseMirror hr { border: 0; border-top: 1px solid var(--page-border); margin: 1.2em 0; }
+/*
+ * The wrapper scrolls sideways when a table with fixed widths is wider than
+ * the page (in a narrow window). Its 1px of padding keeps the table's outer
+ * border from being clipped, and the negative margin keeps it in line.
+ */
+.page-editor .ProseMirror .page-table { overflow-x: auto; overflow-y: hidden; padding: 1px; margin-inline: -1px; }
 .page-editor .ProseMirror table { border-collapse: collapse; }
+.page-editor .ProseMirror table[data-layout] :is(th, td) { min-width: 0; overflow-wrap: anywhere; }
 .page-editor .ProseMirror :is(th, td) { border: 1px solid var(--page-border); padding: 4px 10px; min-width: 3em; }
 .page-editor .ProseMirror img { max-width: 100%; }
 
@@ -534,6 +547,61 @@
 .page-table-add.row { height: 16px; }
 .page-table-add.column { width: 16px; }
 .page-table-menu { position: absolute; min-width: 190px; }
+/*
+ * The table's width buttons (fit to content, full width), in its top right
+ * corner over the header row. Full width is highlighted while it's on.
+ */
+.page-table-size {
+  position: absolute;
+  z-index: 5;
+  display: flex;
+  gap: 1px;
+  padding: 2px;
+  transform: translateX(-100%);
+  background: var(--page-menu-bg);
+  border: 1px solid var(--page-border);
+  border-radius: 6px;
+  box-shadow: 0 1px 3px rgb(0 0 0 / 0.08);
+  animation: page-handle-in 120ms ease-out;
+}
+@media (prefers-reduced-motion: reduce) { .page-table-size { animation: none; } }
+.page-table-size button {
+  display: grid;
+  place-items: center;
+  width: 22px;
+  height: 20px;
+  padding: 0;
+  color: var(--page-muted);
+  background: none;
+  border: 0;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.page-table-size button:hover { color: var(--page-text); background: var(--page-menu-hover); }
+.page-table-size button[aria-pressed="true"] {
+  color: var(--page-accent);
+  background: color-mix(in srgb, var(--page-accent) 18%, transparent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--page-accent) 45%, transparent);
+}
+.page-table-size button[aria-pressed="true"]:hover { background: color-mix(in srgb, var(--page-accent) 26%, transparent); }
+/* The edge between two columns, and the right edge: drag to resize. */
+.page-table-resize {
+  position: absolute;
+  z-index: 6;
+  width: 9px;
+  cursor: col-resize;
+  touch-action: none;
+}
+.page-table-resize::after {
+  content: "";
+  position: absolute;
+  inset: 0 3px;
+  border-radius: 2px;
+  background: var(--page-accent);
+  opacity: 0;
+  transition: opacity 120ms;
+}
+.page-table-resize:is(:hover, .active)::after { opacity: 0.7; }
 /* Only one set of handles at a time: over a table, its grips. */
 .page-table-hover .page-block-handle:not(.active) { visibility: hidden; }
 /* While a row or column is dragged: it's shaded, and a line shows where it goes. */

@@ -145,3 +145,26 @@ export const ChevronRightIcon = (p: IconProps) => (
     <path d="m9 18 6-6-6-6" />
   </Icon>
 );
+
+/** Lucide's "fold-horizontal": columns shrink to their content. */
+export const FitWidthIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="M2 12h6" />
+    <path d="M22 12h-6" />
+    <path d="M12 2v2" />
+    <path d="M12 8v2" />
+    <path d="M12 14v2" />
+    <path d="M12 20v2" />
+    <path d="m19 9-3 3 3 3" />
+    <path d="m5 15 3-3-3-3" />
+  </Icon>
+);
+
+/** Lucide's "move-horizontal": the table spans the page. */
+export const FullWidthIcon = (p: IconProps) => (
+  <Icon {...p}>
+    <path d="m18 8 4 4-4 4" />
+    <path d="M2 12h20" />
+    <path d="m6 8-4 4 4 4" />
+  </Icon>
+);

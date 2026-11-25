@@ -19,6 +19,7 @@ import { BLOCK_KEYS, blockStatePlugin } from "./blocks.ts";
 import { placeholderPlugin } from "./placeholder.ts";
 import { SaveRefusedError, findLostContent } from "./check.ts";
 import { codeBlocks } from "./code/index.ts";
+import { tableWidthsPlugins } from "./tableView.ts";
 import { type Commands, createCommands } from "./commands.ts";
 import { configureHouseStyle, joinPage, prepareForSave, splitFrontMatter } from "./markdown.ts";
 
@@ -83,6 +84,7 @@ async function createMilkdown(
     })
     .use(commonmark)
     .use(gfm)
+    .use(tableWidthsPlugins)
     .use(codeBlocks)
     .use(history)
     .use(clipboard)
