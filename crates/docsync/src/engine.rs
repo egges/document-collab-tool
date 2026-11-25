@@ -464,6 +464,30 @@ impl SyncEngine {
         Ok(body)
     }
 
+    /// Move a page's front matter into its meta.json (see
+    /// [`Workspace::lift_front_matter`]). Waits for a running sync. Returns
+    /// whether the page changed; doesn't commit.
+    pub fn lift_front_matter(&self, id: &str) -> Result<bool> {
+        let _lock = self.lock()?;
+        let workspace = Workspace::new(&self.root);
+        if !workspace.page_exists(id) {
+            return Ok(false);
+        }
+        workspace.lift_front_matter(id)
+    }
+
+    /// Import Markdown files and folders as pages under `parent` (see
+    /// [`crate::import`]). Waits for a running sync, so a sync never
+    /// publishes half an import. Doesn't commit.
+    pub fn import_markdown(
+        &self,
+        sources: &[PathBuf],
+        parent: Option<&str>,
+    ) -> Result<crate::import::ImportReport> {
+        let _lock = self.lock()?;
+        crate::import::import_markdown(&Workspace::new(&self.root), sources, parent)
+    }
+
     /// Commit local edits, merge in remote changes and publish the result.
     ///
     /// Never leaves the repository mid-merge: conflicts are resolved

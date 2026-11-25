@@ -1034,6 +1034,9 @@ pub struct Page {
     body: String,
     conflicts: Vec<Conflict>,
     display: PageDisplay,
+    /// Opening it moved front matter into meta.json, which may have changed
+    /// the title: the page list should be reread.
+    meta_changed: bool,
 }
 
 /// How a page is shown; `None` is the default. Kept in its meta.json, so it
@@ -1098,6 +1101,7 @@ fn read_page_from(ws: &Workspace, id: &str) -> CmdResult<Page> {
             width: display_option(&meta, "width"),
             text_size: display_option(&meta, "textSize"),
         },
+        meta_changed: false,
     })
 }
 
@@ -1112,9 +1116,80 @@ pub async fn list_pages(state: State<'_, AppState>) -> CmdResult<Vec<PageSummary
 
 #[tauri::command]
 pub async fn read_page(state: State<'_, AppState>, id: String) -> CmdResult<Page> {
-    let (engine, _) = state.engine()?;
+    let (engine, edited) = state.engine()?;
     blocking("read_page", move || {
-        read_page_from(&Workspace::new(engine.root()), &id)
+        // Front matter written by another tool or an agent: the editor can't
+        // show it, so it moves into meta.json before the page reaches it.
+        let lifted = match engine.lift_front_matter(&id) {
+            Ok(lifted) => lifted,
+            Err(e) => {
+                devlog::warn("app", format!("Couldn't move front matter of page {id}: {e}"));
+                false
+            }
+        };
+        if lifted {
+            devlog::info("app", format!("Moved front matter of page {id} into meta.json"));
+            edited();
+        }
+        let mut page = read_page_from(&Workspace::new(engine.root()), &id)?;
+        page.meta_changed = lifted;
+        Ok(page)
+    })
+    .await
+}
+
+/// What an import created, for the window.
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ImportResult {
+    /// The pages made for what was chosen; the first is opened.
+    pages: Vec<String>,
+    page_count: usize,
+    asset_count: usize,
+    /// Names of the files that couldn't be imported.
+    skipped: Vec<String>,
+}
+
+/// Import Markdown files and folders as pages under `parent`.
+#[tauri::command]
+pub async fn import_markdown(
+    state: State<'_, AppState>,
+    sources: Vec<PathBuf>,
+    parent: Option<String>,
+) -> CmdResult<ImportResult> {
+    let (engine, edited) = state.engine()?;
+    blocking("import_markdown", move || {
+        let report = engine
+            .import_markdown(&sources, parent.as_deref())
+            .map_err(text)?;
+        devlog::info(
+            "app",
+            format!(
+                "Imported {} pages and {} files from {} places ({} skipped)",
+                report.page_count,
+                report.asset_count,
+                sources.len(),
+                report.skipped.len()
+            ),
+        );
+        if report.page_count > 0 {
+            edited();
+        }
+        Ok(ImportResult {
+            pages: report.pages,
+            page_count: report.page_count,
+            asset_count: report.asset_count,
+            skipped: report
+                .skipped
+                .iter()
+                .map(|p| {
+                    p.file_name()
+                        .unwrap_or(p.as_os_str())
+                        .to_string_lossy()
+                        .into_owned()
+                })
+                .collect(),
+        })
     })
     .await
 }
@@ -1223,14 +1298,20 @@ pub async fn set_page_display(
         return Err(format!("Unknown page option “{key}”."));
     };
     if value.as_deref().is_some_and(|v| !allowed.contains(&v)) {
-        return Err(format!("“{}” isn't a choice for {key}.", value.unwrap_or_default()));
+        return Err(format!(
+            "“{}” isn't a choice for {key}.",
+            value.unwrap_or_default()
+        ));
     }
     let (engine, edited) = state.engine()?;
     blocking("set_page_display", move || {
         Workspace::new(engine.root())
             .set_page_display(&id, &key, value.clone().map(serde_json::Value::from))
             .map_err(text)?;
-        devlog::debug("app", format!("Page {id}: {key} = {}", value.as_deref().unwrap_or("default")));
+        devlog::debug(
+            "app",
+            format!("Page {id}: {key} = {}", value.as_deref().unwrap_or("default")),
+        );
         edited();
         Ok(())
     })

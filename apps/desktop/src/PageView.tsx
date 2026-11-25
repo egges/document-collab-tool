@@ -36,16 +36,22 @@ interface PageViewProps {
 /** Loads the page, then hands over to the editor once it has the body. */
 export function PageView(props: PageViewProps) {
   const [page, setPage] = useState<Page | null>(null);
-  const { id, onError } = props;
+  const { id, onError, onRenamed } = props;
   useEffect(() => {
     let cancelled = false;
     api
       .readPage(id)
-      .then((p) => !cancelled && setPage(p))
+      .then((p) => {
+        if (cancelled) return;
+        setPage(p);
+        // Front matter became the title: the sidebar should show it.
+        if (p.metaChanged) onRenamed();
+      })
       .catch((e) => onError(errorText(e)));
     return () => {
       cancelled = true;
     };
+    // Not on onRenamed: it only rereads the page list, so a new one needn't reload the page.
   }, [id, onError]);
   return page ? <LoadedPage {...props} initial={page} /> : <div className="page" />;
 }

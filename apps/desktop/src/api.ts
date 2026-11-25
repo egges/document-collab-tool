@@ -95,6 +95,19 @@ export interface Page {
   body: string;
   conflicts: Conflict[];
   display: PageDisplay;
+  /** Opening it moved front matter into the page's metadata, which may have changed its title. */
+  metaChanged: boolean;
+}
+
+/** What importing Markdown files and folders created. */
+export interface ImportResult {
+  /** The pages made for what was chosen; their subpages are inside them. */
+  pages: string[];
+  pageCount: number;
+  /** Images and other files copied into the pages. */
+  assetCount: number;
+  /** Names of files that couldn't be imported. */
+  skipped: string[];
 }
 
 /** How a page is shown; null is the default. Syncs with the page. */
@@ -257,6 +270,8 @@ export const api = {
   searchText: (query: string) => invoke<TextMatch[]>("search_text", { query }),
   writePage: (id: string, base: string, body: string) => invoke<WriteResult>("write_page", { id, base, body }),
   createPage: (title: string, parent: string | null) => invoke<string>("create_page", { title, parent }),
+  importMarkdown: (sources: string[], parent: string | null) =>
+    invoke<ImportResult>("import_markdown", { sources, parent }),
   renamePage: (id: string, title: string) => invoke<void>("rename_page", { id, title }),
   setPageDisplay: <K extends PageDisplayKey>(id: string, key: K, value: PageDisplay[K]) =>
     invoke<void>("set_page_display", { id, key, value }),

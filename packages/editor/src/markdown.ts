@@ -24,8 +24,9 @@ const FRONT_MATTER = /^---\r?\n[\s\S]*?\r?\n---\r?\n/;
 /**
  * Splits YAML front matter off the top of a page. The editor can't represent
  * it (it would become a rule and a heading), so it's kept aside unchanged and
- * put back on save. Our own pages keep metadata in meta.json; this protects
- * pages imported from other tools until the importer moves it there.
+ * put back on save. Our own pages keep metadata in meta.json, and the app
+ * moves front matter there before a page reaches the editor; this protects
+ * what it leaves, such as front matter that isn't a YAML mapping.
  */
 export function splitFrontMatter(markdown: string): { frontMatter: string; body: string } {
   const match = markdown.match(FRONT_MATTER);

@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from "react";
 import { ChevronDown, ChevronRight, FileText, Files, Plus, Search, Settings, SquareTerminal } from "lucide-react";
 import type { PageSummary, SyncStatus, WorkspaceInfo } from "./api.ts";
+import { ImportMenu } from "./ImportMenu.tsx";
 import { childrenOf } from "./pageTree.ts";
 import type { SettingsSection } from "./Settings.tsx";
 import { SHORTCUTS, keysLabel, tip } from "./shortcuts.ts";
@@ -16,6 +17,8 @@ interface SidebarProps {
   status: SyncStatus | null;
   onSelect: (id: string) => void;
   onCreate: (parent: string | null) => void;
+  /** Import Markdown files and folders as pages. */
+  onImport: (sources: string[]) => void;
   onWorkspaceChange: (w: WorkspaceInfo | null) => void;
   /** Saves the open page, then opens the workspace `open` returns. */
   onSwitch: (open: () => Promise<WorkspaceInfo | null>) => Promise<void>;
@@ -76,6 +79,7 @@ export function Sidebar(props: SidebarProps) {
               <Plus size={14} aria-hidden />
               <span>New page</span>
             </button>
+            <ImportMenu onImport={props.onImport} />
           </nav>
           <div className="sidebar-footer">
             <SyncStatusBar

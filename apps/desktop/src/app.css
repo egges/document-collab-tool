@@ -1185,6 +1185,16 @@ button.workspace-name[aria-expanded="true"] {
   color: var(--text);
 }
 
+.import {
+  position: relative;
+}
+
+.import-menu {
+  top: calc(100% + 2px);
+  left: 18px;
+  width: max-content;
+}
+
 .disclosure {
   display: inline-flex;
   align-items: center;
