@@ -371,6 +371,30 @@ describe("table handles", () => {
       target.dispatchEvent(new PointerEvent(type, { bubbles: true, button: 0, pointerId: 1, clientX: x, clientY: y }));
     });
 
+  test("stay while the pointer goes right of a full-width table, outside the editor, to its + bar", async () => {
+    await mount(`<!-- table-widths: full -->\n\n${TABLE}`);
+    await hover("Lead");
+    layOut();
+    const table = container.querySelector("table")!;
+    Object.defineProperty(table, "getBoundingClientRect", { configurable: true, value: () => new DOMRect(0, 0, 200, 60) });
+    const outside = document.createElement("div");
+    document.body.append(outside);
+    const moveTo = (x: number, y: number) =>
+      act(() => {
+        outside.dispatchEvent(new MouseEvent("mousemove", { bubbles: true, clientX: x, clientY: y }));
+      });
+    try {
+      // Where the column's "+" bar is: just right of the table, past the editor.
+      await moveTo(214, 30);
+      expect(button(".page-table-add.column")).not.toBeNull();
+      // Further away, the handles go.
+      await moveTo(400, 30);
+      expect(button(".page-table-add.column")).toBeNull();
+    } finally {
+      outside.remove();
+    }
+  });
+
   test("pressing a grip opens its menu", async () => {
     await mount(TABLE);
     await hover("Ada");

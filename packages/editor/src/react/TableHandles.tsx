@@ -147,13 +147,15 @@ export function TableHandles({ editor, container }: { editor: PageEditor; contai
   };
   useEffect(() => () => endResize(false), []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Followed on the whole window, not just the editor: the column's "+" bar is
+  // right of the table, outside the editor when the table is as wide as it.
   useEffect(() => {
     const el = container.current;
     if (!el) return;
     const onMove = (event: MouseEvent) => {
-      const target = event.target as HTMLElement;
-      if (target.closest(".page-table-ui")) return;
-      const cellEl = target.closest<HTMLElement>(".ProseMirror td, .ProseMirror th");
+      const target = event.target instanceof Element ? event.target : null;
+      if (target?.closest(".page-table-ui") && el.contains(target)) return;
+      const cellEl = target?.closest<HTMLElement>(".ProseMirror td, .ProseMirror th");
       if (cellEl && view.dom.contains(cellEl)) {
         const cell = tableCellAt(view.state, view.posAtDOM(cellEl, 0));
         if (!sameCell(cell, hoverRef.current)) setHover(cell);
@@ -164,12 +166,13 @@ export function TableHandles({ editor, container }: { editor: PageEditor; contai
       if (table && near(table.getBoundingClientRect(), event.clientX, event.clientY)) return;
       if (current) setHover(null);
     };
+    // Out of the window.
     const onLeave = () => setHover(null);
-    el.addEventListener("mousemove", onMove);
-    el.addEventListener("mouseleave", onLeave);
+    window.addEventListener("mousemove", onMove);
+    document.documentElement.addEventListener("mouseleave", onLeave);
     return () => {
-      el.removeEventListener("mousemove", onMove);
-      el.removeEventListener("mouseleave", onLeave);
+      window.removeEventListener("mousemove", onMove);
+      document.documentElement.removeEventListener("mouseleave", onLeave);
     };
   }, [container, view]);
 
