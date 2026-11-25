@@ -674,3 +674,79 @@ fn two_devices_moving_the_same_front_matter_converge_without_conflicts() {
     assert_eq!(meta["properties"], json!({"tags": ["x"]}));
     assert_eq!(a.ws.read_body(&page).unwrap(), "Text\n");
 }
+
+#[test]
+fn view_changes_on_a_database_page_merge_across_devices() {
+    use docsync::database_page::{DatabasePage, Sort, View, ViewType};
+    let net = Net::new();
+    let a = net.device("a");
+    let db = a.ws.create_database("Tasks", &["name", "status"]).unwrap();
+    let page = a.ws.create_database_page("Tasks", None, Some(&db)).unwrap();
+    a.sync();
+    let b = net.device("b");
+    let read = |ws: &Workspace| DatabasePage::from_meta(&ws.read_page_meta(&page).unwrap()).unwrap();
+    let table = read(&a.ws).views[0].clone();
+
+    // A sorts the table; B adds a board. Different fields: both kept.
+    let mut sorted = table.clone();
+    sorted.sort = Some(Sort {
+        column: "name".into(),
+        descending: false,
+    });
+    a.ws.set_page_view(&page, &table.id, Some(&sorted)).unwrap();
+    let mut board = View::new("board1", "Board", ViewType::Board, 1.0);
+    board.group_by = Some("status".into());
+    b.ws.set_page_view(&page, &board.id, Some(&board)).unwrap();
+    b.ws.set_title(&page, "Sprint").unwrap();
+    a.sync();
+    assert!(b.sync().conflicts.is_empty());
+    settle(&[&a, &b]);
+
+    let merged = read(&a.ws);
+    assert_eq!(merged.database.as_deref(), Some(db.as_str()));
+    assert_eq!(merged.views.len(), 2);
+    assert_eq!(merged.views[0].sort, sorted.sort);
+    assert_eq!(merged.views[1].group_by.as_deref(), Some("status"));
+    assert_eq!(a.ws.pages_showing(&db).unwrap(), [page.as_str()]);
+    assert_converged(&[&a, &b]);
+}
+
+#[test]
+fn deleting_a_database_while_a_row_page_is_written_elsewhere_restores_the_database() {
+    let net = Net::new();
+    let a = net.device("a");
+    let db = a.ws.create_database("Tasks", &["name"]).unwrap();
+    let row = a.ws.add_row(&db, Default::default()).unwrap();
+    a.sync();
+    let b = net.device("b");
+    a.ws.delete_database(&db).unwrap();
+    b.ws.write_body(&row, "Written while it was deleted\n").unwrap();
+    a.sync();
+    b.sync();
+    settle(&[&a, &b]);
+    assert!(a.ws.database_exists(&db));
+    assert_eq!(a.ws.read_body(&row).unwrap(), "Written while it was deleted\n");
+    assert_converged(&[&a, &b]);
+}
+
+#[test]
+fn page_properties_added_on_two_devices_merge() {
+    let net = Net::new();
+    let a = net.device("a");
+    let page = a.ws.create_page("Trip", None).unwrap();
+    a.sync();
+    let b = net.device("b");
+    let when = a.ws.add_page_property(&page, "When", ColumnType::Date).unwrap();
+    a.ws.set_page_property(&page, &when, json!("2026-12-01")).unwrap();
+    let done =
+        b.ws.add_page_property(&page, "Booked", ColumnType::Checkbox)
+            .unwrap();
+    b.ws.set_page_property(&page, &done, json!(true)).unwrap();
+    a.sync();
+    assert!(b.sync().conflicts.is_empty());
+    settle(&[&a, &b]);
+    let (columns, values) = a.ws.page_properties(&page).unwrap();
+    assert_eq!(columns.len(), 2);
+    assert_eq!(values[&when], "2026-12-01");
+    assert_eq!(values[&done], true);
+}

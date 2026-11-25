@@ -111,3 +111,53 @@ fn does_not_recreate_a_page_that_sync_deleted() {
     assert_eq!(write, PageWrite::PageGone);
     assert!(!a.root().join("pages").join(&page).join("page.md").exists());
 }
+
+#[test]
+fn a_database_row_is_a_page_with_a_body_beside_its_row_file() {
+    let net = Net::new();
+    let a = net.device("laptop");
+    let db = a.ws.create_database("Tasks", &["name"]).unwrap();
+    let row = a.ws.add_row(&db, Default::default()).unwrap();
+    assert!(a.ws.has_body(&row) && !a.ws.page_exists(&row));
+    assert_eq!(a.ws.read_body(&row).unwrap(), "");
+
+    let write = a.engine.write_page_body(&row, "", "Notes on the task\n").unwrap();
+    assert_eq!(write, PageWrite::Written);
+    let path = a.root().join(format!("databases/{db}/rows/{row}.md"));
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), "Notes on the task\n");
+    // Its rows are still only the .json files.
+    assert_eq!(a.ws.list_rows(&db).unwrap(), [row.as_str()]);
+
+    a.ws.set_page_display(&row, "width", Some("full".into())).unwrap();
+    assert_eq!(a.ws.read_row(&db, &row).unwrap()["display"]["width"], "full");
+
+    a.ws.delete_row(&db, &row).unwrap();
+    assert!(!path.exists() && !a.ws.has_body(&row));
+    assert_eq!(
+        a.engine.write_page_body(&row, "", "x\n").unwrap(),
+        PageWrite::PageGone
+    );
+}
+
+#[test]
+fn row_bodies_edited_on_two_devices_merge() {
+    let net = Net::new();
+    let a = net.device("laptop");
+    let db = a.ws.create_database("Tasks", &["name"]).unwrap();
+    let row = a.ws.add_row(&db, Default::default()).unwrap();
+    a.ws.write_body(&row, "first\n\nmiddle\n\nlast\n").unwrap();
+    a.sync();
+    let b = net.device("desktop");
+    a.ws.write_body(&row, "first, from the laptop\n\nmiddle\n\nlast\n")
+        .unwrap();
+    b.ws.write_body(&row, "first\n\nmiddle\n\nlast, from the desktop\n")
+        .unwrap();
+    a.sync();
+    assert!(b.sync().conflicts.is_empty());
+    settle(&[&a, &b]);
+    assert_eq!(
+        a.ws.read_body(&row).unwrap(),
+        "first, from the laptop\n\nmiddle\n\nlast, from the desktop\n"
+    );
+    assert_valid(&a);
+}

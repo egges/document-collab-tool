@@ -2508,6 +2508,394 @@ button.workspace-name[aria-expanded="true"] {
   font-size: 12px;
 }
 
+/* ---- database pages (DatabasePageView.tsx, BoardView.tsx) ------------------- */
+
+/* Wider than a text page: tables and boards need the room. */
+.page.database-page {
+  max-width: 1180px;
+  padding-bottom: 48px;
+}
+
+.page.database-page[data-width="full"] {
+  max-width: none;
+}
+
+.view-tabs {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border);
+}
+
+.view-tab-list {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.popover-root {
+  display: inline-flex;
+}
+
+.view-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 34px;
+  padding: 0 10px;
+  margin-bottom: -1px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  background: none;
+  color: var(--muted);
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.view-tab:hover {
+  color: var(--text);
+}
+
+.view-tab.selected {
+  color: var(--text);
+  font-weight: 550;
+  border-bottom-color: var(--text);
+}
+
+.view-tab[aria-expanded="true"] {
+  background: var(--hover);
+  border-radius: 6px 6px 0 0;
+}
+
+.view-count {
+  flex: none;
+  font-size: 12px;
+}
+
+/* The table scrolls sideways inside the page, not the whole page. */
+.database-view {
+  overflow-x: auto;
+  padding-bottom: 8px;
+}
+
+.database-view .db-table-wrap {
+  border-top: 1px solid var(--border);
+}
+
+.db-picker {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 8px 0;
+}
+
+.db-picker p {
+  margin: 8px 0 0;
+}
+
+.db-picker-note {
+  color: var(--warn);
+}
+
+.db-picker-list {
+  display: flex;
+  flex-direction: column;
+  width: min(360px, 100%);
+}
+
+/* The board: lanes side by side, scrolling sideways. */
+.board {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  min-height: 200px;
+  padding-top: 4px;
+}
+
+.board[data-dragging] {
+  cursor: grabbing;
+  user-select: none;
+}
+
+.board-lane {
+  flex: none;
+  width: 264px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 6px;
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--sidebar-bg) 70%, transparent);
+  transition: background 0.12s, box-shadow 0.12s;
+}
+
+.board-lane.drop-target {
+  background: var(--accent-soft);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--accent) 50%, transparent);
+}
+
+.board-lane-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 26px;
+  padding: 0 4px;
+  font-size: 13px;
+}
+
+.board-lane-label {
+  font-weight: 550;
+  color: var(--muted);
+}
+
+.board-count {
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.board-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.board-card,
+.board-ghost {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 9px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  box-shadow: var(--shadow-soft);
+  font-size: 13px;
+}
+
+.board-card {
+  cursor: pointer;
+  touch-action: none;
+}
+
+.board-card:hover {
+  background: color-mix(in srgb, var(--hover) 40%, var(--bg));
+}
+
+.board-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.board-card.dragging {
+  opacity: 0.35;
+}
+
+.board-ghost {
+  position: fixed;
+  z-index: 50;
+  pointer-events: none;
+  transform: rotate(1.5deg);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 0.22);
+}
+
+.board-card-title {
+  font-weight: 550;
+  overflow-wrap: anywhere;
+}
+
+.board-card-title.untitled {
+  color: var(--muted);
+}
+
+.board-card-field {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.board-card-icon {
+  display: inline-flex;
+  flex: none;
+  opacity: 0.7;
+}
+
+.board-card-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.board-new {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.board-new:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.board-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  max-width: 440px;
+  padding: 16px 0;
+  color: var(--muted);
+}
+
+.board-empty p {
+  margin: 0;
+}
+
+/* ---- page properties (PageProperties.tsx) ------------------------------ */
+
+.page-properties {
+  display: grid;
+  grid-template-columns: minmax(120px, 180px) minmax(0, 1fr);
+  align-items: center;
+  gap: 2px 8px;
+  margin: -8px 0 20px;
+  font-size: 14px;
+}
+
+.page-property {
+  display: contents;
+}
+
+.page-property-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-width: 0;
+  height: 32px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  text-align: left;
+  cursor: pointer;
+}
+
+.page-property-name:hover,
+.page-property-name[aria-expanded="true"] {
+  background: var(--hover);
+}
+
+.page-property-add {
+  grid-column: 1 / -1;
+  justify-self: start;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.page-property-add:hover,
+.page-property-add:focus-visible {
+  background: var(--hover);
+  color: var(--text);
+}
+
+/*
+ * No properties yet: the section takes no room, so the page looks as it
+ * always did, and "Add a property" shows in the gap under the title when
+ * pointing at it, as in Notion.
+ */
+.page-properties.no-properties {
+  display: block;
+  position: relative;
+  height: 0;
+  margin: 0;
+}
+
+.page-properties.no-properties .page-property-add {
+  position: absolute;
+  top: -22px;
+  left: 0;
+  height: 22px;
+  font-size: 13px;
+  opacity: 0;
+  transition: opacity 0.12s;
+}
+
+.page:has(.page-header:hover) .page-properties.no-properties .page-property-add,
+.page-properties.no-properties .page-property-add:hover,
+.page-properties.no-properties .page-property-add:focus-visible {
+  opacity: 1;
+}
+
+/* A property's value, edited in place like a table cell. */
+.db-field {
+  width: auto;
+  min-width: 0;
+  max-width: none;
+  border-radius: 6px;
+}
+
+.db-field:hover {
+  background: var(--hover);
+}
+
+.db-field .db-checkbox {
+  margin: 0 8px;
+}
+
+.db-field.type-number .db-cell-input {
+  text-align: left;
+}
+
+/* Rows open as pages: the gutter has room for "open" and "delete". */
+.db-table.openable .db-gutter {
+  width: 60px;
+  min-width: 60px;
+}
+
+.db-row-open {
+  display: none;
+}
+
+.db-table tr:hover .db-row-open,
+.db-row-open:focus-visible {
+  display: inline-flex;
+}
+
+.db-table.openable tr:hover .db-row-number,
+.db-table.openable tr:has(.db-row-open:focus-visible) .db-row-number {
+  display: none;
+}
+
+.db-table.openable tr:hover .db-row-delete {
+  margin: 0;
+}
+
 /* ---- dialogs: search, shortcuts --------------------------------------- */
 
 .overlay {

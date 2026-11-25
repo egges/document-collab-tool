@@ -152,5 +152,26 @@ or another program's edits show up too. The commands, which check each
 value against its column's type, are in `src-tauri/src/databases.rs`; the
 format is in `docsync::database`.
 
-Not yet: databases outside the developer panel, the block handle, table
+## Database pages
+
+"New database" in the sidebar makes a page that shows a database
+(`src/DatabasePageView.tsx`), with views as tabs: a **table**
+(`src/TableView.tsx`) or a **board** (`src/BoardView.tsx`, lanes from a
+select or checkbox column; drag cards between lanes, click one to edit its
+fields). Click the open tab for its settings: name, layout, what a board
+groups by, delete. Views and their sort are stored in the page's
+`meta.json` and sync; the open tab is per device. Editing goes through
+`src/useDatabase.ts`, shared with the developer panel. The commands are in
+`src-tauri/src/database_pages.rs`; the format is in
+`docsync::database_page`.
+
+Every row is a page too: open it from the button by its row number in a
+table, or by clicking its card on a board. Its title is the first text
+column and its other columns show as properties under the title. Any page
+can have properties (`src/PageProperties.tsx`; "Add a property" shows when
+you point at the title): click a property's name to rename it, change its
+type or delete it. The commands, which treat a page and a row alike, are in
+`src-tauri/src/page_properties.rs`.
+
+Not yet: the block handle, table
 controls, search, signing and updates. See the [roadmap](../../docs/roadmap.md).

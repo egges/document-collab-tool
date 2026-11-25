@@ -2,9 +2,11 @@ import { ask } from "@tauri-apps/plugin-dialog";
 import type { PageEditor } from "@pagemesh/editor";
 import { PageEditorView } from "@pagemesh/editor/react";
 import { type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
-import { type Conflict, type Page, type PageDisplay, api, errorText } from "./api.ts";
+import { type Conflict, type Page, type PageDisplay, type PageProperties as Properties, api, errorText } from "./api.ts";
 import { ConflictPanel } from "./ConflictPanel.tsx";
+import { DatabasePageView } from "./DatabasePageView.tsx";
 import { log } from "./devlog.ts";
+import { PageProperties, type PropertyActions } from "./PageProperties.tsx";
 import { PageSaver } from "./pageSaver.ts";
 
 export interface PageViewHandle {
@@ -30,10 +32,12 @@ interface PageViewProps {
   onDisplay: (display: PageDisplay) => void;
   onDeleted: () => void;
   onError: (message: string) => void;
+  /** Open another page: a database's row, from a database page. */
+  onOpenPage: (id: string) => void;
   ref?: Ref<PageViewHandle>;
 }
 
-/** Loads the page, then hands over to the editor once it has the body. */
+/** Loads the page, then hands over to the editor once it has the body, or to the database page. */
 export function PageView(props: PageViewProps) {
   const [page, setPage] = useState<Page | null>(null);
   const { id, onError, onRenamed } = props;
@@ -53,12 +57,15 @@ export function PageView(props: PageViewProps) {
     };
     // Not on onRenamed: it only rereads the page list, so a new one needn't reload the page.
   }, [id, onError]);
-  return page ? <LoadedPage {...props} initial={page} /> : <div className="page" />;
+  if (!page) return <div className="page" />;
+  if (page.database) return <DatabasePageView {...props} initial={{ ...page, database: page.database }} />;
+  return <LoadedPage {...props} initial={page} />;
 }
 
 function LoadedPage({ id, initial, diskVersion, reveal, onOpenLink, onRenamed, onTitleChange, display, onDisplay, onDeleted, onError, ref }: PageViewProps & { initial: Page }) {
   const [title, setTitle] = useState(initial.title);
   const [conflicts, setConflicts] = useState<Conflict[]>(initial.conflicts);
+  const [properties, setProperties] = useState<Properties>(initial.properties);
   const [notice, setNotice] = useState<string | null>(null);
   // A save problem the saver is retrying. Shown only if it lasts.
   const [problem, setProblem] = useState<string | null>(null);
@@ -137,6 +144,7 @@ function LoadedPage({ id, initial, diskVersion, reveal, onOpenLink, onRenamed, o
         if (cancelled) return;
         await saver.refresh(page);
         onDisplay(page.display);
+        setProperties(page.properties);
         if (document.activeElement !== titleInput.current && page.title !== titleSaved.current) {
           titleSaved.current = page.title;
           setTitle(page.title);
@@ -166,8 +174,52 @@ function LoadedPage({ id, initial, diskVersion, reveal, onOpenLink, onRenamed, o
     }
   };
 
+  /** Show a property edit at once, save it, then read the properties back from disk. */
+  const editProperties = async <T,>(local: ((p: Properties) => Properties) | null, save: () => Promise<T>) => {
+    if (local) setProperties(local);
+    try {
+      return await save();
+    } catch (e) {
+      onError(errorText(e));
+      return null;
+    } finally {
+      await api
+        .readPage(id)
+        .then((page) => setProperties(page.properties))
+        .catch(() => {});
+    }
+  };
+
+  const propertyActions: PropertyActions = {
+    add: (name) => editProperties(null, () => api.addProperty(id, name, "text")),
+    update: (key, change) =>
+      void editProperties(
+        (p) => ({ ...p, columns: p.columns.map((c) => (c.id === key ? { ...c, ...change } : c)) }),
+        () => api.updateProperty(id, key, change),
+      ),
+    remove: (key) =>
+      void editProperties(
+        (p) => ({ ...p, columns: p.columns.filter((c) => c.id !== key) }),
+        () => api.deleteProperty(id, key),
+      ),
+    set: (key, value) =>
+      void editProperties(
+        (p) => {
+          const values = { ...p.values };
+          if (value === null) delete values[key];
+          else values[key] = value;
+          return { ...p, values };
+        },
+        () => api.setProperty(id, key, value),
+      ),
+    onError,
+  };
+
   const remove = async () => {
-    const confirmed = await ask(`Delete “${title || "Untitled"}”? Pages inside it move to the top level.`, {
+    const question = initial.row
+      ? `Delete “${title || "Untitled"}” from “${initial.row.name || "Untitled"}”?`
+      : `Delete “${title || "Untitled"}”? Pages inside it move to the top level.`;
+    const confirmed = await ask(question, {
       title: "Delete page",
       kind: "warning",
       okLabel: "Delete",
@@ -226,6 +278,7 @@ function LoadedPage({ id, initial, diskVersion, reveal, onOpenLink, onRenamed, o
           </span>
         )}
       </header>
+      <PageProperties properties={properties} database={initial.row?.name ?? null} actions={propertyActions} />
       <ConflictPanel conflicts={conflicts} busy={busy} onKeep={(i, v) => void keep(i, v)} />
       <PageEditorView
         markdown={initial.body}

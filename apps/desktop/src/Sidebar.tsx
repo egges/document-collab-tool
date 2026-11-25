@@ -1,5 +1,5 @@
 import { useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, FileText, Files, Plus, Search, Settings, SquareTerminal } from "lucide-react";
+import { ChevronDown, ChevronRight, FileText, Files, Plus, Search, Settings, Sheet, SquareTerminal } from "lucide-react";
 import type { PageSummary, SyncStatus, WorkspaceInfo } from "./api.ts";
 import { ImportMenu } from "./ImportMenu.tsx";
 import { childrenOf } from "./pageTree.ts";
@@ -17,6 +17,8 @@ interface SidebarProps {
   status: SyncStatus | null;
   onSelect: (id: string) => void;
   onCreate: (parent: string | null) => void;
+  /** A new page that shows a database. */
+  onCreateDatabase: () => void;
   /** Import Markdown files and folders as pages. */
   onImport: (sources: string[]) => void;
   onWorkspaceChange: (w: WorkspaceInfo | null) => void;
@@ -35,7 +37,8 @@ interface SidebarProps {
 
 export function Sidebar(props: SidebarProps) {
   const { workspace, pages, selected, status } = props;
-  const children = useMemo(() => childrenOf(pages), [pages]);
+  // Rows are pages too, but they're shown in their database, not here.
+  const children = useMemo(() => childrenOf(pages.filter((p) => p.kind !== "row")), [pages]);
 
   return (
     // Hidden, it stays in the page (so it can slide closed and open) but
@@ -78,6 +81,10 @@ export function Sidebar(props: SidebarProps) {
             <button className="tree-new" onClick={() => props.onCreate(null)}>
               <Plus size={14} aria-hidden />
               <span>New page</span>
+            </button>
+            <button className="tree-new" onClick={props.onCreateDatabase}>
+              <Sheet size={14} aria-hidden />
+              <span>New database</span>
             </button>
             <ImportMenu onImport={props.onImport} />
           </nav>
@@ -196,7 +203,7 @@ function TreeItem({
           {open ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
         </button>
         <span className="tree-icon" aria-hidden>
-          {kids.length ? <Files size={15} /> : <FileText size={15} />}
+          {page.kind === "database" ? <Sheet size={15} /> : kids.length ? <Files size={15} /> : <FileText size={15} />}
         </span>
         <span className={"tree-title" + (page.title ? "" : " untitled")}>{page.title || "Untitled"}</span>
         <button

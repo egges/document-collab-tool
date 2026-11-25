@@ -3,11 +3,13 @@
 
 mod cloud;
 mod commands;
+mod database_pages;
 mod databases;
 mod devlog;
 mod git;
 mod github;
 mod locations;
+mod page_properties;
 mod search;
 mod session;
 mod tree;
@@ -109,6 +111,13 @@ pub fn run() {
             commands::set_page_display,
             commands::delete_page,
             commands::resolve_conflict,
+            database_pages::create_database_page,
+            database_pages::set_page_database,
+            database_pages::set_page_view,
+            page_properties::add_page_property,
+            page_properties::update_page_property,
+            page_properties::delete_page_property,
+            page_properties::set_page_property_value,
             databases::list_databases,
             databases::read_database,
             databases::create_database,

@@ -3,6 +3,7 @@
 use std::collections::{HashMap, HashSet};
 
 use docsync::Workspace;
+use docsync::database_page::DatabasePage;
 use serde::Serialize;
 
 #[derive(Debug, Clone, PartialEq, Eq, Serialize)]
@@ -12,6 +13,11 @@ pub struct PageSummary {
     /// The parent page, or `None` for a top-level page. Never points at a
     /// page that doesn't exist.
     pub parent: Option<String>,
+    /// "page", "database" for a page that shows a database, or "row" for
+    /// a database's row.
+    pub kind: &'static str,
+    /// The database a database page shows, once chosen.
+    pub database: Option<String>,
 }
 
 /// Every page, sorted by title, with orphans moved to the top level.
@@ -21,11 +27,40 @@ pub fn list_pages(ws: &Workspace) -> docsync::Result<Vec<PageSummary>> {
         // A hand-edited meta.json may not parse. Show the page anyway, so it
         // can still be opened and fixed.
         let meta = ws.read_page_meta(&id).unwrap_or_default();
+        let database = DatabasePage::from_meta(&meta);
         pages.push(PageSummary {
             title: meta["title"].as_str().unwrap_or_default().to_string(),
             parent: meta["parent"].as_str().map(str::to_string),
+            kind: if database.is_some() { "database" } else { "page" },
+            database: database.and_then(|d| d.database),
             id,
         });
+    }
+    // Rows are pages too: under the first page that shows their database,
+    // for the breadcrumb and search. The sidebar leaves them out.
+    let mut shown_on: HashMap<String, String> = HashMap::new();
+    for page in &pages {
+        if let Some(db) = &page.database {
+            shown_on.entry(db.clone()).or_insert_with(|| page.id.clone());
+        }
+    }
+    for db in ws.list_databases()? {
+        let Ok(schema) = ws.read_schema(&db) else { continue };
+        let title = schema.title_column().map(|c| c.id.clone());
+        for row in ws.read_rows(&db)? {
+            pages.push(PageSummary {
+                title: title
+                    .as_ref()
+                    .and_then(|c| row.cells.get(c))
+                    .and_then(|v| v.as_str())
+                    .unwrap_or_default()
+                    .to_string(),
+                parent: shown_on.get(&db).cloned(),
+                kind: "row",
+                database: Some(db.clone()),
+                id: row.id,
+            });
+        }
     }
     normalize_parents(&mut pages);
     pages.sort_by(|a, b| (a.title.to_lowercase(), &a.id).cmp(&(b.title.to_lowercase(), &b.id)));
@@ -79,6 +114,8 @@ mod tests {
             id: id.into(),
             title: id.into(),
             parent: parent.map(Into::into),
+            kind: "page",
+            database: None,
         }
     }
 
@@ -136,5 +173,20 @@ mod tests {
             ]
         );
         assert_eq!(pages[0].title, "Alpha");
+    }
+
+    #[test]
+    fn rows_are_listed_under_the_page_that_shows_their_database() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = Workspace::new(dir.path());
+        let db = ws.create_database("Tasks", &["name"]).unwrap();
+        let mut cells = serde_json::Map::new();
+        cells.insert("name".into(), "Plan".into());
+        let row = ws.add_row(&db, cells).unwrap();
+        let shown = ws.create_database_page("Tasks", None, Some(&db)).unwrap();
+        let pages = list_pages(&ws).unwrap();
+        let listed = pages.iter().find(|p| p.id == row).unwrap();
+        assert_eq!((listed.title.as_str(), listed.kind), ("Plan", "row"));
+        assert_eq!(listed.parent.as_deref(), Some(shown.as_str()));
     }
 }

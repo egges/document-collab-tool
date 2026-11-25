@@ -5,8 +5,18 @@
 //! databases/<db>/schema.json
 //!   {"id", "name", "columns": {"<col>": {"name", "type", "position", "options"?}}}
 //! databases/<db>/rows/<row>.json
-//!   {"id", "position"?, "cells": {"<col>": value}}
+//!   {"id", "position"?, "cells": {"<col>": value}, "display"?}
+//! databases/<db>/rows/<row>.md
+//!   the row's text, as a page (missing until written)
 //! ```
+//!
+//! Every row is a page too, as in Notion: its title is the cell of the first
+//! text column ([`Schema::title_column`]), its other cells are its
+//! properties, and its text is the `.md` file beside it. The page functions
+//! of [`crate::Workspace`] that take a page id (`read_body`, `write_body`,
+//! `set_page_display`) accept a row's id. Rows stay inside their database's
+//! folder, so a database is still one entity for sync: deleting it while a
+//! row is edited elsewhere restores the whole database.
 //!
 //! Columns are an object keyed by column id, not a list, so two devices that
 //! add, rename or retype different columns change different fields and merge
@@ -136,47 +146,10 @@ impl Schema {
     /// Read a schema.json value. `id` is the database's folder name, which
     /// wins over an `id` field that disagrees.
     pub fn from_json(id: &str, value: &Value) -> Schema {
-        let name = value["name"].as_str().unwrap_or_default().to_string();
-        let mut columns: Vec<Column> = match &value["columns"] {
-            Value::Object(map) => map
-                .iter()
-                .map(|(id, col)| Column {
-                    id: id.clone(),
-                    name: col["name"].as_str().unwrap_or(id).to_string(),
-                    kind: col["type"]
-                        .as_str()
-                        .and_then(ColumnType::parse)
-                        .unwrap_or(ColumnType::Text),
-                    position: col["position"].as_f64(),
-                    options: col["options"]
-                        .as_array()
-                        .map(|o| o.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
-                        .unwrap_or_default(),
-                })
-                .collect(),
-            // The first format: a list of names, each a text column.
-            Value::Array(items) => items
-                .iter()
-                .filter_map(Value::as_str)
-                .enumerate()
-                .map(|(i, name)| Column {
-                    id: name.to_string(),
-                    name: name.to_string(),
-                    kind: ColumnType::Text,
-                    position: Some(i as f64),
-                    options: Vec::new(),
-                })
-                .collect(),
-            _ => Vec::new(),
-        };
-        columns.sort_by(|a, b| {
-            let pos = |c: &Column| c.position.unwrap_or(f64::INFINITY);
-            pos(a).total_cmp(&pos(b)).then_with(|| a.id.cmp(&b.id))
-        });
         Schema {
             id: id.to_string(),
-            name,
-            columns,
+            name: value["name"].as_str().unwrap_or_default().to_string(),
+            columns: columns_from_json(&value["columns"]),
         }
     }
 
@@ -186,18 +159,71 @@ impl Schema {
 
     /// A position after every column.
     pub fn next_position(&self) -> f64 {
-        self.columns
-            .iter()
-            .filter_map(|c| c.position)
-            .fold(-1.0_f64, f64::max)
-            .floor()
-            + 1.0
+        next_position(&self.columns)
     }
 
     /// The `columns` field in the current format.
     pub fn columns_json(&self) -> Value {
         Value::Object(self.columns.iter().map(|c| (c.id.clone(), c.to_json())).collect())
     }
+
+    /// The column a row's title is in, which is its title as a page: the
+    /// first text column.
+    pub fn title_column(&self) -> Option<&Column> {
+        self.columns.iter().find(|c| c.kind == ColumnType::Text)
+    }
+}
+
+/// A position after every column.
+pub fn next_position(columns: &[Column]) -> f64 {
+    columns
+        .iter()
+        .filter_map(|c| c.position)
+        .fold(-1.0_f64, f64::max)
+        .floor()
+        + 1.0
+}
+
+/// Columns from a `columns` field (a database's schema, or a page's
+/// property types), in display order.
+pub fn columns_from_json(value: &Value) -> Vec<Column> {
+    let mut columns: Vec<Column> = match value {
+        Value::Object(map) => map
+            .iter()
+            .map(|(id, col)| Column {
+                id: id.clone(),
+                name: col["name"].as_str().unwrap_or(id).to_string(),
+                kind: col["type"]
+                    .as_str()
+                    .and_then(ColumnType::parse)
+                    .unwrap_or(ColumnType::Text),
+                position: col["position"].as_f64(),
+                options: col["options"]
+                    .as_array()
+                    .map(|o| o.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+                    .unwrap_or_default(),
+            })
+            .collect(),
+        // The first format: a list of names, each a text column.
+        Value::Array(items) => items
+            .iter()
+            .filter_map(Value::as_str)
+            .enumerate()
+            .map(|(i, name)| Column {
+                id: name.to_string(),
+                name: name.to_string(),
+                kind: ColumnType::Text,
+                position: Some(i as f64),
+                options: Vec::new(),
+            })
+            .collect(),
+        _ => Vec::new(),
+    };
+    columns.sort_by(|a, b| {
+        let pos = |c: &Column| c.position.unwrap_or(f64::INFINITY);
+        pos(a).total_cmp(&pos(b)).then_with(|| a.id.cmp(&b.id))
+    });
+    columns
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -233,6 +259,23 @@ pub struct ColumnChange {
     pub kind: Option<ColumnType>,
     pub position: Option<f64>,
     pub options: Option<Vec<String>>,
+}
+
+impl ColumnChange {
+    pub fn apply(&self, column: &mut Column) {
+        if let Some(name) = &self.name {
+            column.name = name.clone();
+        }
+        if let Some(kind) = self.kind {
+            column.kind = kind;
+        }
+        if let Some(position) = self.position {
+            column.position = Some(position);
+        }
+        if let Some(options) = &self.options {
+            column.options = options.clone();
+        }
+    }
 }
 
 #[cfg(test)]

@@ -2,10 +2,10 @@ import { expect, test } from "vitest";
 import { ancestry, displayOrder, search, trail } from "./pageTree.ts";
 
 const pages = [
-  { id: "a", title: "Alpha", parent: null },
-  { id: "b", title: "Beta plan", parent: null },
-  { id: "a1", title: "Plans", parent: "a" },
-  { id: "a1x", title: "Launch", parent: "a1" },
+  { id: "a", title: "Alpha", parent: null, kind: "page" as const, database: null },
+  { id: "b", title: "Beta plan", parent: null, kind: "page" as const, database: null },
+  { id: "a1", title: "Plans", parent: "a", kind: "page" as const, database: null },
+  { id: "a1x", title: "Launch", parent: "a1", kind: "page" as const, database: null },
 ];
 
 test("display order is depth first, like the sidebar", () => {

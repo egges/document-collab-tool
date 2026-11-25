@@ -68,6 +68,14 @@ export interface PageSummary {
   title: string;
   /** Never points at a missing page: orphans come back as top-level pages. */
   parent: string | null;
+  /**
+   * "database": the page shows a database as a table or board instead of
+   * text. "row": a database's row, which is a page too; the sidebar leaves
+   * them out, and their parent is the page that shows their database.
+   */
+  kind: "page" | "database" | "row";
+  /** The database a database page shows, once chosen. */
+  database: string | null;
 }
 
 /** A place in a page's text where a search query appears. */
@@ -95,8 +103,43 @@ export interface Page {
   body: string;
   conflicts: Conflict[];
   display: PageDisplay;
+  /** Set for a page that shows a database instead of text. */
+  database: DatabasePageInfo | null;
+  /** Typed properties: a regular page's own, or a row's cells (all but the title). */
+  properties: PageProperties;
+  /** Set when the page is a row of a database. */
+  row: { database: string; name: string } | null;
   /** Opening it moved front matter into the page's metadata, which may have changed its title. */
   metaChanged: boolean;
+}
+
+/** A page's properties: columns like a database's, and their values by column id. */
+export interface PageProperties {
+  columns: Column[];
+  values: Record<string, unknown>;
+}
+
+/** What a database page shows; see docsync::database_page. */
+export interface DatabasePageInfo {
+  /** The database; null while the user is choosing one. */
+  id: string | null;
+  /** False when that database was deleted (here or on another device). */
+  exists: boolean;
+  /** In tab order; never empty. */
+  views: View[];
+}
+
+export type ViewType = "table" | "board";
+
+/** One way of looking at a database page's rows. Syncs with the page, so everyone sees the same. */
+export interface View {
+  id: string;
+  name: string;
+  type: ViewType;
+  position: number | null;
+  sort: { column: string; direction: "asc" | "desc" } | null;
+  /** The column a board groups its cards by. */
+  groupBy: string | null;
 }
 
 /** What importing Markdown files and folders created. */
@@ -272,9 +315,36 @@ export const api = {
   createPage: (title: string, parent: string | null) => invoke<string>("create_page", { title, parent }),
   importMarkdown: (sources: string[], parent: string | null) =>
     invoke<ImportResult>("import_markdown", { sources, parent }),
+  /** A page that shows a database. With no databases yet in the workspace it gets a new one; otherwise it asks. */
+  createDatabasePage: (title: string, parent: string | null) =>
+    invoke<string>("create_database_page", { title, parent }),
+  setPageDatabase: (id: string, database: string) => invoke<void>("set_page_database", { id, database }),
+  /** Add or change a database page's view, or remove it with null. */
+  setPageView: (id: string, viewId: string, view: View | null) => invoke<void>("set_page_view", { id, viewId, view }),
+  /**
+   * A page's properties, the same for a regular page and a row. On a row
+   * they're its database's columns: adding or deleting one does it for
+   * every row.
+   */
+  addProperty: (id: string, name: string, type: ColumnType) => invoke<string>("add_page_property", { id, name, kind: type }),
+  updateProperty: (id: string, key: string, change: ColumnChange) =>
+    invoke<void>("update_page_property", {
+      id,
+      key,
+      name: change.name ?? null,
+      kind: change.type ?? null,
+      position: change.position ?? null,
+      options: change.options ?? null,
+    }),
+  deleteProperty: (id: string, key: string) => invoke<void>("delete_page_property", { id, key }),
+  /** null empties it. A select value that isn't a choice yet becomes one. */
+  setProperty: (id: string, key: string, value: CellValue | null) =>
+    invoke<void>("set_page_property_value", { id, key, value }),
+  /** Renames a page, or sets a row's title cell. */
   renamePage: (id: string, title: string) => invoke<void>("rename_page", { id, title }),
   setPageDisplay: <K extends PageDisplayKey>(id: string, key: K, value: PageDisplay[K]) =>
     invoke<void>("set_page_display", { id, key, value }),
+  /** A database page takes its database along, unless another page shows it too. A row is deleted from its database. */
   deletePage: (id: string) => invoke<void>("delete_page", { id }),
   resolveConflict: (id: string, index: number, keep: number) =>
     invoke<Page>("resolve_conflict", { id, index, keep }),

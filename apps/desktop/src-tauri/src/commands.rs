@@ -12,9 +12,11 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::cloud::{self, CloudFolder, FolderPlace, FoundWorkspace};
+use crate::database_pages::{self, DatabasePageInfo};
 use crate::devlog::{self, Entry, Level};
 use crate::github::{self, Access, DeviceCode, GitHubUser, RemoteWorkspace};
 use crate::locations;
+use crate::page_properties::{self, Kind, Properties, RowOf};
 use crate::search::{self, TextMatch};
 use crate::session::{self, Session, WorkspaceInfo};
 use crate::tree::{self, PageSummary};
@@ -1040,6 +1042,12 @@ pub struct Page {
     body: String,
     conflicts: Vec<Conflict>,
     display: PageDisplay,
+    /// Set for a page that shows a database instead of text.
+    database: Option<DatabasePageInfo>,
+    /// Typed properties: a regular page's own, or a row's cells.
+    properties: Properties,
+    /// Set when the page is a row of a database.
+    row: Option<RowOf>,
     /// Opening it moved front matter into meta.json, which may have changed
     /// the title: the page list should be reread.
     meta_changed: bool,
@@ -1092,21 +1100,37 @@ fn conflicts_in(body: &str) -> Vec<Conflict> {
         .collect()
 }
 
+/// A page, or a database row as a page.
 fn read_page_from(ws: &Workspace, id: &str) -> CmdResult<Page> {
-    let meta = ws.read_page_meta(id).unwrap_or_default();
+    let (title, meta, properties, row) = match page_properties::kind(ws, id)? {
+        Kind::Page => {
+            let meta = ws.read_page_meta(id).unwrap_or_default();
+            let title = meta["title"].as_str().unwrap_or_default().to_string();
+            let properties = page_properties::page_properties(&meta);
+            (title, meta, properties, None)
+        }
+        Kind::Row { database } => {
+            let (title, json, properties, row) = page_properties::row_parts(ws, &database, id)?;
+            (title, json, properties, Some(row))
+        }
+    };
     let body = ws.read_body(id).unwrap_or_default();
-    if !ws.page_exists(id) {
-        return Err("This page no longer exists.".into());
-    }
     Ok(Page {
         id: id.to_string(),
-        title: meta["title"].as_str().unwrap_or_default().to_string(),
+        title,
         conflicts: conflicts_in(&body),
         body,
         display: PageDisplay {
             width: display_option(&meta, "width"),
             text_size: display_option(&meta, "textSize"),
         },
+        database: if row.is_some() {
+            None
+        } else {
+            database_pages::info(ws, &meta)
+        },
+        properties,
+        row,
         meta_changed: false,
     })
 }
@@ -1219,7 +1243,7 @@ pub enum WriteResult {
     },
     /// The page changed on disk meanwhile and was merged; reload `page`.
     Merged {
-        page: Page,
+        page: Box<Page>,
     },
     Gone,
 }
@@ -1251,7 +1275,7 @@ pub async fn write_page(
                 conflicts: conflicts_in(&body),
             },
             PageWrite::Merged { .. } => WriteResult::Merged {
-                page: read_page_from(&Workspace::new(engine.root()), &id)?,
+                page: Box::new(read_page_from(&Workspace::new(engine.root()), &id)?),
             },
             PageWrite::PageGone => WriteResult::Gone,
         })
@@ -1281,9 +1305,7 @@ pub async fn create_page(
 pub async fn rename_page(state: State<'_, AppState>, id: String, title: String) -> CmdResult<()> {
     let (engine, edited) = state.engine()?;
     blocking("rename_page", move || {
-        Workspace::new(engine.root())
-            .set_title(&id, &title)
-            .map_err(text)?;
+        page_properties::set_title(&Workspace::new(engine.root()), &id, &title)?;
         devlog::debug("app", format!("Renamed page {id}"));
         edited();
         Ok(())
@@ -1324,13 +1346,26 @@ pub async fn set_page_display(
     .await
 }
 
-/// Delete a page. Its child pages move to the top level.
+/// Delete a page. Its child pages move to the top level. A database page
+/// takes its database with it, unless another page shows it too.
 #[tauri::command]
 pub async fn delete_page(state: State<'_, AppState>, id: String) -> CmdResult<()> {
     let (engine, edited) = state.engine()?;
     blocking("delete_page", move || {
-        Workspace::new(engine.root()).delete_page(&id).map_err(text)?;
+        let ws = Workspace::new(engine.root());
+        if let Kind::Row { database } = page_properties::kind(&ws, &id)? {
+            ws.delete_row(&database, &id).map_err(text)?;
+            devlog::info("app", format!("Deleted row {id} of database {database}"));
+            edited();
+            return Ok(());
+        }
+        let database = database_pages::database_to_delete_with(&ws, &id);
+        ws.delete_page(&id).map_err(text)?;
         devlog::info("app", format!("Deleted page {id}"));
+        if let Some(database) = database {
+            ws.delete_database(&database).map_err(text)?;
+            devlog::info("app", format!("Deleted database {database} with its page"));
+        }
         edited();
         Ok(())
     })
