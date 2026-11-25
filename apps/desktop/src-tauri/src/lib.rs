@@ -27,6 +27,9 @@ pub fn run() {
                 let _ = handle.emit("dev-log", entry);
             });
             devlog::info("app", format!("Started version {}", app.package_info().version));
+            if let Ok(dir) = app.path().resource_dir() {
+                git::set_bundled_dir(dir.join("git"));
+            }
             if let Ok(dir) = app.path().app_config_dir() {
                 session::init_install_id(&dir);
             }
