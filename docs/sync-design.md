@@ -4,6 +4,11 @@ The `docsync` crate (`crates/docsync`) keeps a workspace of plain files in sync
 between devices through any git remote. Users never see commits, branches or
 conflict markers.
 
+A **workspace**, here and in the code, is one git repository. In the product
+a company has several of them, called **spaces**
+([product-design.md](product-design.md#spaces)); the engine syncs each one on
+its own.
+
 ## On-disk format
 
 ```text
@@ -28,6 +33,10 @@ The format is designed so most concurrent edits never conflict:
   there is no single file everyone edits.
 
 Everything stays readable and editable without the app.
+
+Planned additions to the format: `agents/`
+([agents-design.md](agents-design.md#the-format-draft)), and people, threads
+and tasks ([roadmap step 7](roadmap.md#7-spaces-people-and-the-inbox)).
 
 A page or database exists only if its `meta.json` or `schema.json` exists.
 Git doesn't track folders, so an emptied folder can stay on disk after its
@@ -288,6 +297,10 @@ In the app this is one setting, `none | folder | github | git_url | hosted`,
 that can be changed at any time. The status bar names it ("Synced via iCloud
 Drive") rather than anything about git.
 
+Hosted isn't being built for now. The decision on 2026-11-25 was to go
+without a server of our own and add one later, with a public release
+([product-design.md](product-design.md#servers)).
+
 ### Cloud folder remotes
 
 A cloud folder only carries git objects, which are named by their content and
@@ -508,8 +521,12 @@ Since the folder can be anywhere, these are handled, with tests in
 ### Sharing with other people
 
 Git hosts grant access per repository, so **a workspace is the unit of
-sharing**: everyone with access sees every page. Each target shares in its
-own way, behind one "Share" button:
+sharing**: everyone with access sees every page. A company therefore has
+several workspaces, one for each group of people who may see the same
+things, shown together as spaces. How one space uses another's work without
+copies is in [product-design.md](product-design.md#access-across-spaces).
+
+Each target shares in its own way, behind one "Share" button:
 
 - **Cloud folder:** the provider's own sharing (Dropbox shared folders,
   iCloud Drive folder sharing via `NSSharingService`, OneDrive). Once someone
@@ -521,8 +538,9 @@ own way, behind one "Share" button:
   (`PUT /repos/{owner}/{repo}/collaborators/{username}`, with "can view"
   mapped to read access), and on the invitee's device lists and accepts
   pending invitations (`GET /user/repository_invitations`) before cloning.
-  Teams use an organization, which also allows inviting by email. Everyone
-  needs a GitHub account.
+  Teams use an organization, which also allows inviting by email and is what
+  makes read access possible: in a repository on a personal account every
+  collaborator can also write. Everyone needs a GitHub account.
 - **Hosted (later):** invites by email or link, with owner, editor and viewer
   roles. It is a git server over HTTPS with our own sign-in in front, so the
   engine doesn't change; the token reaches git through
@@ -575,10 +593,20 @@ Run them with `cargo test`. To use a specific git binary, set
   character-by-character merging.
 - **Code and other text files merge as opaque files.** Only `.md` and
   `.json` get a real merge, and `git add -A` commits everything that isn't
-  ignored. Tasks need a plain-text merge kind and stricter rules for what
-  gets committed; see [tasks-design.md](tasks-design.md#what-it-changes-in-the-sync-engine).
-- **Large attachments live in the repo.** Git LFS or a separate blob store is a
-  later concern.
+  ignored. Agents need a plain-text merge kind and stricter rules for what
+  gets committed; see [agents-design.md](agents-design.md#what-it-changes-in-the-sync-engine).
+- **No drafts.** A workspace has one working copy. An agent's run needs its
+  own, on a hidden branch, applied through the same merge as a sync; see
+  [agents-design.md](agents-design.md#drafts).
+- **One workspace open at a time.** The app holds a single open workspace
+  and switches between them. A company's spaces need several open together,
+  each with its own engine and worker
+  ([roadmap step 7](roadmap.md#7-spaces-people-and-the-inbox)).
+- **Large attachments live in the repo.** The direction is to keep large
+  files such as video and audio out of git, with a pointer in the repo and
+  the bytes in a file store
+  ([product-design.md](product-design.md#what-stays-out-of-git)). Not
+  designed yet.
 - **Authentication** (GitHub/GitLab sign-in, keychain storage) sits in the app
   and reaches git through `CliGit::with_config_source`; see
   [Signing in with GitHub](#signing-in-with-github).

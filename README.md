@@ -33,3 +33,9 @@ the editor). The desktop app will bundle its own git.
 ## Next
 
 The plan, in order, with what is done: [docs/roadmap.md](docs/roadmap.md).
+
+Where it is going: the place a company's team works, with pages, conversation
+and agents that do much of the work, all in git repositories the company
+owns. The direction and what has been decided are in
+[docs/product-design.md](docs/product-design.md), and how an agent is defined
+in [docs/agents-design.md](docs/agents-design.md).

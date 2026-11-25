@@ -3,10 +3,15 @@
 Sync was the riskiest part, and it now has a tested foundation
 ([sync-design.md](sync-design.md)). This is the order for the rest.
 
-The two unknowns that could have changed the design are settled: Windows
-behaviour is covered by CI, and the editor test in step 3 found an editor
-that round-trips Markdown well enough. Everything else is mostly
-straightforward building.
+The two unknowns that could have changed the design of the note-taking app
+are settled: Windows behaviour is covered by CI, and the editor test in
+step 3 found an editor that round-trips Markdown well enough.
+
+On 2026-11-25 the direction widened, from a note-taking app to the place a
+company's team works, with agents doing much of the work
+([product-design.md](product-design.md)). Steps 4 to 10 follow from that.
+Steps 4 to 7 need no server. The first server, a small relay, comes with
+chat in step 8. The app is for our own team until step 10.
 
 ## 1. Harden what we have — done
 
@@ -115,14 +120,74 @@ straightforward building.
       proper block with each version's device name would be clearer.
 - [ ] **Bundled Git.** Ship Git with the app for each platform.
 
-## 4. Search, links and AI agents
+## 4. Ask an agent from a page
 
-The workspace is plain files in git, so the best way to bring in AI is to be
-the place agents the developer already uses (Claude Code, Codex, Cursor) can
-work in, rather than shipping our own agent first.
+The smallest thing that tests the core claim of
+[product-design.md](product-design.md): someone who has never heard of git
+hands real work to an agent and approves the result. One person, one space,
+Claude Code on this computer, no server.
+
+The workspace is plain files in git, so the way to bring in AI is to be the
+place the agents people already use (Claude Code, Codex) can work in, rather
+than shipping our own agent.
+
+- [ ] **MCP server.** Built on the same crate, with tools to search, read
+      pages, create and update pages, query databases and list backlinks.
+      Writes go through the same merge as the editor, so they never fight an
+      open page. Commits made by agents are credited to the agent, so the
+      history shows which changes came from AI.
+- [ ] **Harness adapter: Claude Code.** Over stdio in the Rust backend,
+      streaming messages, tool calls and permission requests
+      ([agents-design.md](agents-design.md#harnesses-claude-code-and-codex)).
+- [ ] **Drafts.** Each run works on a hidden branch in its own working
+      copy, so nothing changes until it is applied, and applying merges with
+      the rules a sync uses ([agents-design.md](agents-design.md#drafts)).
+- [ ] **Sync changes.** A plain-text merge kind for code, and broader ignore
+      rules with a size limit and a secrets check
+      ([agents-design.md](agents-design.md#what-it-changes-in-the-sync-engine)).
+- [ ] **Thread panel.** A panel beside the page to write to an agent about
+      it. The run's steps stay folded away, and it ends with "Changes to
+      review".
+- [ ] **Review and apply.** The draft's changes shown as outcomes, never as
+      file paths or diffs: the agent's summary, each page with its changes
+      marked, the rows added. Apply, ask for changes (the agent continues on
+      the same draft) or discard
+      ([product-design.md](product-design.md#drafts-and-review)).
+- [ ] **Page history and undo.** A timeline for each page: who or what
+      changed it (person, device or agent) and when, with what changed and
+      "restore this version". Undo for a draft that was applied.
+
+## 5. Agents as files
+
+An agent becomes something that lasts: a teammate defined by files in the
+space, with instructions, rules and connections
+([agents-design.md](agents-design.md)).
+
+- [ ] **Agent format.** `agents/<id>/` with `agent.json`, skills, databases
+      and an optional `ui/`; device-only state in `.docsync/`. Agents are
+      entities in the sync engine, like pages and databases.
+- [ ] **Rules.** What an agent does alone and what it asks first. The app
+      enforces them: an action with side effects, such as sending an email,
+      only happens when a person approves it.
+- [ ] **Connections.** Outside services through MCP servers, with the scopes
+      the agent may use. Credentials stay in the system keychain.
+- [ ] **Agent profile.** A page per agent that says in plain words what it
+      may do, with its recent activity, and "Agents" in the sidebar.
+- [ ] **Harness adapter: Codex.** The second adapter, so the harness is a
+      setting on the agent.
+- [ ] **Standard views.** Approval queue, table, chart, metric tiles. They
+      need the database table view from step 3.
+- [ ] **Large files.** A pointer in git and the bytes in a file store,
+      fetched when a file is opened, so video, audio and generated images
+      stay out of the repo
+      ([product-design.md](product-design.md#what-stays-out-of-git)).
+- [ ] **First agent: email.** Triage, drafts and sending after approval.
+
+## 6. Search and links
 
 - [ ] **Local search.** A SQLite full-text index stored in `.docsync/`, which
-      is never synced, to replace the plain scan ⌘K uses now.
+      is never synced, to replace the plain scan ⌘K uses now. It covers
+      every space on the device once there are several (step 7).
 - [ ] **Links between pages.** Typing `[[` opens a menu of pages, filtered as
       you type, and inserts a normal Markdown link to the page's id
       (`[Title](../<id>/page.md)`, the format `links.ts` already reads), so
@@ -132,15 +197,163 @@ work in, rather than shipping our own agent first.
       the sentence around each link. A reverse link index next to the search
       index in `.docsync/`. Later: unlinked mentions (the title as plain text,
       with "link it"), and "update N links to the new title" after a rename.
-- [ ] **MCP server.** Built on the same crate, with tools to search, read
-      pages, create and update pages, query databases and list backlinks.
-      Writes go through the same merge as the editor, so they never fight an
-      open page. Commits made by agents are credited to something like
-      "Claude (via MCP)", so the history shows which changes came from AI.
 - [ ] **CLI.** The same operations from the terminal and scripts, for
-      developers and for the hooks in step 9.
+      developers and for the scripts in step 9.
 
-## 5. Developer essentials
+## 7. Spaces, people and the inbox
+
+The team joins. A company is several spaces, each a git repo with its own
+list of people ([product-design.md](product-design.md#spaces)), and this
+step still needs no service of our own. That shapes what is possible:
+collaboration is asynchronous (changes arrive with the next sync), everyone
+with access to a space sees all of it and its history (see
+[sync-design.md](sync-design.md#sharing-with-other-people)), and identity is
+trusted rather than verified, as in a shared folder.
+
+- [ ] **Several spaces at once.** The app opens every space a person belongs
+      to (today one workspace at a time), each with its own sync, and the
+      sidebar lists them. Every space gets a stable id. On GitHub the
+      company is an organization: the app lists the spaces a person can open
+      there, and creates new ones in it.
+- [ ] **A private space** for each person, synced only between their own
+      devices, for personal notes and personal agents.
+- [ ] **Access across spaces.** Links that carry the space's id as well as
+      the page's, views that show a table from another space, and a reading
+      list per agent, so one space uses what another makes without copies
+      ([product-design.md](product-design.md#access-across-spaces)).
+- [ ] **People.** `people/<person-id>/profile.json` (name, colour, optional
+      email) and a profile picture resized to a small size before it is
+      saved, since git keeps every version. The id is random, not an email.
+      Each device belongs to a person, and commits record the person as well
+      as the device. Agents get a profile too, so their edits and comments
+      show up like anyone else's. Device-only settings (theme, window,
+      sidebar) stay out of the workspace.
+- [ ] **Sharing.** A "Share" button that invites people to the space's
+      GitHub repo, and accepting the invitation on their device. View-only
+      access needs the repo to be in an organization.
+- [ ] **Profiles from GitHub or GitLab.** On first sign-in, fill in the
+      profile from the account (`GET /user` on GitHub, `GET /api/v4/user` on
+      GitLab): name and picture, with the picture downloaded and resized like
+      any other rather than linked. The workspace profile stays the source of
+      truth, since not everyone signs in; later, "update from GitHub" instead
+      of silently overwriting. The profile records linked accounts by their
+      numeric id (`"accounts": [{"provider": "github", "id": …, "login": …}]`),
+      since usernames can change, so an invited username is matched to its
+      profile when that person joins. The repo's collaborator list shows who
+      has access but has not joined yet, and who was removed. Signing in
+      does not verify names in the history: the host knows who pushed, not
+      who wrote each commit.
+- [ ] **Threads on pages.** On a page or on a selection, with replies,
+      resolve and reactions, and with agents taking part like anyone else.
+      Stored outside the page's Markdown so pages stay clean for other tools
+      and agents, one file per message so two people writing at once never
+      conflict. A thread on a selection remembers its block and the quoted
+      text and finds them again after edits; if the text is gone, the thread
+      says so instead of disappearing.
+- [ ] **Mentions.** `@` opens a menu of people and agents (also pages and
+      dates) and inserts a link to the person's id. A "person" column type
+      for databases, for assigning rows.
+- [ ] **Tasks.** A thread with an owner, who is a person or an agent, and a
+      status. "Tasks" in the sidebar shows them as a list or a board.
+- [ ] **Inbox.** Changes waiting for your approval, agents waiting for an
+      answer, mentions, replies and changes to pages you follow, worked out
+      on each device after a sync, since there is no server to send them.
+      They only arrive when the app syncs and nothing reaches a closed app;
+      scripts (step 9) can forward them to Slack or email.
+- [ ] **What changed.** "Changed since you last looked" on pages, and a
+      list of recent changes across a space, including what agents did
+      without asking.
+- [ ] **Recent activity on a page.** "Anna edited this 2 minutes ago" when
+      you open a page someone else just changed, and faster syncing while a
+      page that others edit is open, so two people editing the same page at
+      once is rare and visible rather than a surprise conflict.
+- [ ] **Code from other people.** An agent's skills, scripts and UI written
+      by someone else, or on another device, don't run on this device until
+      they are approved here, with approval tied to their contents.
+- [ ] **Clear expectations about access.** The app says plainly that a
+      space is shared as a whole, that anyone removed keeps the copy they
+      already have, and that names and comments stay in the history. Private
+      pages belong in the private space. Read-only members come from the
+      sync target (read access on GitHub, a view-only folder share), and
+      can't comment, since a comment is a write.
+- [ ] **Internal release.** Code signing and notarization for macOS,
+      automatic updates, and git bundled with the app (step 3), so teammates
+      can install it.
+
+## 8. Channels and direct messages
+
+The first step that needs a server: a small relay
+([product-design.md](product-design.md#servers)).
+
+- [ ] **Prototype messages in git first.** This is the riskiest new piece:
+      the volume, a sender going offline before syncing, and deletion, since
+      history keeps everything. An append-only log per device per day keeps
+      one writer per file ([product-design.md](product-design.md#chat)).
+- [ ] **Relay.** One small always-on program that passes messages, presence
+      and "sync now" between running apps. It stores nothing and has no
+      accounts: a key kept in each space's repo lets anyone who can read
+      that repo join its channel. The app works without it.
+- [ ] **Channels, threads, direct messages.** Deliberately small. A channel
+      is a list of threads in a space.
+- [ ] **Notifications** for mentions and replies while the app is running.
+- [ ] **Editing a page together.** Who is viewing a page, live cursors and
+      editing a page in real time. Git cannot do this, so it runs over the
+      relay, with git still the record. Moved up from "Later": in a team two
+      people will type in one page at once, and conflict blocks aren't
+      acceptable there.
+
+## 9. Triggers and runners
+
+Agents start by themselves, which needs somewhere to run while laptops are
+closed.
+
+- [ ] **Events.** The app emits an event after a change is saved (not per
+      keystroke): page created, changed, moved or deleted; database row
+      created, changed or deleted; sync finished (with what came in from
+      other devices); conflict found or resolved; site published. Each event
+      says where the change came from: this device, another device, or an
+      agent.
+- [ ] **Triggers.** An agent starts on a schedule, on an event (a message in
+      a channel, a row added to a table) or when it is mentioned. One chosen
+      machine runs each trigger, so an action doesn't happen once per
+      device.
+- [ ] **Runner.** The app's core without a window, on an always-on machine
+      the team owns, with agent credentials the company owns rather than
+      someone's personal subscription.
+- [ ] **Scripts.** Scripts in the workspace subscribe to events and get the
+      event as JSON on stdin; they can call the CLI to change the workspace.
+      Examples: fill in a row's "done" date, post a changed page to Slack,
+      regenerate an index page.
+- [ ] **Safety.** Scripts sync like everything else, so a script written on
+      another device or by another person never runs until it is approved on
+      this device, and approval is tied to the script's contents. Each script
+      chooses which devices run it, so an action does not happen once per
+      device. Changes made by a script are credited to it and do not trigger
+      that script again.
+- [ ] **Events in the API.** Agents and other programs can subscribe to the
+      same events through MCP and the CLI.
+
+## 10. Public release
+
+Until here the app is for our own team. Opening it up, with a paid
+subscription, adds what people without GitHub accounts need
+([product-design.md](product-design.md#servers)).
+
+- [ ] **Hosted sync.** Git over HTTPS with email accounts, as one more sync
+      target ([sync-design.md](sync-design.md#sync-targets)): a thin server
+      of our own, or Forgejo behind our sign-in.
+- [ ] **Accounts and subscription.** Email sign-in, companies and billing.
+- [ ] **Hosted runner.** Agents run for a team, with customers bringing
+      their own agent login at first.
+- [ ] **Phone and web.** Chat and approvals, as a thin client.
+- [ ] Landing page
+- [ ] Product name and domain
+
+## Alongside
+
+Not on the path above. Picked up when something needs them or there is room.
+
+### Developer essentials
 
 - [ ] **Diagrams and math.** Mermaid code blocks drawn as diagrams, and math
       (`$…$` and `$$…$$`), both stored as plain Markdown.
@@ -149,21 +362,14 @@ work in, rather than shipping our own agent first.
 - [ ] **Open elsewhere.** "Open in terminal" and "Open in editor" for the
       workspace folder. (Instead of a terminal built into the app: developers
       already have one they like.)
+- [ ] **Developer mode.** Files, git and an agent's raw steps, for whoever
+      builds the agents. Off by default.
 
-## 6. Page history and agent review
+### History
 
-Git already has every version; this makes it visible.
+Git already has every version. Page history and undo are in step 4, "What
+changed" in step 7.
 
-- [ ] **Page history.** A timeline for each page: who or what changed it
-      (person, device or agent) and when, with a diff and "restore this
-      version".
-- [ ] **What changed.** "Changed since you last looked" on pages, and a
-      list of recent changes across the workspace.
-- [ ] **Reviewing agent edits.** Changes made through MCP shown as a diff to
-      accept or revert, page by page, so users can trust agents with their
-      notes.
-      Accepting or reverting is itself a commit, so the review syncs; review
-      state kept outside git (in `.docsync/`) would stay on one device.
 - [ ] **Clearing history.** Start the history again from the current pages:
       one commit with no parents, and a "history was reset" marker that other
       devices follow by adopting the new start and replaying only their
@@ -180,91 +386,7 @@ Git already has every version; this makes it visible.
       data, so it gains a small pack per sync. Compact it once every device's
       latest work is fully present.
 
-## 7. Working together
-
-Everything lives in the workspace's git repo, so collaboration works the same
-on every sync target, with no service of our own. That shapes what is
-possible: collaboration is asynchronous (changes arrive with the next sync),
-everyone with access sees every page and its history (the workspace is the
-unit of sharing, see [sync-design.md](sync-design.md#sharing-with-other-people)),
-and identity is trusted rather than verified, as in a shared folder.
-
-- [ ] **People.** `people/<person-id>/profile.json` (name, colour, optional
-      email) and a profile picture resized to a small size before it is
-      saved, since git keeps every version. The id is random, not an email.
-      Each device belongs to a person, and commits record the person as well
-      as the device. Agents get a profile too, so their edits and comments
-      show up like anyone else's. Device-only settings (theme, window,
-      sidebar) stay out of the workspace.
-- [ ] **Sharing.** A "Share" button that invites people to the GitHub
-      repo, and accepting the invitation on their device. Here rather than
-      with sync, since it needs people: commits then record the person, not
-      just the device.
-- [ ] **Profiles from GitHub or GitLab.** On first sign-in, fill in the
-      profile from the account (`GET /user` on GitHub, `GET /api/v4/user` on
-      GitLab): name and picture, with the picture downloaded and resized like
-      any other rather than linked. The workspace profile stays the source of
-      truth, since not everyone signs in; later, "update from GitHub" instead
-      of silently overwriting. The profile records linked accounts by their
-      numeric id (`"accounts": [{"provider": "github", "id": …, "login": …}]`),
-      since usernames can change, so an invited username is matched to its
-      profile when that person joins. The repo's collaborator list shows who
-      has access but has not joined yet, and who was removed. Signing in
-      does not verify names in the history: the host knows who pushed, not
-      who wrote each commit.
-- [ ] **Comments.** On a page or on a selection, with replies, resolve and
-      reactions. Stored outside the page's Markdown so pages stay clean for
-      other tools and agents, one file per comment so two people commenting
-      at once never conflict. A comment on a selection remembers its block
-      and the quoted text and finds them again after edits; if the text is
-      gone, the comment says so instead of disappearing. Agents can comment
-      through MCP.
-- [ ] **Mentions.** `@` opens a menu of people (also pages and dates) and
-      inserts a link to the person's id. A "person" column type for
-      databases, for assigning rows.
-- [ ] **Inbox.** Mentions, replies and changes to pages you follow, worked
-      out on each device after a sync, since there is no server to send them.
-      They only arrive when the app syncs and nothing reaches a closed app;
-      hooks (step 9) can forward them to Slack or email.
-- [ ] **Recent activity on a page.** "Anna edited this 2 minutes ago" when
-      you open a page someone else just changed, and faster syncing while a
-      page that others edit is open, so two people editing the same page at
-      once is rare and visible rather than a surprise conflict.
-- [ ] **Clear expectations about access.** The app says plainly that a
-      workspace is shared as a whole, that anyone removed keeps the copy they
-      already have, and that names and comments stay in the history. Private
-      pages belong in a separate workspace. Read-only members come from the
-      sync target (read access on GitHub, a view-only folder share).
-
-## 8. Beta release
-
-- [ ] Code signing and notarization for macOS
-- [ ] Automatic updates
-- [ ] Landing page
-- [ ] Product name and domain
-
-## 9. Hooks and automations
-
-- [ ] **Events.** The app emits an event after a change is saved (not per
-      keystroke): page created, changed, moved or deleted; database row
-      created, changed or deleted; sync finished (with what came in from
-      other devices); conflict found or resolved; site published. Each event
-      says where the change came from: this device, another device, or an
-      agent.
-- [ ] **Scripts.** Scripts in the workspace subscribe to events and get the
-      event as JSON on stdin; they can call the CLI to change the workspace.
-      Examples: fill in a row's "done" date, post a changed page to Slack,
-      regenerate an index page.
-- [ ] **Safety.** Scripts sync like everything else, so a script written on
-      another device or by another person never runs until it is approved on
-      this device, and approval is tied to the script's contents. Each script
-      chooses which devices run it, so an action does not happen once per
-      device. Changes made by a script are credited to it and do not trigger
-      that script again.
-- [ ] **Events in the API.** Agents and other programs can subscribe to the
-      same events through MCP and the CLI.
-
-## 10. Publish to a static site
+### Publish to a static site
 
 - [ ] **Build.** Turn a chosen page tree into a static site (HTML, CSS and
       assets) on the device. Only the pages chosen are published.
@@ -277,41 +399,17 @@ and identity is trusted rather than verified, as in a shared folder.
 - [ ] **Without a git host.** For workspaces synced through a cloud folder:
       direct upload to Cloudflare Pages or Netlify.
 
-## Tasks (being designed)
-
-Agents doing work in the workspace: a task is a block with a UI, an agent
-session (the user's own Claude Code or Codex), skills and a folder of code,
-settings and assets. The direction, the decisions so far and the open
-questions are in [tasks-design.md](tasks-design.md); where this goes in the
-order above isn't decided yet.
-
-- [ ] **Sync changes.** A plain-text merge kind for code, tasks as entities,
-      broader ignore rules with a size limit and a secrets check, and
-      holding back auto-commit while an agent session runs.
-- [ ] **Task format.** `tasks/<id>/` with `task.json`, skills, databases and
-      an optional `ui/`; device-only state in `.docsync/`.
-- [ ] **Agent adapters.** Claude Code and Codex over stdio, working in the
-      task's folder, with the MCP server (step 4) for workspace access.
-- [ ] **Standard views.** Approval queue, table, chart, metric tiles.
-- [ ] **First task: email.** Triage, drafts and sending after approval.
-- [ ] **Later: scheduled triggers,** which need something running while the
-      app is closed and one device chosen to run them.
-
 ## Later
 
 Ideas we want, in roughly this order, once the steps above are done.
 
 - **Runnable code blocks.** A run button on shell code blocks, with the
   output shown in the page, for runbooks.
-- **AI-built blocks.** Now part of tasks: a task's optional `ui/`, which runs
-  in a sandboxed iframe and reaches data only through a narrow API
-  ([tasks-design.md](tasks-design.md)).
+- **AI-built blocks.** Now part of agents: an agent's optional `ui/`, which
+  runs in a sandboxed iframe and reaches data only through a narrow API
+  ([agents-design.md](agents-design.md)).
 - **Writing commands.** "Improve writing" and similar, using the user's own
   agent or API key, with the result shown as a suggested change to accept.
-- **Live presence and co-editing.** Who is viewing a page, live cursors and
-  editing a page together in real time. Git cannot do this, so it needs a
-  live channel between devices (on the local network or through a small
-  optional relay), with git still the record.
 - **Signed commits.** Signing with each person's key, so names in the
   history can be verified.
 - **Sharing cloud folders from the app.** The Share button for a cloud
