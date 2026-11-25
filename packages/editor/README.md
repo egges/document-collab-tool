@@ -110,7 +110,8 @@ writing, timing and syncing to the app.
   header doesn't move, and neither can be deleted. Deleting the only column deletes the table. New rows take their
   column's alignment; new columns have none (`src/tables.ts`).
 - **Front matter is kept as-is.** The editor can't show YAML front matter, so
-  it's set aside on open and put back on save.
+  it's set aside on open and put back on save. (The app moves front matter
+  into meta.json before a page gets here; this covers anything it leaves.)
 - **Exactly one newline at the end of the file.**
 - **Empty lines aren't saved.** An empty paragraph (pressing Enter twice) is
   spacing in the editor, but Markdown can't store it: Milkdown would write a

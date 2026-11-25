@@ -7,9 +7,11 @@ description = "Git-backed synchronization engine for document workspaces"
 publish = false
 
 [dependencies]
+percent-encoding = "2"
 rand = "0.9"
 serde_json = "1"
 thiserror = "2"
+yaml-rust2 = { version = "0.13", default-features = false }
 
 [dev-dependencies]
 rand_chacha = "0.9"

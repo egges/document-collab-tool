@@ -18,6 +18,7 @@ pub const DATABASES_DIR: &str = "databases";
 pub const WORKSPACE_FILE: &str = "workspace.json";
 pub const PAGE_META: &str = "meta.json";
 pub const PAGE_BODY: &str = "page.md";
+pub const PAGE_ASSETS: &str = "assets";
 pub const DATABASE_SCHEMA: &str = "schema.json";
 pub const DATABASE_ROWS: &str = "rows";
 

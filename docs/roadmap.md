@@ -108,8 +108,15 @@ chat in step 8. The app is for our own team until step 10.
       page it points to); hovering shows it with copy and edit (text, address, remove).
       ⌘K searches page titles and text. The sidebar can
       be resized and hidden (⌘\\).
-- [ ] **Importer.** Move front matter into `meta.json` before a page reaches
-      the editor.
+- [x] **Importer.** Front matter moves into `meta.json` before a page
+      reaches the editor (on open, for pages written by other tools and
+      agents). "Import…" under the page tree brings in Markdown files or a
+      folder (an Obsidian vault, a Notion export): folders become pages, a
+      `# Heading` on the first line becomes the title, links between the
+      files (including `[[wikilinks]]`) point at the new pages, and linked
+      images and files are copied into each page's `assets/`
+      (`docsync::import`). Showing those images in the editor is still to
+      come.
 - [x] **App shell** (`apps/desktop`). Tauri 2 + React, calling `docsync`
       directly from the Rust side. Opens, creates or joins a workspace and sets
       the remote this device syncs with.

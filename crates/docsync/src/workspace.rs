@@ -10,7 +10,7 @@ use serde_json::{Map, Value, json};
 
 use crate::error::IoContext;
 use crate::layout::{self, DATABASE_ROWS, DATABASE_SCHEMA, DATABASES_DIR, PAGE_BODY, PAGE_META, PAGES_DIR};
-use crate::{Error, Result, json_merge};
+use crate::{Error, Result, front_matter, json_merge};
 
 #[derive(Debug, Clone)]
 pub struct Workspace {
@@ -97,9 +97,21 @@ impl Workspace {
     }
 
     pub fn create_page_with_id(&self, id: &str, title: &str, parent: Option<&str>) -> Result<()> {
-        let meta = json!({ "id": id, "title": title, "parent": parent, "properties": {} });
+        self.create_page_with(id, title, parent, Map::new(), "")
+    }
+
+    /// Create a page with its properties and body in one go.
+    pub fn create_page_with(
+        &self,
+        id: &str,
+        title: &str,
+        parent: Option<&str>,
+        properties: Map<String, Value>,
+        body: &str,
+    ) -> Result<()> {
+        let meta = json!({ "id": id, "title": title, "parent": parent, "properties": properties });
         self.write_json(&self.page_dir(id).join(PAGE_META), &meta)?;
-        self.write_file(&self.page_dir(id).join(PAGE_BODY), b"")
+        self.write_file(&self.page_dir(id).join(PAGE_BODY), body.as_bytes())
     }
 
     pub fn page_exists(&self, id: &str) -> bool {
@@ -163,6 +175,44 @@ impl Workspace {
 
     pub fn write_body(&self, id: &str, body: &str) -> Result<()> {
         self.write_file(&self.page_dir(id).join(PAGE_BODY), body.as_bytes())
+    }
+
+    /// Move YAML front matter at the top of the page's body into its
+    /// meta.json: `title` becomes the title, every other field a property.
+    /// Front matter was written after meta.json (by another tool or an AI
+    /// agent), so its values replace the ones there. Returns whether the
+    /// page changed. Doesn't commit.
+    ///
+    /// meta.json is written first: if the process stops in between, the
+    /// front matter is still in the body and is moved again next time.
+    pub fn lift_front_matter(&self, id: &str) -> Result<bool> {
+        let body = match self.read_body(id) {
+            Ok(body) => body,
+            Err(Error::Io { source, .. }) if source.kind() == std::io::ErrorKind::NotFound => {
+                return Ok(false);
+            }
+            Err(e) => return Err(e),
+        };
+        let Some(front) = front_matter::parse(&body) else {
+            return Ok(false);
+        };
+        self.update_json(&self.page_dir(id).join(PAGE_META), |meta| {
+            if let Some(title) = front.title {
+                meta.insert("title".into(), title.into());
+            }
+            let props = meta.entry("properties").or_insert_with(|| json!({}));
+            if !props.is_object() {
+                *props = json!({});
+            }
+            props.as_object_mut().expect("object").extend(front.properties);
+        })?;
+        self.write_body(id, &front.body)?;
+        Ok(true)
+    }
+
+    /// Where a page's attachments go: `pages/<id>/assets`.
+    pub fn page_assets_dir(&self, id: &str) -> PathBuf {
+        self.page_dir(id).join(layout::PAGE_ASSETS)
     }
 
     pub fn delete_page(&self, id: &str) -> Result<()> {

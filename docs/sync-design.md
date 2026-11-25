@@ -34,6 +34,15 @@ The format is designed so most concurrent edits never conflict:
 
 Everything stays readable and editable without the app.
 
+Metadata lives in `meta.json`, never in YAML front matter at the top of
+`page.md`, since the editor can't show it. Front matter written by another
+tool or an AI agent moves into `meta.json` when the page is opened
+(`Workspace::lift_front_matter`): `title` becomes the title and every other
+field a property, replacing what was there, since the front matter is newer.
+Two devices doing this at once make the same change, which merges cleanly.
+Importing Markdown files and folders does the same for each file
+(`docsync::import`).
+
 Planned additions to the format: `agents/`
 ([agents-design.md](agents-design.md#the-format-draft)), and people, threads
 and tasks ([roadmap step 7](roadmap.md#7-spaces-people-and-the-inbox)).

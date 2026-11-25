@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Plus, X } from "lucide-react";
+import { message } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import {
   type PageDisplay,
@@ -13,6 +14,7 @@ import {
 } from "./api.ts";
 import { DevPanel, useDevPanel } from "./DevPanel.tsx";
 import { PagesArt } from "./Graphics.tsx";
+import { importNotice } from "./importing.ts";
 import { log } from "./devlog.ts";
 import { PageView, type PageViewHandle } from "./PageView.tsx";
 import { linkTarget } from "./links.ts";
@@ -169,6 +171,22 @@ function WorkspaceView({
     }
   };
 
+  const importPages = async (sources: string[]) => {
+    try {
+      await page.current?.flush();
+      const result = await api.importMarkdown(sources, null);
+      await reload();
+      if (result.pages.length) {
+        setReveal(null);
+        setSelected(result.pages[0]);
+      }
+      const notice = importNotice(result);
+      if (notice) await message(notice, { title: "Import", kind: result.pageCount ? "info" : "warning" });
+    } catch (e) {
+      setError(errorText(e));
+    }
+  };
+
   // Opening another workspace (or moving or deleting this one): save the
   // open page first, so its last edits land in this workspace. `open` may
   // return null for "no workspace open" (onboarding).
@@ -251,6 +269,7 @@ function WorkspaceView({
         status={status}
         onSelect={select}
         onCreate={create}
+        onImport={(sources) => void importPages(sources)}
         onWorkspaceChange={onChange}
         onSwitch={switchTo}
         onAddWorkspace={() => void Promise.resolve(page.current?.flush()).then(onAddWorkspace)}

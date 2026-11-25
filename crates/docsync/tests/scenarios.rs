@@ -170,8 +170,10 @@ fn display_options_of_one_page_merge_and_reset() {
     let page = a.ws.create_page("Wide notes", None).unwrap();
     a.sync();
     let b = net.device("b");
-    a.ws.set_page_display(&page, "width", Some(json!("full"))).unwrap();
-    b.ws.set_page_display(&page, "textSize", Some(json!("small"))).unwrap();
+    a.ws.set_page_display(&page, "width", Some(json!("full")))
+        .unwrap();
+    b.ws.set_page_display(&page, "textSize", Some(json!("small")))
+        .unwrap();
     a.sync();
     assert!(b.sync().conflicts.is_empty());
     settle(&[&a, &b]);
@@ -608,4 +610,27 @@ fn commits_use_the_author_set_after_opening() {
         String::from_utf8(out.stdout).unwrap().trim(),
         "Ada Lovelace <1+ada@users.noreply.github.com>|Ada Lovelace <1+ada@users.noreply.github.com>"
     );
+}
+
+#[test]
+fn two_devices_moving_the_same_front_matter_converge_without_conflicts() {
+    let net = Net::new();
+    let a = net.device("a");
+    let page = a.ws.create_page("", None).unwrap();
+    a.ws.write_body(&page, "---\ntitle: From a tool\ntags: [x]\n---\n\nText\n")
+        .unwrap();
+    a.sync();
+    let b = net.device("b");
+    assert!(a.ws.lift_front_matter(&page).unwrap());
+    assert!(b.ws.lift_front_matter(&page).unwrap());
+    assert!(!b.ws.lift_front_matter(&page).unwrap(), "only moved once");
+    a.sync();
+    let report = b.sync();
+    assert!(report.conflicts.is_empty(), "{report:?}");
+    settle(&[&a, &b]);
+    assert_converged(&[&a, &b]);
+    let meta = a.ws.read_page_meta(&page).unwrap();
+    assert_eq!(meta["title"], json!("From a tool"));
+    assert_eq!(meta["properties"], json!({"tags": ["x"]}));
+    assert_eq!(a.ws.read_body(&page).unwrap(), "Text\n");
 }

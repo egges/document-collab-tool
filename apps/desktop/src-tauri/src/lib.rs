@@ -97,6 +97,7 @@ pub fn run() {
             commands::sync_now,
             commands::list_pages,
             commands::read_page,
+            commands::import_markdown,
             commands::search_text,
             commands::write_page,
             commands::create_page,
