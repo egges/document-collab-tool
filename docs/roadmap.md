@@ -132,7 +132,10 @@ chat in step 8. The app is for our own team until step 10.
 - [ ] **Databases.** A database table view.
 - [ ] **Conflict markers in the editor.** They show as labelled lines; a
       proper block with each version's device name would be clearer.
-- [ ] **Bundled Git.** Ship Git with the app for each platform.
+- [x] **Bundled Git.** The app ships with Git for macOS, Windows and Linux
+      (GitHub Desktop's portable builds, fetched and checked at build time
+      by `apps/desktop/scripts/fetch-git.mjs`), and uses an installed Git
+      only when a build has none.
 
 ## 4. Ask an agent from a page
 
@@ -291,7 +294,7 @@ trusted rather than verified, as in a shared folder.
       sync target (read access on GitHub, a view-only folder share), and
       can't comment, since a comment is a write.
 - [ ] **Internal release.** Code signing and notarization for macOS,
-      automatic updates, and git bundled with the app (step 3), so teammates
+      automatic updates (Git already ships with the app), so teammates
       can install it.
 
 ## 8. Channels and direct messages

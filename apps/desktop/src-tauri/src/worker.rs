@@ -69,6 +69,9 @@ pub enum SyncState {
     Syncing,
     Synced,
     Offline,
+    /// The remote refused this device: not signed in, or an account
+    /// without access. Unlike being offline, it won't pass by itself.
+    NoAccess,
     Error,
 }
 
@@ -357,8 +360,9 @@ impl<E: Events> Loop<E> {
                         devlog::short(report.offline_reason.as_deref().unwrap_or("?"), 400)
                     ),
                 );
+                let state = offline_state(report.offline_reason.as_deref().unwrap_or_default());
                 let reason = report.offline_reason.as_deref().map(first_line);
-                self.report(SyncState::Offline, reason, 0);
+                self.report(state, reason, 0);
             }
             Ok(report) => {
                 devlog::info("sync", format!("Sync done in {ms} ms: {}", describe(&report)));
@@ -429,6 +433,17 @@ fn describe(report: &docsync::SyncReport) -> String {
         "already up to date".into()
     } else {
         parts.join(", ")
+    }
+}
+
+/// Offline, or refused by the remote, from what git said.
+fn offline_state(reason: &str) -> SyncState {
+    // A token about to be renewed may already be refused; that passes once
+    // it's renewed, so it's not worth a warning.
+    if docsync::git::is_access_denied(reason) && !crate::github::renewal_due() {
+        SyncState::NoAccess
+    } else {
+        SyncState::Offline
     }
 }
 
@@ -583,6 +598,22 @@ mod tests {
         let events = Recorder::default();
         let _worker = SyncWorker::start(engine, true, events.clone(), fast());
         events.wait_for("Offline");
+    }
+
+    #[test]
+    fn tells_refused_access_from_offline() {
+        assert_eq!(
+            offline_state(
+                "fatal: could not read Username for 'https://github.com': terminal prompts disabled"
+            ),
+            SyncState::NoAccess
+        );
+        assert_eq!(
+            offline_state(
+                "fatal: unable to access 'https://github.com/a/b.git/': Could not resolve host: github.com"
+            ),
+            SyncState::Offline
+        );
     }
 
     #[test]

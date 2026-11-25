@@ -106,6 +106,30 @@ pub struct CommitInfo {
     pub author: String,
 }
 
+/// Whether git's error output (from a fetch or push that failed with
+/// [`crate::Error::Network`]) says the remote refused this device: no
+/// credentials, wrong ones, or an account without access. Hosts such as
+/// GitHub answer "not found" for a private repository the account can't
+/// see, so that counts too. Everything else, such as no network or a
+/// server that's down, means try again later.
+pub fn is_access_denied(stderr: &str) -> bool {
+    let text = stderr.to_lowercase();
+    [
+        "could not read username",
+        "could not read password",
+        "authentication failed",
+        "invalid username or",
+        "returned error: 401",
+        "returned error: 403",
+        "permission denied (publickey",
+        "repository not found",
+        "access to repository not granted",
+    ]
+    .iter()
+    .any(|needle| text.contains(needle))
+        || (text.contains("permission to") && text.contains("denied to"))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum PushResult {
     Pushed,
@@ -212,4 +236,33 @@ pub trait GitBackend: Send + Sync {
         until: &Oid,
         path: &str,
     ) -> Result<Vec<CommitInfo>>;
+}
+
+#[cfg(test)]
+mod access_tests {
+    use super::is_access_denied;
+
+    #[test]
+    fn tells_refused_access_from_unreachable() {
+        for refused in [
+            "fatal: could not read Username for 'https://github.com': terminal prompts disabled",
+            "remote: Invalid username or token. Password authentication is not supported for Git operations.\nfatal: Authentication failed for 'https://github.com/a/b.git/'",
+            "fatal: unable to access 'https://github.com/a/b.git/': The requested URL returned error: 403",
+            "remote: Permission to a/b.git denied to someone.\nfatal: unable to access 'https://github.com/a/b.git/': The requested URL returned error: 403",
+            "remote: Repository not found.\nfatal: repository 'https://github.com/a/b.git/' not found",
+            "git@github.com: Permission denied (publickey).\nfatal: Could not read from remote repository.",
+            "remote: Write access to repository not granted.",
+        ] {
+            assert!(is_access_denied(refused), "{refused}");
+        }
+        for unreachable in [
+            "fatal: unable to access 'https://github.com/a/b.git/': Could not resolve host: github.com",
+            "fatal: unable to access 'https://github.com/a/b.git/': Failed to connect to github.com port 443",
+            "ssh: connect to host github.com port 22: Operation timed out",
+            "fatal: '/Volumes/Drive/notes.git' does not appear to be a git repository",
+            "fatal: unable to access 'https://example.com/a.git/': The requested URL returned error: 502",
+        ] {
+            assert!(!is_access_denied(unreachable), "{unreachable}");
+        }
+    }
 }

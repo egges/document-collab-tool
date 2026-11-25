@@ -65,6 +65,7 @@ static TEMP_COUNTER: AtomicU64 = AtomicU64::new(0);
 pub struct CliGit {
     binary: PathBuf,
     extra_config: Vec<(String, String)>,
+    extra_env: Vec<(std::ffi::OsString, std::ffi::OsString)>,
     config_source: Option<ConfigSource>,
     tracer: Option<Tracer>,
 }
@@ -108,6 +109,7 @@ impl CliGit {
         Self {
             binary: binary.into(),
             extra_config: Vec::new(),
+            extra_env: Vec::new(),
             config_source: None,
             tracer: None,
         }
@@ -121,6 +123,17 @@ impl CliGit {
 
     pub fn with_config(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.extra_config.push((key.into(), value.into()));
+        self
+    }
+
+    /// Set an environment variable for every command. A git that is not
+    /// installed in the usual place needs a few, such as `GIT_EXEC_PATH`.
+    pub fn with_env(
+        mut self,
+        key: impl Into<std::ffi::OsString>,
+        value: impl Into<std::ffi::OsString>,
+    ) -> Self {
+        self.extra_env.push((key.into(), value.into()));
         self
     }
 
@@ -171,6 +184,9 @@ impl CliGit {
             .env("GIT_TERMINAL_PROMPT", "0")
             .env("GIT_CONFIG_NOSYSTEM", "1")
             .env("GIT_CONFIG_GLOBAL", NULL_DEVICE);
+        for (key, value) in &self.extra_env {
+            cmd.env(key, value);
+        }
 
         let dynamic = self.config_source.as_ref().map(|s| (s.0)()).unwrap_or_default();
         let config: Vec<(&str, &str)> = FIXED_CONFIG
@@ -884,6 +900,17 @@ mod tests {
         };
         assert_eq!(read(), "value-1");
         assert_eq!(read(), "value-2");
+    }
+
+    #[test]
+    fn passes_extra_environment_variables() {
+        // GIT_CONFIG_PARAMETERS is scrubbed from the inherited environment,
+        // but one set with with_env must reach git.
+        let git = CliGit::from_path().with_env("GIT_CONFIG_PARAMETERS", "'docsync.fromenv'='yes'");
+        let out = git
+            .exec(None, &["config", "--get", "docsync.fromenv"], None, &[])
+            .unwrap();
+        assert_eq!(String::from_utf8(out.stdout).unwrap().trim(), "yes");
     }
 
     #[test]

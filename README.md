@@ -28,7 +28,7 @@ page tree, the editor, conflict resolution and background sync. See
 `cd apps/desktop && npm install && npm run tauri dev`.
 
 Requires Rust 1.89+ and git 2.43+ (Rust 1.90+ and Node 24+ for the app and
-the editor). The desktop app will bundle its own git.
+the editor). The desktop app ships with its own git.
 
 ## Next
 

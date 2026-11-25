@@ -52,6 +52,9 @@ jobs:
         working-directory: apps/desktop
       - run: npm test
         working-directory: apps/desktop
+      # The Git that ships with the app, so the tests run it (Linux build).
+      - run: npm run fetch-git
+        working-directory: apps/desktop
       # Tauri embeds the built frontend, so build it before compiling Rust.
       - run: npx vite build
         working-directory: apps/desktop

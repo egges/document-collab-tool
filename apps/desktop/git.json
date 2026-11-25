@@ -1,0 +1,31 @@
+{
+  "$comment": "The Git that ships with the app: GitHub Desktop's portable builds (https://github.com/desktop/dugite-native). scripts/fetch-git.mjs downloads the one for the build's platform, checks it against this hash, and puts it in src-tauri/git. To update, change the tag and every file name and hash from the release page.",
+  "release": "https://github.com/desktop/dugite-native/releases/download/v2.56.1",
+  "version": "2.56.1",
+  "targets": {
+    "darwin-aarch64": {
+      "file": "dugite-native-v2.56.1-238326e-macOS-arm64.tar.gz",
+      "sha256": "a882ec6882416b57d212a22bac845ae27944f96cf73453a864f6a12c17863a79"
+    },
+    "darwin-x86_64": {
+      "file": "dugite-native-v2.56.1-238326e-macOS-x64.tar.gz",
+      "sha256": "3fdb0c2f102fe0273d64b5d5fb77315c19f2b4648a154593723cb9ed98f2bc7d"
+    },
+    "linux-x86_64": {
+      "file": "dugite-native-v2.56.1-238326e-ubuntu-x64.tar.gz",
+      "sha256": "e5bc3e8e80b57a5bcd8da18d59b23f5b39533d19019ac1d50b0bd34f051d111d"
+    },
+    "linux-aarch64": {
+      "file": "dugite-native-v2.56.1-238326e-ubuntu-arm64.tar.gz",
+      "sha256": "8626f036e1235f5b209d8331c368d85a9790988fb21a443e5f61662a178abcb6"
+    },
+    "windows-x86_64": {
+      "file": "dugite-native-v2.56.1-238326e-windows-x64.tar.gz",
+      "sha256": "e9fa2c78952aa2c2154c26dbd4999f93269896e9fc902fa9fe840412d4ffdb04"
+    },
+    "windows-aarch64": {
+      "file": "dugite-native-v2.56.1-238326e-windows-arm64.tar.gz",
+      "sha256": "c30eef9fc273f4f56f795b4be713726f8a2fd35832633f4e4b9f51a6f0cf8198"
+    }
+  }
+}

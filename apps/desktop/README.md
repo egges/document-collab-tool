@@ -13,9 +13,15 @@ npm run typecheck
 (cd src-tauri && cargo test)
 ```
 
-Needs Rust 1.90+, Node 24+ and Git 2.43+ (the app finds `git` on `PATH`, in
-the usual install locations, or at `DOCSYNC_GIT`; bundling it is a later
-step). On Linux, install
+Needs Rust 1.90+ and Node 24+. The app ships with its own Git: `tauri build`
+runs `npm run fetch-git` first, which downloads GitHub Desktop's portable Git
+([dugite-native](https://github.com/desktop/dugite-native), pinned with hashes
+in `git.json`) for the target platform into `src-tauri/git`, leaving out Git
+Credential Manager, Git LFS and Scalar. Tauri bundles that folder as a
+resource. In development, run `npm run fetch-git` once to use it too;
+otherwise the app uses an installed Git 2.43+ (on `PATH` or in the usual
+install locations). `DOCSYNC_GIT` points the app at another git, ahead of
+both. Universal macOS builds aren't supported yet. On Linux, install
 [Tauri's system dependencies](https://tauri.app/start/prerequisites/) first.
 
 ## What it does
@@ -131,5 +137,5 @@ page ids.
 Release builds hide the panel. Set `DOCSYNC_DEV=1` to turn it on anyway.
 Debug builds also print every entry to the terminal.
 
-Not yet: bundled Git, databases, the block handle, table
+Not yet: databases, the block handle, table
 controls, search, signing and updates. See the [roadmap](../../docs/roadmap.md).
