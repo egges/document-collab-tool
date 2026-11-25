@@ -280,6 +280,81 @@ export const api = {
     invoke<Page>("resolve_conflict", { id, index, keep }),
 };
 
+/** What a database column holds; see docsync::database. */
+export type ColumnType = "text" | "number" | "checkbox" | "select" | "date" | "url";
+
+/** A cell's stored value: a string (text, url, select, "YYYY-MM-DD" date), number or boolean. */
+export type CellValue = string | number | boolean;
+
+export interface DatabaseSummary {
+  id: string;
+  name: string;
+  columns: number;
+  rows: number;
+}
+
+export interface Column {
+  id: string;
+  name: string;
+  type: ColumnType;
+  /** Sort key for the column order; null sorts last. */
+  position: number | null;
+  /** The choices of a select column. */
+  options: string[];
+}
+
+export interface Row {
+  id: string;
+  /**
+   * Keyed by column id; an empty cell has no key. May hold cells of removed
+   * columns, or a value of another type than its column's after a type change.
+   */
+  cells: Record<string, unknown>;
+}
+
+export interface Database {
+  id: string;
+  name: string;
+  /** In display order. */
+  columns: Column[];
+  /** In display order. */
+  rows: Row[];
+  /** The database's folder on disk. */
+  path: string;
+}
+
+export interface ColumnChange {
+  name?: string;
+  type?: ColumnType;
+  position?: number;
+  options?: string[];
+}
+
+export const dbApi = {
+  list: () => invoke<DatabaseSummary[]>("list_databases"),
+  read: (id: string) => invoke<Database>("read_database", { id }),
+  /** A new database with one text column, "Name". */
+  create: (name: string) => invoke<string>("create_database", { name }),
+  rename: (id: string, name: string) => invoke<void>("rename_database", { id, name }),
+  remove: (id: string) => invoke<void>("delete_database", { id }),
+  addColumn: (db: string, name: string, type: ColumnType) => invoke<string>("add_column", { db, name, kind: type }),
+  updateColumn: (db: string, column: string, change: ColumnChange) =>
+    invoke<void>("update_column", {
+      db,
+      column,
+      name: change.name ?? null,
+      kind: change.type ?? null,
+      position: change.position ?? null,
+      options: change.options ?? null,
+    }),
+  deleteColumn: (db: string, column: string) => invoke<void>("delete_column", { db, column }),
+  addRow: (db: string) => invoke<string>("add_row", { db }),
+  /** null empties the cell. A select value that isn't a choice yet becomes one. */
+  setCell: (db: string, row: string, column: string, value: CellValue | null) =>
+    invoke<void>("set_cell", { db, row, column, value }),
+  deleteRow: (db: string, row: string) => invoke<void>("delete_row", { db, row }),
+};
+
 export type LogLevel = "debug" | "info" | "warn" | "error";
 
 export interface LogEntry {

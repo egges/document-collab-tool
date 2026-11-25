@@ -403,15 +403,15 @@ function About({ onShowShortcuts }: { onShowShortcuts: () => void }) {
         <span className="settings-value">{info ? (info.git ?? "Not found") : "…"}</span>
       </Row>
       <Row
-        label="Developer log"
+        label="Developer panel"
         hint={
           info?.enabled
             ? `Always available in this build. ${keysLabel(SHORTCUTS.toggleDevPanel.keys)} opens it.`
-            : `A live log of what the app does, to copy into a bug report. ${keysLabel(SHORTCUTS.toggleDevPanel.keys)} opens it.`
+            : `A live log of what the app does, to copy into a bug report, and the workspace's databases. ${keysLabel(SHORTCUTS.toggleDevPanel.keys)} opens it.`
         }
       >
         <Switch
-          label="Developer log"
+          label="Developer panel"
           checked={!!info?.enabled || logOn === "on"}
           disabled={!!info?.enabled}
           onChange={(on) => devLog.set(on ? "on" : "off")}

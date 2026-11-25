@@ -3,6 +3,7 @@
 
 mod cloud;
 mod commands;
+mod databases;
 mod devlog;
 mod git;
 mod github;
@@ -108,6 +109,17 @@ pub fn run() {
             commands::set_page_display,
             commands::delete_page,
             commands::resolve_conflict,
+            databases::list_databases,
+            databases::read_database,
+            databases::create_database,
+            databases::rename_database,
+            databases::delete_database,
+            databases::add_column,
+            databases::update_column,
+            databases::delete_column,
+            databases::add_row,
+            databases::set_cell,
+            databases::delete_row,
             commands::dev_info,
             commands::dev_log_entries,
             commands::dev_log_clear,

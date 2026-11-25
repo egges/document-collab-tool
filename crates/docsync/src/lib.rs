@@ -10,6 +10,7 @@
 
 pub mod clock;
 pub mod conflicts;
+pub mod database;
 mod engine;
 mod error;
 pub mod front_matter;

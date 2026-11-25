@@ -16,8 +16,8 @@ workspace.json                      workspace settings: {"format", "name"}
 pages/<page-id>/meta.json           {"id", "title", "parent", "properties": {...}, "display": {...}}
 pages/<page-id>/page.md             page body (Markdown)
 pages/<page-id>/assets/...          attachments
-databases/<db-id>/schema.json       {"id", "name", "columns": [...]}
-databases/<db-id>/rows/<row>.json   {"id", "cells": {...}}
+databases/<db-id>/schema.json       {"id", "name", "columns": {"<col-id>": {"name", "type", "position", "options"}}}
+databases/<db-id>/rows/<row>.json   {"id", "position", "cells": {"<col-id>": value}}
 .docsync/                           per-device state (search index, caches), git-ignored
 ```
 
@@ -33,6 +33,17 @@ The format is designed so most concurrent edits never conflict:
   there is no single file everyone edits.
 
 Everything stays readable and editable without the app.
+
+Database columns are an object keyed by column id, so adding, renaming or
+retyping different columns on two devices touches different fields. Their
+order is each column's `position` and a row's is its own `position` (the
+time it was added), so moving one changes one number. Cells are keyed by
+column id, so renaming a column never touches the rows; removing one leaves
+its cells in the rows, ignored. Types are `text`, `number`, `checkbox`,
+`select` (with `options`), `date` (`YYYY-MM-DD`) and `url`; an empty cell
+has no key. Reading is lenient: an unknown type reads as text, and the first
+format (`"columns": ["name", ...]`) still reads and is rewritten on the next
+column change (`docsync::database`).
 
 Metadata lives in `meta.json`, never in YAML front matter at the top of
 `page.md`, since the editor can't show it. Front matter written by another
@@ -605,8 +616,9 @@ Run them with `cargo test`. To use a specific git binary, set
 - **Orphaned child pages.** If a parent page is deleted while a child is edited
   elsewhere, the child comes back but its `parent` no longer exists. The app
   should show such pages at the top level.
-- **Schema changes are not merged field by field.** Concurrent edits to a
-  database's columns resolve as one value (newest wins).
+- **A column's choices resolve as one value.** Two devices editing the
+  same select column's `options` at once: the newest list wins. Changes to
+  different columns, or to different fields of one column, merge.
 - **No live collaboration.** This is asynchronous sync: no live cursors and no
   character-by-character merging.
 - **Code and other text files merge as opaque files.** Only `.md` and
