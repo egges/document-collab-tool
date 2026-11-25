@@ -115,7 +115,7 @@ both. Universal macOS builds aren't supported yet. On Linux, install
 | ⌘⌥↑ / ⌘⌥↓ | Previous / next page |
 | ⌘⇧⌫ | Delete the open page |
 | ⌘S | Save and sync now |
-| ⌘J / ⌘⇧J | Developer log / fill the window with it |
+| ⌘J / ⌘⇧J | Developer panel / fill the window with it |
 
 The shortcuts live in `src/shortcuts.ts`, so tooltips and the overview stay
 in step with them.
@@ -137,5 +137,20 @@ page ids.
 Release builds hide the panel. Set `DOCSYNC_DEV=1` to turn it on anyway.
 Debug builds also print every entry to the terminal.
 
-Not yet: databases, the block handle, table
+## Databases (developer panel)
+
+The panel's **Databases** tab lists the workspace's databases
+(`src/DatabasesPanel.tsx`) and shows the chosen one as a table
+(`src/TableView.tsx`), the view agents' standard views will build on.
+Create, rename and delete databases; add columns (text, number, select,
+checkbox, date, URL), and click a column's name to rename it, change its
+type, edit a select's choices, sort, move or delete it. Cells edit in place
+and save when you leave them (Enter moves down a row); a new choice typed
+into a select becomes one of its choices. Sorting is for this window only.
+Edits show at once and the database is then read back from disk, so a sync
+or another program's edits show up too. The commands, which check each
+value against its column's type, are in `src-tauri/src/databases.rs`; the
+format is in `docsync::database`.
+
+Not yet: databases outside the developer panel, the block handle, table
 controls, search, signing and updates. See the [roadmap](../../docs/roadmap.md).

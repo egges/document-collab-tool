@@ -8,6 +8,7 @@ use std::path::{Path, PathBuf};
 use rand::Rng;
 use serde_json::{Map, Value, json};
 
+use crate::database::{Column, ColumnChange, ColumnType, Row, Schema, sort_rows};
 use crate::error::IoContext;
 use crate::layout::{self, DATABASE_ROWS, DATABASE_SCHEMA, DATABASES_DIR, PAGE_BODY, PAGE_META, PAGES_DIR};
 use crate::{Error, Result, front_matter, json_merge};
@@ -221,7 +222,9 @@ impl Workspace {
     }
 
     // ---- databases -----------------------------------------------------
+    // The format is in [`crate::database`].
 
+    /// A database with text columns whose ids are `columns`.
     pub fn create_database(&self, name: &str, columns: &[&str]) -> Result<String> {
         let id = new_id();
         self.create_database_with_id(&id, name, columns)?;
@@ -229,6 +232,20 @@ impl Workspace {
     }
 
     pub fn create_database_with_id(&self, id: &str, name: &str, columns: &[&str]) -> Result<()> {
+        let columns: Map<String, Value> = columns
+            .iter()
+            .enumerate()
+            .map(|(i, col)| {
+                let column = Column {
+                    id: col.to_string(),
+                    name: col.to_string(),
+                    kind: ColumnType::Text,
+                    position: Some(i as f64),
+                    options: Vec::new(),
+                };
+                (column.id.clone(), column.to_json())
+            })
+            .collect();
         let schema = json!({ "id": id, "name": name, "columns": columns });
         self.write_json(&self.database_dir(id).join(DATABASE_SCHEMA), &schema)
     }
@@ -241,6 +258,108 @@ impl Workspace {
         list_ids(&self.root.join(DATABASES_DIR), Some(DATABASE_SCHEMA))
     }
 
+    /// The database's schema.json as written.
+    pub fn read_database_json(&self, id: &str) -> Result<Value> {
+        self.read_json(&self.database_dir(id).join(DATABASE_SCHEMA))
+    }
+
+    pub fn read_schema(&self, id: &str) -> Result<Schema> {
+        Ok(Schema::from_json(id, &self.read_database_json(id)?))
+    }
+
+    /// Every row, in display order. A row file that doesn't parse (a hand
+    /// edit) is left out rather than hiding the whole database.
+    pub fn read_rows(&self, db: &str) -> Result<Vec<Row>> {
+        let mut rows = Vec::new();
+        for id in self.list_rows(db)? {
+            match self.read_row(db, &id) {
+                Ok(value) => rows.push(Row::from_json(&id, &value)),
+                Err(Error::InvalidData { .. }) => {}
+                Err(e) => return Err(e),
+            }
+        }
+        sort_rows(&mut rows);
+        Ok(rows)
+    }
+
+    pub fn rename_database(&self, id: &str, name: &str) -> Result<()> {
+        self.update_json(&self.database_dir(id).join(DATABASE_SCHEMA), |schema| {
+            schema.insert("name".into(), name.into());
+        })
+    }
+
+    /// Add a column after the others; returns its id.
+    pub fn add_column(&self, db: &str, name: &str, kind: ColumnType) -> Result<String> {
+        let id = new_id();
+        let schema = self.read_schema(db)?;
+        let column = Column {
+            id: id.clone(),
+            name: name.to_string(),
+            kind,
+            position: Some(schema.next_position()),
+            options: Vec::new(),
+        };
+        self.edit_columns(db, |columns| {
+            columns.insert(id.clone(), column.to_json());
+        })?;
+        Ok(id)
+    }
+
+    /// Change a column's name, type, position or options. Cells keep their
+    /// values when the type changes; readers treat a value of the wrong type
+    /// as text until it is edited.
+    pub fn update_column(&self, db: &str, column: &str, change: &ColumnChange) -> Result<()> {
+        let path = self.database_dir(db).join(DATABASE_SCHEMA);
+        let mut current =
+            self.read_schema(db)?
+                .column(column)
+                .cloned()
+                .ok_or_else(|| Error::InvalidData {
+                    path: path.display().to_string(),
+                    message: format!("no column {column}"),
+                })?;
+        if let Some(name) = &change.name {
+            current.name = name.clone();
+        }
+        if let Some(kind) = change.kind {
+            current.kind = kind;
+        }
+        if let Some(position) = change.position {
+            current.position = Some(position);
+        }
+        if let Some(options) = &change.options {
+            current.options = options.clone();
+        }
+        self.edit_columns(db, |columns| {
+            columns.insert(column.to_string(), current.to_json());
+        })
+    }
+
+    /// Remove a column from the schema. Its cells stay in the rows, so the
+    /// rows aren't all rewritten (and can't conflict with edits elsewhere);
+    /// readers ignore cells of unknown columns.
+    pub fn remove_column(&self, db: &str, column: &str) -> Result<()> {
+        self.edit_columns(db, |columns| {
+            columns.remove(column);
+        })
+    }
+
+    /// Edit the `columns` object, moving a schema in the first format (a
+    /// list of names) to the current one first.
+    fn edit_columns(&self, db: &str, edit: impl FnOnce(&mut Map<String, Value>)) -> Result<()> {
+        let schema = self.read_schema(db)?;
+        self.update_json(&self.database_dir(db).join(DATABASE_SCHEMA), |value| {
+            let columns = value.entry("columns").or_insert_with(|| json!({}));
+            if !columns.is_object() {
+                *columns = schema.columns_json();
+            }
+            edit(columns.as_object_mut().expect("object"));
+        })
+    }
+
+    /// Add a row after the others. Its position is the time it was made, so
+    /// rows added on different devices meanwhile end up in the order they
+    /// were added.
     pub fn add_row(&self, db: &str, cells: Map<String, Value>) -> Result<String> {
         let id = new_id();
         self.add_row_with_id(db, &id, cells)?;
@@ -248,7 +367,14 @@ impl Workspace {
     }
 
     pub fn add_row_with_id(&self, db: &str, row: &str, cells: Map<String, Value>) -> Result<()> {
-        self.write_json(&self.row_path(db, row), &json!({ "id": row, "cells": cells }))
+        let millis = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis() as f64)
+            .unwrap_or_default();
+        self.write_json(
+            &self.row_path(db, row),
+            &json!({ "id": row, "position": millis, "cells": cells }),
+        )
     }
 
     pub fn row_exists(&self, db: &str, row: &str) -> bool {
@@ -273,6 +399,15 @@ impl Workspace {
                 .as_object_mut()
                 .expect("object")
                 .insert(column.into(), value);
+        })
+    }
+
+    /// Empty a cell: its key is removed.
+    pub fn clear_cell(&self, db: &str, row: &str, column: &str) -> Result<()> {
+        self.update_json(&self.row_path(db, row), |r| {
+            if let Some(cells) = r.get_mut("cells").and_then(Value::as_object_mut) {
+                cells.remove(column);
+            }
         })
     }
 

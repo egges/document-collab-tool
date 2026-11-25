@@ -1,21 +1,27 @@
 // Developer panel: the live log of everything the app did, with filters and
-// a Copy button for bug reports. In debug builds (or with DOCSYNC_DEV=1),
-// or when turned on in Settings; toggle with ⌘J / Ctrl+J.
+// a Copy button for bug reports, and the workspace's databases to view and
+// edit (DatabasesPanel.tsx). In debug builds (or with DOCSYNC_DEV=1), or
+// when turned on in Settings; toggle with ⌘J / Ctrl+J.
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { Check, Copy, Maximize2, Minimize2, Trash2, X } from "lucide-react";
 import { type DevInfo, type LogEntry, type LogLevel, devApi, events } from "./api.ts";
+import { DatabasesPanel } from "./DatabasesPanel.tsx";
 import { devLog } from "./preferences.ts";
 import { tip, useShortcuts } from "./shortcuts.ts";
 import { WINDOW_MOVE_ONLY } from "./windowChrome.ts";
 
-/** Whether the panel is available, and its open and size state. Shortcuts are in App. */
+/** The panel's sections. */
+export type DevTab = "log" | "databases";
+
+/** Whether the panel is available, and its open, size and section state. Shortcuts are in App. */
 export function useDevPanel() {
   const [builtIn, setBuiltIn] = useState(false);
   const turnedOn = devLog.use() === "on";
   const enabled = builtIn || turnedOn;
   const [open, setOpen] = useState(false);
   const [maximized, setMaximized] = useState(false);
+  const [tab, setTab] = useState<DevTab>("log");
   useEffect(() => {
     devApi
       .info()
@@ -31,6 +37,8 @@ export function useDevPanel() {
     builtIn,
     open,
     maximized,
+    tab,
+    setTab,
     toggle: () => setOpen((o) => !o),
     /** Fill the window or not; opens the panel if it's closed. */
     toggleSize: () => {
@@ -125,12 +133,21 @@ async function copyText(text: string) {
   }
 }
 
+const TABS: { tab: DevTab; label: string }[] = [
+  { tab: "log", label: "Log" },
+  { tab: "databases", label: "Databases" },
+];
+
 export function DevPanel({
   maximized,
+  tab,
+  onTab,
   onToggleSize,
   onClose,
 }: {
   maximized: boolean;
+  tab: DevTab;
+  onTab: (tab: DevTab) => void;
   onToggleSize: () => void;
   onClose: () => void;
 }) {
@@ -191,10 +208,14 @@ export function DevPanel({
     setTimeout(() => setCopied(false), 1500);
   };
 
-  useShortcuts({
-    copyLog: () => void copy(),
-    filterLog: () => filter.current?.focus(),
-  });
+  useShortcuts(
+    tab === "log"
+      ? {
+          copyLog: () => void copy(),
+          filterLog: () => filter.current?.focus(),
+        }
+      : {},
+  );
 
   const startResize = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -214,7 +235,7 @@ export function DevPanel({
     <section
       className={"dev-panel" + (maximized ? " maximized" : "")}
       style={maximized ? undefined : { height }}
-      aria-label="Developer log"
+      aria-label="Developer panel"
     >
       {!maximized && <div className="dev-resize" onMouseDown={startResize} />}
       <header
@@ -225,62 +246,80 @@ export function DevPanel({
           if (e.target === e.currentTarget) onToggleSize();
         }}
       >
-        <strong>Developer log</strong>
-        <div className="dev-chips">
-          {sources.map((source) => (
+        <div className="dev-tabs" role="tablist" aria-label="Developer panel">
+          {TABS.map((t) => (
             <button
-              key={source}
-              className={`dev-chip source-${sourceClass(source)}` + (hidden.has(source) ? "" : " on")}
-              onClick={() => setHidden(toggle(hidden, source))}
+              key={t.tab}
+              role="tab"
+              aria-selected={tab === t.tab}
+              className={"dev-tab" + (tab === t.tab ? " selected" : "")}
+              onClick={() => onTab(t.tab)}
             >
-              {source}
-            </button>
-          ))}
-          <span className="dev-sep" />
-          {LEVELS.map((level) => (
-            <button
-              key={level}
-              className={`dev-chip level-${level}` + (levels.has(level) ? " on" : "")}
-              onClick={() => setLevels(toggle(levels, level))}
-            >
-              {level}
+              {t.label}
             </button>
           ))}
         </div>
-        <input
-          ref={filter}
-          className="input dev-search"
-          title={tip("Filter", "filterLog")}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") {
-              setQuery("");
-              e.currentTarget.blur();
-            }
-          }}
-          placeholder="Filter"
-          value={query}
-          onChange={(e) => setQuery(e.target.value)}
-          spellCheck={false}
-        />
-        <button
-          className={"icon-button" + (copied ? " done" : "")}
-          aria-label="Copy log"
-          title={tip("Copy the whole log, with app and workspace details", "copyLog")}
-          onClick={() => void copy()}
-        >
-          {copied ? <Check size={15} /> : <Copy size={15} />}
-        </button>
-        <button
-          className="icon-button"
-          aria-label="Clear log"
-          title="Clear the log"
-          onClick={() => {
-            void devApi.clear();
-            setEntries([]);
-          }}
-        >
-          <Trash2 size={15} />
-        </button>
+        {tab === "log" ? (
+          <>
+            <div className="dev-chips">
+              {sources.map((source) => (
+                <button
+                  key={source}
+                  className={`dev-chip source-${sourceClass(source)}` + (hidden.has(source) ? "" : " on")}
+                  onClick={() => setHidden(toggle(hidden, source))}
+                >
+                  {source}
+                </button>
+              ))}
+              <span className="dev-sep" />
+              {LEVELS.map((level) => (
+                <button
+                  key={level}
+                  className={`dev-chip level-${level}` + (levels.has(level) ? " on" : "")}
+                  onClick={() => setLevels(toggle(levels, level))}
+                >
+                  {level}
+                </button>
+              ))}
+            </div>
+            <input
+              ref={filter}
+              className="input dev-search"
+              title={tip("Filter", "filterLog")}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setQuery("");
+                  e.currentTarget.blur();
+                }
+              }}
+              placeholder="Filter"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              spellCheck={false}
+            />
+            <button
+              className={"icon-button" + (copied ? " done" : "")}
+              aria-label="Copy log"
+              title={tip("Copy the whole log, with app and workspace details", "copyLog")}
+              onClick={() => void copy()}
+            >
+              {copied ? <Check size={15} /> : <Copy size={15} />}
+            </button>
+            <button
+              className="icon-button"
+              aria-label="Clear log"
+              title="Clear the log"
+              onClick={() => {
+                void devApi.clear();
+                setEntries([]);
+              }}
+            >
+              <Trash2 size={15} />
+            </button>
+          </>
+        ) : (
+          <span className="spacer" />
+        )}
         <button
           className="icon-button"
           aria-label={maximized ? "Restore size" : "Fill the window"}
@@ -293,8 +332,10 @@ export function DevPanel({
           <X size={16} />
         </button>
       </header>
+      {tab === "databases" && <DatabasesPanel />}
       <div
         className="dev-list"
+        hidden={tab !== "log"}
         ref={list}
         onScroll={(e) => {
           const el = e.currentTarget;

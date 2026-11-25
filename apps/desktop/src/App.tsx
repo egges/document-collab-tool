@@ -332,7 +332,15 @@ function WorkspaceView({
         </div>
       </main>
       <SidebarToggle hidden={sidebar.hidden} onToggle={sidebar.toggle} />
-      {dev.open && <DevPanel maximized={dev.maximized} onToggleSize={dev.toggleSize} onClose={dev.toggle} />}
+      {dev.open && (
+        <DevPanel
+          maximized={dev.maximized}
+          tab={dev.tab}
+          onTab={dev.setTab}
+          onToggleSize={dev.toggleSize}
+          onClose={dev.toggle}
+        />
+      )}
       {dialog === "search" && <Search pages={pages} onAction={runSearch} onClose={() => setDialog(null)} />}
       {dialog === "shortcuts" && <ShortcutsHelp devPanel={dev.enabled} onClose={() => setDialog(null)} />}
       {dialog === "settings" && (

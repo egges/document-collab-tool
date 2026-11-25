@@ -1974,6 +1974,540 @@ button.workspace-name[aria-expanded="true"] {
   padding: 8px 10px;
 }
 
+.dev-tabs {
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 7px;
+  background: var(--hover);
+}
+
+.dev-tab {
+  border: 0;
+  background: none;
+  border-radius: 5px;
+  padding: 2px 10px;
+  font-weight: 600;
+  color: var(--muted);
+  cursor: pointer;
+}
+
+.dev-tab.selected {
+  background: var(--bg);
+  color: var(--text);
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+}
+
+/* ---- developer panel: databases ------------------------------------------- */
+
+.db-panel {
+  --tone-1: #e8e6e1;
+  --tone-1-text: #4d4b46;
+  --tone-2: #fde2cc;
+  --tone-2-text: #8a3e0a;
+  --tone-3: #fbf0bd;
+  --tone-3-text: #6f5400;
+  --tone-4: #d7f0dd;
+  --tone-4-text: #17652f;
+  --tone-5: #dbe7fd;
+  --tone-5-text: #1d4ab8;
+  --tone-6: #ece2fb;
+  --tone-6-text: #6233b5;
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: 200px 1fr;
+  font-size: 13px;
+}
+
+:root[data-theme="dark"] .db-panel {
+  --tone-1: #36363c;
+  --tone-1-text: #d3d2d9;
+  --tone-2: #4a2c17;
+  --tone-2-text: #f6b98a;
+  --tone-3: #453b12;
+  --tone-3-text: #ecd37a;
+  --tone-4: #1d3a26;
+  --tone-4-text: #86dea0;
+  --tone-5: #1f2f50;
+  --tone-5-text: #9dbdff;
+  --tone-6: #33264f;
+  --tone-6-text: #c9aefa;
+}
+
+.db-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  padding: 6px;
+  border-right: 1px solid var(--border);
+  background: var(--sidebar-bg);
+  overflow-y: auto;
+}
+
+.db-list-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0 4px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.db-list-item {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 28px;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 6px;
+  background: none;
+  text-align: left;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.db-list-item svg {
+  flex: none;
+  color: var(--muted);
+}
+
+.db-list-item:hover {
+  background: var(--hover);
+}
+
+.db-list-item.selected {
+  background: var(--selected);
+}
+
+.db-list-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.db-list-count {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.db-list-empty {
+  padding: 4px 6px;
+  margin: 0;
+}
+
+.db-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.db-error {
+  padding: 6px 12px;
+}
+
+.db-header-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px 4px 16px;
+}
+
+.db-name {
+  flex: 0 1 320px;
+  min-width: 80px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  padding: 2px 6px;
+  margin-left: -7px;
+  font-size: 17px;
+  font-weight: 650;
+  color: var(--text);
+}
+
+.db-name:hover {
+  background: var(--hover);
+}
+
+.db-name:focus {
+  background: var(--bg);
+  border-color: var(--border);
+  outline: none;
+}
+
+.db-facts {
+  flex: 1;
+  min-width: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 12px;
+}
+
+.db-copy {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 12px;
+}
+
+.db-scroll {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 4px 16px 16px;
+}
+
+.db-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 16px;
+}
+
+.db-empty p {
+  margin: 0;
+}
+
+.db-table-wrap {
+  width: max-content;
+  min-width: 100%;
+}
+
+.db-table {
+  border-collapse: collapse;
+  table-layout: fixed;
+}
+
+.db-table th,
+.db-table td {
+  border: 1px solid var(--border);
+  padding: 0;
+  height: 32px;
+  vertical-align: middle;
+}
+
+.db-table tr > :first-child {
+  border-left: 0;
+}
+
+.db-table thead th {
+  border-top: 0;
+}
+
+.db-header,
+.db-cell {
+  width: 180px;
+  min-width: 180px;
+  max-width: 180px;
+}
+
+.db-header.type-checkbox,
+.db-cell.type-checkbox {
+  width: 96px;
+  min-width: 96px;
+  max-width: 96px;
+}
+
+.db-header.type-number,
+.db-cell.type-number,
+.db-header.type-date,
+.db-cell.type-date {
+  width: 140px;
+  min-width: 140px;
+  max-width: 140px;
+}
+
+.db-header-button {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 32px;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  color: var(--muted);
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+
+.db-header-button:hover,
+.db-header-button[aria-expanded="true"] {
+  background: var(--hover);
+}
+
+.db-type-icon {
+  display: inline-flex;
+  flex: none;
+}
+
+.db-header-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.db-gutter {
+  width: 44px;
+  min-width: 44px;
+  text-align: center;
+  border-left: 0 !important;
+}
+
+.db-row-number {
+  font-size: 11px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.db-row-delete {
+  display: none;
+  margin: 0 auto;
+}
+
+.db-table tr:hover .db-row-delete,
+.db-row-delete:focus-visible {
+  display: inline-flex;
+}
+
+.db-table tr:hover .db-row-number:has(+ .db-row-delete),
+.db-table tr:has(.db-row-delete:focus-visible) .db-row-number {
+  display: none;
+}
+
+.db-add-column {
+  width: 40px;
+  min-width: 40px;
+  border-right: 0 !important;
+}
+
+.db-add-column .icon-button {
+  margin: 0 auto;
+  display: flex;
+}
+
+.db-filler {
+  border-right: 0 !important;
+}
+
+.db-table tbody tr:hover > td:not(.db-filler) {
+  background: color-mix(in srgb, var(--hover) 45%, transparent);
+}
+
+.db-cell-input {
+  width: 100%;
+  height: 31px;
+  padding: 0 8px;
+  border: 0;
+  background: none;
+  color: var(--text);
+  font: inherit;
+}
+
+.db-cell-input:focus {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+  background: var(--bg);
+}
+
+.db-cell.type-number .db-cell-input {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.db-cell.type-url .db-cell-input {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  padding-right: 28px;
+}
+
+.db-cell.type-url .db-cell-input:focus {
+  color: var(--text);
+  text-decoration: none;
+}
+
+.db-mismatch {
+  color: var(--muted) !important;
+  font-style: italic;
+}
+
+.db-text-cell {
+  position: relative;
+}
+
+.db-open-link {
+  position: absolute;
+  right: 3px;
+  top: 3px;
+  display: none;
+}
+
+.db-cell:hover .db-open-link {
+  display: inline-flex;
+}
+
+.db-checkbox {
+  display: block;
+  width: 16px;
+  height: 16px;
+  margin: 0 auto;
+  padding: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.db-select {
+  appearance: none;
+  cursor: pointer;
+}
+
+/* A chosen value shows as a coloured pill inside the cell. */
+.db-select.db-pill {
+  width: auto;
+  max-width: calc(100% - 12px);
+  height: 22px;
+  margin: 0 6px;
+  border-radius: 4px;
+}
+
+.db-date {
+  font-variant-numeric: tabular-nums;
+}
+
+.db-date::-webkit-calendar-picker-indicator {
+  opacity: 0.4;
+  cursor: pointer;
+}
+
+.db-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 0 6px;
+  border-radius: 4px;
+  line-height: 20px;
+  background: var(--tone-1);
+  color: var(--tone-1-text);
+}
+
+.db-pill.tone-2 { background: var(--tone-2); color: var(--tone-2-text); }
+.db-pill.tone-3 { background: var(--tone-3); color: var(--tone-3-text); }
+.db-pill.tone-4 { background: var(--tone-4); color: var(--tone-4-text); }
+.db-pill.tone-5 { background: var(--tone-5); color: var(--tone-5-text); }
+.db-pill.tone-6 { background: var(--tone-6); color: var(--tone-6-text); }
+
+.db-pill-remove {
+  display: inline-flex;
+  border: 0;
+  padding: 1px;
+  border-radius: 3px;
+  background: none;
+  color: inherit;
+  opacity: 0.6;
+  cursor: pointer;
+}
+
+.db-pill-remove:hover {
+  opacity: 1;
+  background: rgb(0 0 0 / 0.08);
+}
+
+.db-add-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  height: 32px;
+  padding: 0 12px;
+  border: 0;
+  border-bottom: 1px solid var(--border);
+  background: none;
+  color: var(--muted);
+  text-align: left;
+  cursor: pointer;
+}
+
+.db-add-row:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+
+.db-sort-note {
+  margin: 8px 0 0;
+  font-size: 12px;
+}
+
+.db-column-menu {
+  position: fixed;
+  z-index: 40;
+  width: 240px;
+  font-size: 13px;
+  font-weight: 400;
+  text-align: left;
+}
+
+.db-column-name {
+  flex: none;
+  margin: 2px 2px 6px;
+}
+
+.db-menu-title {
+  padding: 6px 8px 2px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--muted);
+}
+
+.db-column-menu .menu-item.selected {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.db-column-menu .menu-item.selected .menu-check {
+  color: var(--accent);
+}
+
+.db-column-menu .menu-item.danger:hover:not(:disabled) {
+  color: var(--error);
+}
+
+.db-column-menu .menu-item.danger:hover:not(:disabled) .menu-check {
+  color: var(--error);
+}
+
+.db-column-menu .menu-item:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.db-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 4px 6px 2px;
+}
+
+.db-choice-input {
+  flex: 1 0 100%;
+  padding: 3px 6px;
+  font-size: 12px;
+}
+
 /* ---- dialogs: search, shortcuts --------------------------------------- */
 
 .overlay {

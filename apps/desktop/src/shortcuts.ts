@@ -18,8 +18,8 @@ export const SHORTCUTS = {
   zoomIn: { keys: "mod+plus", label: "Zoom in" },
   zoomOut: { keys: "mod+minus", label: "Zoom out" },
   resetZoom: { keys: "mod+0", label: "Actual size" },
-  toggleDevPanel: { keys: "mod+j", label: "Developer log" },
-  toggleDevPanelSize: { keys: "mod+shift+j", label: "Developer log: fill the window" },
+  toggleDevPanel: { keys: "mod+j", label: "Developer panel" },
+  toggleDevPanelSize: { keys: "mod+shift+j", label: "Developer panel: fill the window" },
   copyLog: { keys: "mod+shift+c", label: "Developer log: copy" },
   filterLog: { keys: "mod+f", label: "Developer log: filter" },
 } as const;

@@ -6,6 +6,7 @@ use std::fs;
 use std::time::{Duration, SystemTime};
 
 use common::{Crash, Net, Op, assert_converged, assert_valid, settle};
+use docsync::database::{ColumnChange, ColumnType};
 use docsync::text_merge::{BLOCK_END, BLOCK_START};
 use docsync::{Resolution, Workspace};
 use serde_json::json;
@@ -403,6 +404,45 @@ fn deleting_a_database_while_a_row_is_added_elsewhere_restores_the_database() {
         "schema must come back with the new row"
     );
     assert!(a.ws.row_exists(&db, &r1) && a.ws.row_exists(&db, &r2));
+}
+
+#[test]
+fn column_changes_on_different_devices_merge() {
+    let net = Net::new();
+    let a = net.device("a");
+    let db = a.ws.create_database("Tasks", &["name", "status"]).unwrap();
+    a.sync();
+    let b = net.device("b");
+    let due = a.ws.add_column(&db, "Due", ColumnType::Date).unwrap();
+    let owner = b.ws.add_column(&db, "Owner", ColumnType::Text).unwrap();
+    b.ws.update_column(
+        &db,
+        "status",
+        &ColumnChange {
+            name: Some("Status".into()),
+            kind: Some(ColumnType::Select),
+            options: Some(vec!["Todo".into(), "Done".into()]),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    a.ws.update_column(
+        &db,
+        "name",
+        &ColumnChange {
+            name: Some("Title".into()),
+            ..Default::default()
+        },
+    )
+    .unwrap();
+    a.sync();
+    assert!(b.sync().conflicts.is_empty());
+    settle(&[&a, &b]);
+    let schema = a.ws.read_schema(&db).unwrap();
+    let names: Vec<&str> = schema.columns.iter().map(|c| c.name.as_str()).collect();
+    assert_eq!(names[..2], ["Title", "Status"]);
+    assert_eq!(schema.column("status").unwrap().kind, ColumnType::Select);
+    assert!(schema.column(&due).is_some() && schema.column(&owner).is_some());
 }
 
 #[test]

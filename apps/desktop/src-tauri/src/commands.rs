@@ -21,7 +21,7 @@ use crate::tree::{self, PageSummary};
 use crate::worker::{Events, SyncState, SyncStatus};
 use crate::workspaces::{self, AppSettings, WorkspaceEntry};
 
-type CmdResult<T> = Result<T, String>;
+pub(crate) type CmdResult<T> = Result<T, String>;
 
 #[derive(Default)]
 pub struct AppState {
@@ -48,7 +48,7 @@ impl AppState {
 
     /// The engine and a way to tell the worker about edits, without holding
     /// the lock while git runs.
-    fn engine(&self) -> CmdResult<(Arc<SyncEngine>, impl Fn() + Send + 'static)> {
+    pub(crate) fn engine(&self) -> CmdResult<(Arc<SyncEngine>, impl Fn() + Send + 'static)> {
         let guard = self.session.lock().unwrap();
         let session = guard.as_ref().ok_or("No workspace is open")?;
         let engine = session.engine.clone();
@@ -79,7 +79,7 @@ impl Events for WindowEvents {
 }
 
 /// Run `f` on a blocking thread; a failure goes to the developer log too.
-async fn blocking<T: Send + 'static>(
+pub(crate) async fn blocking<T: Send + 'static>(
     command: &'static str,
     f: impl FnOnce() -> CmdResult<T> + Send + 'static,
 ) -> CmdResult<T> {
@@ -93,7 +93,7 @@ async fn blocking<T: Send + 'static>(
     result
 }
 
-fn text<E: ToString>(e: E) -> String {
+pub(crate) fn text<E: ToString>(e: E) -> String {
     e.to_string()
 }
 

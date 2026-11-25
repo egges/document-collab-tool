@@ -100,8 +100,8 @@ export function Sidebar(props: SidebarProps) {
             {props.onOpenDevPanel && (
               <button
                 className="icon-button"
-                title={tip("Developer log", "toggleDevPanel")}
-                aria-label="Developer log"
+                title={tip("Developer panel", "toggleDevPanel")}
+                aria-label="Developer panel"
                 onClick={props.onOpenDevPanel}
               >
                 <SquareTerminal size={15} />

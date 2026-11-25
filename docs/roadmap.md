@@ -129,7 +129,23 @@ chat in step 8. The app is for our own team until step 10.
       the remote this device syncs with.
 - [x] **Pages.** A page tree, a page view with the editor, and conflict blocks
       shown above the page with "keep this version".
-- [ ] **Databases.** A database table view.
+- [ ] **Databases.** A database table view. Done so far: typed columns
+      (text, number, select, checkbox, date, URL) that merge column by
+      column (`docsync::database`), and a table view in the developer
+      panel's Databases tab to create, view and edit databases
+      (`apps/desktop/src/TableView.tsx`). Still to come: table pages (next
+      item) and rows as pages.
+- [ ] **Table pages.** Besides a regular page, "New table page" makes a
+      page that shows a table view of a database: the user picks an
+      existing database or creates a new one right there. The page sits in
+      the page tree like any other and shows the same table as the
+      developer panel's Databases tab (`TableView`), with columns, types,
+      choices, sorting and editing in place. The developer view keeps
+      growing apart with developer-only tools (ids, files, raw JSON); the
+      page shows only what everyone needs. Which database a page shows is
+      stored in its `meta.json`, so it syncs with the page. To decide:
+      whether the sort a person picks is kept on the page for everyone,
+      and what the page shows when its database is deleted elsewhere.
 - [ ] **Conflict markers in the editor.** They show as labelled lines; a
       proper block with each version's device name would be clearer.
 - [x] **Bundled Git.** The app ships with Git for macOS, Windows and Linux
