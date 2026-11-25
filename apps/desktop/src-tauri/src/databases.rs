@@ -23,13 +23,13 @@ pub struct DatabaseSummary {
 
 #[derive(Debug, Serialize)]
 pub struct ColumnInfo {
-    id: String,
-    name: String,
+    pub(crate) id: String,
+    pub(crate) name: String,
     #[serde(rename = "type")]
-    kind: &'static str,
+    pub(crate) kind: &'static str,
     /// Sort key for the column order, for moving a column between two others.
-    position: Option<f64>,
-    options: Vec<String>,
+    pub(crate) position: Option<f64>,
+    pub(crate) options: Vec<String>,
 }
 
 #[derive(Debug, Serialize)]
@@ -51,8 +51,11 @@ pub struct Database {
 }
 
 fn column_info(schema: &Schema) -> Vec<ColumnInfo> {
-    schema
-        .columns
+    columns_info(&schema.columns)
+}
+
+pub(crate) fn columns_info(columns: &[docsync::database::Column]) -> Vec<ColumnInfo> {
+    columns
         .iter()
         .map(|c| ColumnInfo {
             id: c.id.clone(),
@@ -108,7 +111,7 @@ fn read(ws: &Workspace, id: &str) -> CmdResult<Database> {
     })
 }
 
-fn name_of(name: &str, what: &str) -> CmdResult<String> {
+pub(crate) fn name_of(name: &str, what: &str) -> CmdResult<String> {
     let name = name.trim();
     if name.is_empty() {
         return Err(format!("A {what} needs a name."));
@@ -116,12 +119,12 @@ fn name_of(name: &str, what: &str) -> CmdResult<String> {
     Ok(name.to_string())
 }
 
-fn column_type(name: &str) -> CmdResult<ColumnType> {
+pub(crate) fn column_type(name: &str) -> CmdResult<ColumnType> {
     ColumnType::parse(name).ok_or_else(|| format!("“{name}” isn't a column type."))
 }
 
 /// Trimmed, without empty or repeated choices, in the order given.
-fn clean_options(options: Vec<String>) -> Vec<String> {
+pub(crate) fn clean_options(options: Vec<String>) -> Vec<String> {
     let mut clean: Vec<String> = Vec::new();
     for option in options {
         let option = option.trim();
@@ -133,7 +136,7 @@ fn clean_options(options: Vec<String>) -> Vec<String> {
 }
 
 /// A new database, with one text column called "Name".
-fn create(ws: &Workspace, name: &str) -> CmdResult<String> {
+pub(crate) fn create(ws: &Workspace, name: &str) -> CmdResult<String> {
     let name = name_of(name, "database")?;
     let id = docsync::workspace::new_id();
     ws.create_database_with_id(&id, &name, &[]).map_err(text)?;
@@ -143,7 +146,13 @@ fn create(ws: &Workspace, name: &str) -> CmdResult<String> {
 
 /// Set a cell, or empty it with `None` (or an empty string). A select
 /// value that isn't a choice yet becomes one.
-fn write_cell(ws: &Workspace, db: &str, row: &str, column: &str, value: Option<Value>) -> CmdResult<()> {
+pub(crate) fn write_cell(
+    ws: &Workspace,
+    db: &str,
+    row: &str,
+    column: &str,
+    value: Option<Value>,
+) -> CmdResult<()> {
     if !ws.row_exists(db, row) {
         return Err("This row no longer exists.".into());
     }

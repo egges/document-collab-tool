@@ -131,21 +131,37 @@ chat in step 8. The app is for our own team until step 10.
       shown above the page with "keep this version".
 - [ ] **Databases.** A database table view. Done so far: typed columns
       (text, number, select, checkbox, date, URL) that merge column by
-      column (`docsync::database`), and a table view in the developer
+      column (`docsync::database`), a table view in the developer
       panel's Databases tab to create, view and edit databases
-      (`apps/desktop/src/TableView.tsx`). Still to come: table pages (next
-      item) and rows as pages.
-- [ ] **Table pages.** Besides a regular page, "New table page" makes a
-      page that shows a table view of a database: the user picks an
-      existing database or creates a new one right there. The page sits in
-      the page tree like any other and shows the same table as the
-      developer panel's Databases tab (`TableView`), with columns, types,
-      choices, sorting and editing in place. The developer view keeps
-      growing apart with developer-only tools (ids, files, raw JSON); the
-      page shows only what everyone needs. Which database a page shows is
-      stored in its `meta.json`, so it syncs with the page. To decide:
-      whether the sort a person picks is kept on the page for everyone,
-      and what the page shows when its database is deleted elsewhere.
+      (`apps/desktop/src/TableView.tsx`), database pages (next item), and
+      rows as pages (the item after).
+- [x] **Database pages.** "New database" in the sidebar makes a page that
+      shows a database, like a full-page database in Notion. In a workspace
+      without databases it gets a new one at once; otherwise the page asks
+      for a new one or an existing one. The page has views as tabs, each a
+      **table** (`TableView`) or a **board** (`BoardView`: a lane per choice
+      of a select or checkbox column, a card per row; drag a card to
+      another lane, click it to edit every field). Views, with their sort
+      and grouping, are kept in the page's `meta.json`
+      (`docsync::database_page`), so they sync and everyone sees the same;
+      which tab is open is per device. Decided: the sort belongs to the
+      view, for everyone, as in Notion. A page whose database was deleted
+      elsewhere says so and offers to show a new or existing one. Deleting
+      a database page deletes its database too, unless another page shows
+      it. Still to come: reordering cards within a lane, filters, and more
+      view types (list, calendar).
+- [x] **Rows as pages, and properties on every page.** Every row of a
+      database is a page, as in Notion: open it from the table (the button
+      by its row number) or by clicking its card on a board. Its title is
+      the first text column, its other columns show as properties under the
+      title, and it has text like any page (`rows/<row>.md` next to its row
+      file). Any page can have typed properties too ("Add a property" under
+      the title; `property_schema` in its `meta.json`). On a row, a property
+      is the database's column, so adding or deleting one does it for every
+      row (deleting asks first). Rows don't show in the sidebar; they're
+      found by search and sit under their database page in the breadcrumb.
+      Still to come: choosing which column is the title, a side peek
+      instead of opening the row in full, and images in a row's text.
 - [ ] **Conflict markers in the editor.** They show as labelled lines; a
       proper block with each version's device name would be clearer.
 - [x] **Bundled Git.** The app ships with Git for macOS, Windows and Linux

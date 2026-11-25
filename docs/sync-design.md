@@ -18,6 +18,7 @@ pages/<page-id>/page.md             page body (Markdown)
 pages/<page-id>/assets/...          attachments
 databases/<db-id>/schema.json       {"id", "name", "columns": {"<col-id>": {"name", "type", "position", "options"}}}
 databases/<db-id>/rows/<row>.json   {"id", "position", "cells": {"<col-id>": value}}
+databases/<db-id>/rows/<row>.md     the row's text: every row is a page too
 .docsync/                           per-device state (search index, caches), git-ignored
 ```
 
@@ -44,6 +45,22 @@ its cells in the rows, ignored. Types are `text`, `number`, `checkbox`,
 has no key. Reading is lenient: an unknown type reads as text, and the first
 format (`"columns": ["name", ...]`) still reads and is rewritten on the next
 column change (`docsync::database`).
+
+Every database row is a page too, as in Notion: its title is its first
+text column, its other cells are its properties, and its text is
+`rows/<row>.md`, next to its row file. Rows stay in their database's folder,
+so the database is still one entity: deleting it on one device while a row
+is written on another restores the whole database. Any page can have typed
+properties too: `meta.json` keeps their values in `properties` and their
+types in `property_schema`, in the format of a database's `columns`. A
+value without a type (front matter, an agent) reads as a text property
+named by its key.
+
+A database page is a page whose `meta.json` has a `database` field:
+`{"id": "<db-id>", "views": {"<view-id>": {"name", "type", "position",
+"sort", "groupBy"}}}`. Views are keyed by id like columns, so two devices
+changing different views, or different settings of one view, merge
+cleanly (`docsync::database_page`).
 
 Metadata lives in `meta.json`, never in YAML front matter at the top of
 `page.md`, since the editor can't show it. Front matter written by another

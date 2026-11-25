@@ -416,7 +416,8 @@ impl SyncEngine {
     pub fn write_page_body(&self, id: &str, base: &str, body: &str) -> Result<PageWrite> {
         let _lock = self.lock()?;
         let workspace = Workspace::new(&self.root);
-        if !workspace.page_exists(id) {
+        // A database row is a page too, with its body next to its row file.
+        if !workspace.has_body(id) {
             return Ok(PageWrite::PageGone);
         }
         let on_disk = match workspace.read_body(id) {
@@ -443,7 +444,7 @@ impl SyncEngine {
         let merged =
             text_merge::rewrite_conflicts(&merge.content, &self.config.device_name, OTHER_CHANGES_LABEL);
         let merged = String::from_utf8(merged).map_err(|e| Error::InvalidData {
-            path: format!("{}/{id}/{}", layout::PAGES_DIR, layout::PAGE_BODY),
+            path: format!("body of page {id}"),
             message: format!("merged page is not UTF-8: {e}"),
         })?;
         workspace.write_body(id, &merged)?;

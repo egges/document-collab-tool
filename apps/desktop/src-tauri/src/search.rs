@@ -30,8 +30,16 @@ pub fn search_text(ws: &Workspace, query: &str, limit: usize) -> docsync::Result
     }
     let needle: Vec<char> = query.chars().flat_map(char::to_lowercase).collect();
     let mut out = Vec::new();
-    for id in ws.list_pages()? {
+    // Rows are pages too; only those with a body have text to find.
+    let mut ids = ws.list_pages()?;
+    for db in ws.list_databases()? {
+        ids.extend(ws.list_rows(&db)?);
+    }
+    for id in ids {
         let Ok(body) = ws.read_body(&id) else { continue };
+        if body.is_empty() {
+            continue;
+        }
         if let Some(found) = match_in(&body, &needle) {
             out.push(TextMatch { page: id, ..found });
             if out.len() == limit {

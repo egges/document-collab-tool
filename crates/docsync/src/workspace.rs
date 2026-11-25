@@ -9,6 +9,7 @@ use rand::Rng;
 use serde_json::{Map, Value, json};
 
 use crate::database::{Column, ColumnChange, ColumnType, Row, Schema, sort_rows};
+use crate::database_page::{DatabasePage, View, ViewType};
 use crate::error::IoContext;
 use crate::layout::{self, DATABASE_ROWS, DATABASE_SCHEMA, DATABASES_DIR, PAGE_BODY, PAGE_META, PAGES_DIR};
 use crate::{Error, Result, front_matter, json_merge};
@@ -119,6 +120,11 @@ impl Workspace {
         self.page_dir(id).join(PAGE_META).is_file()
     }
 
+    /// Whether `id` is a page or a database row: both have a body.
+    pub fn has_body(&self, id: &str) -> bool {
+        self.page_exists(id) || self.find_row(id).is_some()
+    }
+
     pub fn list_pages(&self) -> Result<Vec<String>> {
         list_ids(&self.root.join(PAGES_DIR), Some(PAGE_META))
     }
@@ -141,19 +147,78 @@ impl Workspace {
 
     pub fn set_page_property(&self, id: &str, key: &str, value: Value) -> Result<()> {
         self.update_json(&self.page_dir(id).join(PAGE_META), |meta| {
-            let props = meta.entry("properties").or_insert_with(|| json!({}));
-            if !props.is_object() {
-                *props = json!({});
+            object_field(meta, "properties").insert(key.into(), value);
+        })
+    }
+
+    /// Empty a page's property: its value is removed, its type stays.
+    pub fn clear_page_property(&self, id: &str, key: &str) -> Result<()> {
+        self.update_json(&self.page_dir(id).join(PAGE_META), |meta| {
+            object_field(meta, "properties").remove(key);
+        })
+    }
+
+    /// A page's properties as columns, in order, and their values. A value
+    /// without a type (front matter, an agent, a hand edit) reads as a text
+    /// property named by its key, so nothing is hidden.
+    pub fn page_properties(&self, id: &str) -> Result<(Vec<Column>, Map<String, Value>)> {
+        let meta = self.read_page_meta(id)?;
+        Ok(page_properties_from(&meta))
+    }
+
+    /// Add a typed property to a page; returns its key.
+    pub fn add_page_property(&self, id: &str, name: &str, kind: ColumnType) -> Result<String> {
+        let key = new_id();
+        let (columns, _) = self.page_properties(id)?;
+        let column = Column {
+            id: key.clone(),
+            name: name.to_string(),
+            kind,
+            position: Some(crate::database::next_position(&columns)),
+            options: Vec::new(),
+        };
+        self.update_json(&self.page_dir(id).join(PAGE_META), |meta| {
+            object_field(meta, PROPERTY_SCHEMA).insert(key.clone(), column.to_json());
+        })?;
+        Ok(key)
+    }
+
+    /// Rename, retype, move or change the choices of a page's property. A
+    /// property without a type yet gets one.
+    pub fn update_page_property(&self, id: &str, key: &str, change: &ColumnChange) -> Result<()> {
+        let path = self.page_dir(id).join(PAGE_META);
+        let (columns, _) = self.page_properties(id)?;
+        let mut column = columns
+            .into_iter()
+            .find(|c| c.id == key)
+            .ok_or_else(|| Error::InvalidData {
+                path: path.display().to_string(),
+                message: format!("no property {key}"),
+            })?;
+        change.apply(&mut column);
+        self.update_json(&path, |meta| {
+            object_field(meta, PROPERTY_SCHEMA).insert(key.to_string(), column.to_json());
+        })
+    }
+
+    /// Remove a page's property, with its value: unlike a database column,
+    /// it's in one file, so nothing else is rewritten.
+    pub fn remove_page_property(&self, id: &str, key: &str) -> Result<()> {
+        self.update_json(&self.page_dir(id).join(PAGE_META), |meta| {
+            object_field(meta, PROPERTY_SCHEMA).remove(key);
+            object_field(meta, "properties").remove(key);
+            if meta[PROPERTY_SCHEMA].as_object().is_some_and(Map::is_empty) {
+                meta.remove(PROPERTY_SCHEMA);
             }
-            props.as_object_mut().expect("object").insert(key.into(), value);
         })
     }
 
     /// How the page is shown (`"width"`, `"textSize"`, ...), in the
     /// `display` field of its meta.json. `None` removes the option, which
     /// means the default. Options merge one by one, like properties.
+    /// A database row is a page too, and keeps its display options in its row file.
     pub fn set_page_display(&self, id: &str, key: &str, value: Option<Value>) -> Result<()> {
-        self.update_json(&self.page_dir(id).join(PAGE_META), |meta| {
+        self.update_json(&self.meta_path(id), |meta| {
             let display = meta.entry("display").or_insert_with(|| json!({}));
             if !display.is_object() {
                 *display = json!({});
@@ -169,13 +234,23 @@ impl Workspace {
         })
     }
 
+    /// The body of a page, or of a database row (empty until written).
     pub fn read_body(&self, id: &str) -> Result<String> {
-        let path = self.page_dir(id).join(PAGE_BODY);
-        fs::read_to_string(&path).at(&path)
+        let path = self.body_path(id);
+        match fs::read_to_string(&path) {
+            Err(e)
+                if e.kind() == std::io::ErrorKind::NotFound
+                    && !self.page_exists(id)
+                    && self.find_row(id).is_some() =>
+            {
+                Ok(String::new())
+            }
+            read => read.at(&path),
+        }
     }
 
     pub fn write_body(&self, id: &str, body: &str) -> Result<()> {
-        self.write_file(&self.page_dir(id).join(PAGE_BODY), body.as_bytes())
+        self.write_file(&self.body_path(id), body.as_bytes())
     }
 
     /// Move YAML front matter at the top of the page's body into its
@@ -187,6 +262,10 @@ impl Workspace {
     /// meta.json is written first: if the process stops in between, the
     /// front matter is still in the body and is moved again next time.
     pub fn lift_front_matter(&self, id: &str) -> Result<bool> {
+        if !self.page_exists(id) {
+            // A database row: its properties are typed cells, not front matter.
+            return Ok(false);
+        }
         let body = match self.read_body(id) {
             Ok(body) => body,
             Err(Error::Io { source, .. }) if source.kind() == std::io::ErrorKind::NotFound => {
@@ -219,6 +298,82 @@ impl Workspace {
     pub fn delete_page(&self, id: &str) -> Result<()> {
         let dir = self.page_dir(id);
         fs::remove_dir_all(&dir).at(&dir)
+    }
+
+    // ---- database pages ------------------------------------------------
+    // The format is in [`crate::database_page`].
+
+    /// A page that shows `database` (or, with `None`, one still to be
+    /// chosen) in a single table view.
+    pub fn create_database_page(
+        &self,
+        title: &str,
+        parent: Option<&str>,
+        database: Option<&str>,
+    ) -> Result<String> {
+        let id = new_id();
+        let view = View::new(&new_id(), "Table", ViewType::Table, 0.0);
+        let mut field = json!({ "views": { view.id.clone(): view.to_json() } });
+        if let Some(database) = database {
+            field["id"] = database.into();
+        }
+        let meta = json!({ "id": id, "title": title, "parent": parent, "properties": {}, "database": field });
+        self.write_json(&self.page_dir(&id).join(PAGE_META), &meta)?;
+        self.write_file(&self.page_dir(&id).join(PAGE_BODY), b"")?;
+        Ok(id)
+    }
+
+    /// Which database a database page shows.
+    pub fn set_page_database(&self, id: &str, database: &str) -> Result<()> {
+        self.edit_database_field(id, |field| {
+            field.insert("id".into(), database.into());
+        })
+    }
+
+    /// Add or replace one of a database page's views, or remove it with `None`.
+    pub fn set_page_view(&self, id: &str, view: &str, value: Option<&View>) -> Result<()> {
+        self.edit_database_field(id, |field| {
+            let views = field.entry("views").or_insert_with(|| json!({}));
+            if !views.is_object() {
+                *views = json!({});
+            }
+            let views = views.as_object_mut().expect("object");
+            match value {
+                Some(value) => views.insert(view.into(), value.to_json()),
+                None => views.remove(view),
+            };
+        })
+    }
+
+    /// Edit a page's `database` field, refusing a page that isn't a database page.
+    fn edit_database_field(&self, id: &str, edit: impl FnOnce(&mut Map<String, Value>)) -> Result<()> {
+        let path = self.page_dir(id).join(PAGE_META);
+        let mut failed = false;
+        self.update_json(&path, |meta| {
+            match meta.get_mut("database").and_then(Value::as_object_mut) {
+                Some(field) => edit(field),
+                None => failed = true,
+            }
+        })?;
+        if failed {
+            return Err(Error::InvalidData {
+                path: path.display().to_string(),
+                message: "not a database page".into(),
+            });
+        }
+        Ok(())
+    }
+
+    /// The database pages showing `database`.
+    pub fn pages_showing(&self, database: &str) -> Result<Vec<String>> {
+        let mut pages = Vec::new();
+        for id in self.list_pages()? {
+            let meta = self.read_page_meta(&id).unwrap_or_default();
+            if DatabasePage::from_meta(&meta).and_then(|p| p.database).as_deref() == Some(database) {
+                pages.push(id);
+            }
+        }
+        Ok(pages)
     }
 
     // ---- databases -----------------------------------------------------
@@ -318,18 +473,7 @@ impl Workspace {
                     path: path.display().to_string(),
                     message: format!("no column {column}"),
                 })?;
-        if let Some(name) = &change.name {
-            current.name = name.clone();
-        }
-        if let Some(kind) = change.kind {
-            current.kind = kind;
-        }
-        if let Some(position) = change.position {
-            current.position = Some(position);
-        }
-        if let Some(options) = &change.options {
-            current.options = options.clone();
-        }
+        change.apply(&mut current);
         self.edit_columns(db, |columns| {
             columns.insert(column.to_string(), current.to_json());
         })
@@ -411,9 +555,25 @@ impl Workspace {
         })
     }
 
+    /// Delete a row with its body.
     pub fn delete_row(&self, db: &str, row: &str) -> Result<()> {
+        let body = self.row_body_path(db, row);
+        if body.is_file() {
+            fs::remove_file(&body).at(&body)?;
+        }
         let path = self.row_path(db, row);
         fs::remove_file(&path).at(&path)
+    }
+
+    /// The database a row is in. Row ids are random, so unique across databases.
+    pub fn find_row(&self, row: &str) -> Option<String> {
+        if row.is_empty() || row.contains(['/', '\\', '.']) {
+            return None;
+        }
+        self.list_databases()
+            .ok()?
+            .into_iter()
+            .find(|db| self.row_path(db, row).is_file())
     }
 
     pub fn delete_database(&self, id: &str) -> Result<()> {
@@ -429,6 +589,32 @@ impl Workspace {
 
     fn database_dir(&self, id: &str) -> PathBuf {
         self.root.join(DATABASES_DIR).join(id)
+    }
+
+    /// A page's body, or a row's: `rows/<row>.md` next to its `.json`.
+    fn body_path(&self, id: &str) -> PathBuf {
+        if !self.page_exists(id)
+            && let Some(db) = self.find_row(id)
+        {
+            return self.row_body_path(&db, id);
+        }
+        self.page_dir(id).join(PAGE_BODY)
+    }
+
+    /// The JSON holding a page's metadata: its meta.json, or a row's file.
+    fn meta_path(&self, id: &str) -> PathBuf {
+        if !self.page_exists(id)
+            && let Some(db) = self.find_row(id)
+        {
+            return self.row_path(&db, id);
+        }
+        self.page_dir(id).join(PAGE_META)
+    }
+
+    fn row_body_path(&self, db: &str, row: &str) -> PathBuf {
+        self.database_dir(db)
+            .join(DATABASE_ROWS)
+            .join(format!("{row}.md"))
     }
 
     fn row_path(&self, db: &str, row: &str) -> PathBuf {
@@ -471,6 +657,37 @@ impl Workspace {
         fs::write(&tmp, content).at(&tmp)?;
         fs::rename(&tmp, path).at(path)
     }
+}
+
+/// Where a page keeps its properties' types; see [`page_properties_from`].
+const PROPERTY_SCHEMA: &str = "property_schema";
+
+/// A page's properties from its meta.json: `property_schema` holds their
+/// types in the format of a database's columns, `properties` their values.
+pub fn page_properties_from(meta: &Value) -> (Vec<Column>, Map<String, Value>) {
+    let values = meta["properties"].as_object().cloned().unwrap_or_default();
+    let mut columns = crate::database::columns_from_json(&meta[PROPERTY_SCHEMA]);
+    for key in values.keys() {
+        if !columns.iter().any(|c| &c.id == key) {
+            columns.push(Column {
+                id: key.clone(),
+                name: key.clone(),
+                kind: ColumnType::Text,
+                position: None,
+                options: Vec::new(),
+            });
+        }
+    }
+    (columns, values)
+}
+
+/// `map[key]` as an object, made one if it's missing or something else.
+fn object_field<'a>(map: &'a mut Map<String, Value>, key: &str) -> &'a mut Map<String, Value> {
+    let field = map.entry(key).or_insert_with(|| json!({}));
+    if !field.is_object() {
+        *field = json!({});
+    }
+    field.as_object_mut().expect("object")
 }
 
 /// Ids of the entries in `dir`: subdirectories containing `marker`, or with

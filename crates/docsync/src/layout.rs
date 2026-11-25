@@ -2,11 +2,12 @@
 //!
 //! ```text
 //! workspace.json                      workspace settings: {"format", "name", "kept_in"}
-//! pages/<page-id>/meta.json           title, parent, properties, display
+//! pages/<page-id>/meta.json           title, parent, properties (+ their types), display, database
 //! pages/<page-id>/page.md             page body
 //! pages/<page-id>/assets/...          attachments
 //! databases/<db-id>/schema.json       name, columns
-//! databases/<db-id>/rows/<row>.json   one file per row
+//! databases/<db-id>/rows/<row>.json   one file per row: its cells (its properties)
+//! databases/<db-id>/rows/<row>.md     the row's text: every row is a page too
 //! ```
 //!
 //! Paths are derived from stable random ids, never from titles, so renaming

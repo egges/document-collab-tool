@@ -159,10 +159,10 @@ function WorkspaceView({
     setSelected(id);
   };
 
-  const create = async (parent: string | null, title = "") => {
+  const create = async (parent: string | null, title = "", kind: "page" | "database" = "page") => {
     try {
       await page.current?.flush();
-      const id = await api.createPage(title, parent);
+      const id = kind === "database" ? await api.createDatabasePage(title, parent) : await api.createPage(title, parent);
       await reload();
       setReveal(null);
       setSelected(id);
@@ -217,7 +217,7 @@ function WorkspaceView({
   const openDisplay = display && display.id === selected ? display.display : null;
 
   const step = (by: 1 | -1) => {
-    const order = displayOrder(pages);
+    const order = displayOrder(pages.filter((p) => p.kind !== "row"));
     if (!order.length) return;
     const at = order.findIndex((p) => p.id === selected);
     const next = at < 0 ? (by > 0 ? 0 : order.length - 1) : Math.min(order.length - 1, Math.max(0, at + by));
@@ -269,6 +269,7 @@ function WorkspaceView({
         status={status}
         onSelect={select}
         onCreate={create}
+        onCreateDatabase={() => void create(null, "", "database")}
         onImport={(sources) => void importPages(sources)}
         onWorkspaceChange={onChange}
         onSwitch={switchTo}
@@ -318,6 +319,7 @@ function WorkspaceView({
                 await reload();
               }}
               onError={setError}
+              onOpenPage={(id) => void reload().then(() => select(id))}
             />
           ) : (
             <div className="empty">
