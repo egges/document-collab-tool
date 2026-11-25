@@ -180,6 +180,15 @@ pub fn user() -> Option<GitHubUser> {
     with_state(|s| s.account.as_ref().map(|a| a.user.clone()))
 }
 
+/// Whether the access token is about to expire and is being renewed.
+pub fn renewal_due() -> bool {
+    with_state(|s| {
+        s.account
+            .as_ref()
+            .is_some_and(|a| a.tokens.needs_renewal(now_ms()))
+    })
+}
+
 /// The access token, without waiting on the network. When it has expired,
 /// the renewal thread is woken; meanwhile git fails as if offline and the
 /// next sync tries again.

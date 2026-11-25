@@ -35,6 +35,8 @@ impl AppState {
     pub fn account_changed(&self) {
         if let Some(session) = self.session.lock().unwrap().as_ref() {
             session.set_author(github::user().as_ref());
+            // Signing in may be what the workspace was waiting for.
+            session.worker.sync_now();
         }
     }
 
@@ -62,8 +64,12 @@ impl Events for WindowEvents {
     fn status(&self, status: &SyncStatus) {
         let _ = self.0.emit("sync-status", status);
         // A sync may have brought a note that the workspace moved; offline
-        // too, since the old place may be gone once everyone has moved.
-        if matches!(status.state, SyncState::Synced | SyncState::Offline) {
+        // or refused too, since the old place may be gone once everyone has
+        // moved.
+        if matches!(
+            status.state,
+            SyncState::Synced | SyncState::Offline | SyncState::NoAccess
+        ) {
             tauri::async_runtime::spawn(follow_move(self.0.clone()));
         }
     }

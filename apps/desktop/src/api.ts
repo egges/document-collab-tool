@@ -124,7 +124,7 @@ export type WriteResult =
   | { status: "merged"; page: Page }
   | { status: "gone" };
 
-export type SyncState = "localOnly" | "syncing" | "synced" | "offline" | "error";
+export type SyncState = "localOnly" | "syncing" | "synced" | "offline" | "noAccess" | "error";
 
 export interface SyncStatus {
   state: SyncState;

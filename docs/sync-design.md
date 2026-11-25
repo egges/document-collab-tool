@@ -60,7 +60,10 @@ files were synced away. Readers must ignore such folders.
 2. Removes stale git lock files left by a crashed process.
 3. Commits all local edits.
 4. Fetches. If the remote is unreachable, it stops here with `offline: true`.
-   Edits are committed locally and go out on the next sync.
+   Edits are committed locally and go out on the next sync. When git's
+   message says the remote refused this device (no or wrong credentials, no
+   access, "repository not found"), `docsync::git::is_access_denied` tells
+   the app, which asks the user to sign in instead of showing "Offline".
 5. Then one of four cases:
    - **Up to date:** nothing to do.
    - **Local is ahead:** push.

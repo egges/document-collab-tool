@@ -3,7 +3,8 @@ import { CloudAlert, CloudCheck, CloudOff, Laptop, RefreshCw, Settings } from "l
 import { type SyncStatus, type WorkspaceInfo, api, errorText } from "./api.ts";
 import { pickFolder, useDismiss } from "./menu.ts";
 import { tip } from "./shortcuts.ts";
-import { folderName, isFolderRemote } from "./remotes.ts";
+import { accessAdvice, folderName, isFolderRemote } from "./remotes.ts";
+import { GitHubSignIn, useGitHubAccount } from "./GitHubSignIn.tsx";
 
 function ago(ms: number, now: number): string {
   const s = Math.max(0, Math.round((now - ms) / 1000));
@@ -18,7 +19,12 @@ function ago(ms: number, now: number): string {
  * during the sync every 45 seconds), and a coloured dot only when changes
  * aren't reaching other devices.
  */
-function describe(status: SyncStatus | null, workspace: WorkspaceInfo, now: number): [string, string] {
+function describe(
+  status: SyncStatus | null,
+  workspace: WorkspaceInfo,
+  login: string | null,
+  now: number,
+): [string, string] {
   const synced = status?.lastSynced ? `Synced ${ago(status.lastSynced, now)}` : "Synced";
   if (!status) return ["", workspace.remote ? "Synced" : "Only on this device"];
   switch (status.state) {
@@ -29,6 +35,8 @@ function describe(status: SyncStatus | null, workspace: WorkspaceInfo, now: numb
       return ["", synced];
     case "offline":
       return ["warn", "Offline"];
+    case "noAccess":
+      return ["warn", accessAdvice(workspace.remote, login).label];
     case "error":
       return ["warn", "Sync paused"];
   }
@@ -76,6 +84,9 @@ export function SyncStatusBar({
   const [open, setOpen] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   const [now, setNow] = useState(Date.now());
+  const [user] = useGitHubAccount();
+  const [signingIn, setSigningIn] = useState(false);
+  const login = user?.login ?? null;
   const root = useRef<HTMLDivElement>(null);
   useDismiss(root, open, () => setOpen(false));
   useEffect(() => {
@@ -83,7 +94,8 @@ export function SyncStatusBar({
     return () => clearInterval(timer);
   }, []);
 
-  const [described, label] = describe(status, workspace, now);
+  const [described, label] = describe(status, workspace, login, now);
+  const advice = accessAdvice(workspace.remote, login);
   // A workspace inside a cloud folder can get damaged, and one that moved
   // elsewhere no longer reaches the other devices: worth a warning colour.
   const tone = workspace.insideCloud || workspace.movedTo ? "warn" : described;
@@ -128,6 +140,17 @@ export function SyncStatusBar({
             ) : (
               <p>Changes are saved on this device and sync when the connection is back.</p>
             ))}
+          {status?.state === "noAccess" && !workspace.movedTo && (
+            <div className="sync-warning">
+              <p>{advice.text}</p>
+              {advice.action === "signIn" && (
+                <button className="button primary" onClick={() => setSigningIn(true)}>
+                  {login ? "Sign in again" : "Sign in with GitHub"}
+                </button>
+              )}
+              {!advice.action && status.message && <p className="sync-message">{status.message}</p>}
+            </div>
+          )}
           {status?.state === "error" && (
             <>
               <p>Changes are saved on this device. Syncing will try again shortly.</p>
@@ -196,6 +219,16 @@ export function SyncStatusBar({
             </button>
           </div>
         </div>
+      )}
+      {signingIn && (
+        <GitHubSignIn
+          onDone={() => {
+            // The account change starts a sync on its own.
+            setSigningIn(false);
+            setOpen(false);
+          }}
+          onClose={() => setSigningIn(false)}
+        />
       )}
       <button className="sync-bar" aria-expanded={open} onClick={() => setOpen(!open)}>
         <SyncIcon status={status} workspace={workspace} tone={tone} />
