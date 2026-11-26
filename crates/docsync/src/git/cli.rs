@@ -391,6 +391,7 @@ impl GitBackend for CliGit {
         parents: &[Oid],
         message: &str,
         author: &Signature,
+        committer: &Signature,
     ) -> Result<Oid> {
         let mut args = vec!["commit-tree", tree.as_str()];
         for parent in parents {
@@ -398,13 +399,14 @@ impl GitBackend for CliGit {
             args.push(parent.as_str());
         }
         let date = format!("@{} +0000", author.time);
+        let committed = format!("@{} +0000", committer.time);
         let env = [
             ("GIT_AUTHOR_NAME", author.name.as_str()),
             ("GIT_AUTHOR_EMAIL", author.email.as_str()),
             ("GIT_AUTHOR_DATE", date.as_str()),
-            ("GIT_COMMITTER_NAME", author.name.as_str()),
-            ("GIT_COMMITTER_EMAIL", author.email.as_str()),
-            ("GIT_COMMITTER_DATE", date.as_str()),
+            ("GIT_COMMITTER_NAME", committer.name.as_str()),
+            ("GIT_COMMITTER_EMAIL", committer.email.as_str()),
+            ("GIT_COMMITTER_DATE", committed.as_str()),
         ];
         let out = self.run(Some(repo), &args, Some(message.as_bytes()), &env)?;
         Ok(Oid::new(String::from_utf8_lossy(&out).trim()))
@@ -835,21 +837,45 @@ impl GitBackend for CliGit {
         };
         let out = self.run(
             Some(repo),
-            &["log", "--no-merges", "--format=%H %ct %an", &range, "--", path],
+            &[
+                "log",
+                "--no-merges",
+                // A record separator at the end: a trailer could hold a newline.
+                &format!(
+                    "--format=%H%x00%ct%x00%an%x00%ae%x00%cn%x00%ce%x00%(trailers:key={},valueonly,separator=%x2C)%x1e",
+                    crate::PERSON_ID_TRAILER
+                ),
+                &range,
+                "--",
+                path,
+            ],
             None,
             &[],
         )?;
         let text = String::from_utf8_lossy(&out);
         Ok(text
-            .lines()
+            .split('\x1e')
+            .map(|record| record.trim_start_matches(['\n', '\r']))
+            .filter(|record| !record.is_empty())
             .filter_map(|line| {
-                let mut parts = line.splitn(3, ' ');
+                let mut parts = line.split('\0');
                 let oid = parts.next()?;
                 let time = parts.next()?.parse().ok()?;
+                let mut name = || parts.next().unwrap_or("").to_string();
                 Some(CommitInfo {
                     oid: Oid::new(oid),
                     time,
-                    author: parts.next().unwrap_or("").to_string(),
+                    author: name(),
+                    author_email: name(),
+                    committer: name(),
+                    committer_email: name(),
+                    // The first, if a commit somehow has several.
+                    person_id: parts
+                        .next()
+                        .and_then(|ids| ids.split(',').next())
+                        .map(str::trim)
+                        .filter(|id| !id.is_empty())
+                        .map(String::from),
                 })
             })
             .collect())

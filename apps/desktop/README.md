@@ -68,9 +68,14 @@ both. Universal macOS builds aren't supported yet. On Linux, install
   edit. Syncs on opening, every 45 s, on window focus (at most every 10 s) and
   on "Sync now". Watches the folder, so edits from other programs show up and
   get committed.
-- **Conflicts.** A page with conflict blocks shows them above the editor, with
-  "Keep this version" for each (`docsync::conflicts`). In the editor the
-  markers show as labelled lines, so the versions can also be merged by hand.
+- **Conflicts.** A place two devices edited at once is a block in the page,
+  with a bar over each version that says who wrote it ("You" for the person
+  signed in here) and on which device, and "Keep this version" / "Keep both"
+  (`packages/editor`). A line above the page says how many there are and
+  jumps to the first. A conflict the editor can't draw as a block, such as
+  one inside a code block, is listed above the page with "Keep this one"
+  (`docsync::conflicts`). The device's name is set in Settings › Preferences
+  and kept in the app's `settings.json`.
 - **Sync settings.** Click the status at the bottom of the sidebar to set the
   Git URL this device syncs with (stored per device in `.docsync/app.json`).
   HTTPS and SSH URLs and local paths work. Git never prompts: SSH runs in

@@ -73,8 +73,9 @@ fn overlapping_edits_become_a_conflict_block_that_both_devices_can_resolve() {
     };
     let blocks = find_conflicts(&body);
     assert_eq!(blocks.len(), 1);
-    let labels: Vec<_> = blocks[0].versions.iter().map(|v| v.label.as_str()).collect();
+    let labels: Vec<_> = blocks[0].versions.iter().map(|v| v.label.to_string()).collect();
     assert_eq!(labels, ["laptop", OTHER_CHANGES_LABEL]);
+    assert_eq!(blocks[0].versions[0].label.device(), Some("laptop"));
     assert_valid(&a);
 
     // The block syncs like any other text, and the desktop resolves it.

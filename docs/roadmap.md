@@ -128,7 +128,8 @@ chat in step 8. The app is for our own team until step 10.
       directly from the Rust side. Opens, creates or joins a workspace and sets
       the remote this device syncs with.
 - [x] **Pages.** A page tree, a page view with the editor, and conflict blocks
-      shown above the page with "keep this version".
+      shown above the page with "keep this version" (now in the page itself:
+      see "Conflict markers in the editor" below).
 - [ ] **Databases.** A database table view. Done so far: typed columns
       (text, number, select, checkbox, date, URL) that merge column by
       column (`docsync::database`), a table view in the developer
@@ -162,8 +163,23 @@ chat in step 8. The app is for our own team until step 10.
       found by search and sit under their database page in the breadcrumb.
       Still to come: choosing which column is the title, a side peek
       instead of opening the row in full, and images in a row's text.
-- [ ] **Conflict markers in the editor.** They show as labelled lines; a
-      proper block with each version's device name would be clearer.
+- [x] **Conflict markers in the editor.** A place two devices edited at once
+      shows as one framed block: a bar over each version says who wrote it
+      ("You" for the reader, otherwise the person's name) and on which
+      device, with "Keep this version" on each and "Keep both" on the block.
+      "You" is matched by id, never by name: a person id of our own,
+      recorded in each commit, which links a person's devices: by their
+      account when signed in (in any workspace), otherwise by their Git
+      email in a Git repository; signed out in a cloud folder, each device
+      is its own person. The device has the app install's id. "Your name" is in Settings
+      › Account, filled in from GitHub or Git.
+      Keeping is an ordinary edit, so undo brings the block back. Every
+      commit now records the device as well as the person, which is where
+      the labels come from, and the device's name can be changed in
+      Settings ([sync-design.md](sync-design.md#conflict-rules)). A line
+      above the page says how many such places there are and jumps to the
+      first. A conflict the editor can't draw as a block (inside a code
+      block) is still listed above the page, as before.
 - [x] **Bundled Git.** The app ships with Git for macOS, Windows and Linux
       (GitHub Desktop's portable builds, fetched and checked at build time
       by `apps/desktop/scripts/fetch-git.mjs`), and uses an installed Git

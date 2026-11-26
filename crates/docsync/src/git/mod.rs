@@ -44,7 +44,7 @@ impl fmt::Debug for Oid {
     }
 }
 
-/// Author/committer identity plus timestamp for a commit.
+/// An author's or committer's identity plus timestamp for a commit.
 #[derive(Debug, Clone)]
 pub struct Signature {
     pub name: String,
@@ -103,7 +103,16 @@ pub enum TreeEdit {
 pub struct CommitInfo {
     pub oid: Oid,
     pub time: i64,
+    /// Who wrote it: the person, or the device when nobody was signed in.
     pub author: String,
+    pub author_email: String,
+    /// The author's id, from the commit's `Person-Id` trailer
+    /// ([`crate::PERSON_ID_TRAILER`]), when it has one.
+    pub person_id: Option<String>,
+    /// The device it was made on (the author again, in commits from before
+    /// devices were recorded).
+    pub committer: String,
+    pub committer_email: String,
 }
 
 /// Whether git's error output (from a fetch or push that failed with
@@ -161,6 +170,7 @@ pub trait GitBackend: Send + Sync {
         parents: &[Oid],
         message: &str,
         author: &Signature,
+        committer: &Signature,
     ) -> Result<Oid>;
     /// Move `refname` to `new`. With `expected_old`, only if it currently
     /// points there.

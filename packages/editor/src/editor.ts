@@ -21,6 +21,7 @@ import { SaveRefusedError, findLostContent } from "./check.ts";
 import { codeBlocks } from "./code/index.ts";
 import { tableWidthsPlugins } from "./tableView.ts";
 import { type Commands, createCommands } from "./commands.ts";
+import { type ConflictBlock, type Reader, conflictBlocks, conflictsPlugin, refreshConflicts } from "./conflicts.ts";
 import { configureHouseStyle, joinPage, prepareForSave, splitFrontMatter } from "./markdown.ts";
 
 export interface PageEditorOptions {
@@ -34,6 +35,8 @@ export interface PageEditorOptions {
   onUpdate?: (view: EditorView) => void;
   /** Gets key presses first; return true to stop the editor handling one (for menus). */
   handleKeyDown?: (event: KeyboardEvent) => boolean;
+  /** Who is reading, so their own versions in a conflict block say "You". Change it with `setReader`. */
+  reader?: Reader;
 }
 
 export interface PageEditor {
@@ -54,6 +57,16 @@ export interface PageEditor {
   markSaved(): void;
   /** Replaces the page, for example after sync pulled a newer version. Clears undo history. */
   load(markdown: string): void;
+  /**
+   * The conflict blocks in the page: places two devices edited at once,
+   * with both versions kept (see conflicts.ts). The editor draws each as a
+   * block with buttons to keep a version.
+   */
+  readonly conflicts: ConflictBlock[];
+  /** Scrolls to the first conflict block. False when there is none. */
+  showConflict(): boolean;
+  /** Who is reading now: after signing in or out, or renaming the device. */
+  setReader(reader: Reader): void;
   /** Formatting commands, for toolbars and menus. */
   readonly commands: Commands;
   /** The ProseMirror view, for UI built around the editor. */
@@ -66,6 +79,7 @@ async function createMilkdown(
   body: string,
   onUpdate: () => void = () => {},
   handleKeyDown?: (event: KeyboardEvent) => boolean,
+  reader: () => Reader = () => NOBODY,
 ): Promise<Editor> {
   // Runs synchronously after every change, unlike Milkdown's listener plugin,
   // so `dirty` is always current.
@@ -93,8 +107,11 @@ async function createMilkdown(
     .use($prose(() => keymap(BLOCK_KEYS)))
     .use($prose(() => blockStatePlugin()))
     .use($prose(() => placeholderPlugin()))
+    .use($prose(() => conflictsPlugin(reader)))
     .create();
 }
+
+const NOBODY: Reader = { person: null, device: null };
 
 export async function createPageEditor(options: PageEditorOptions): Promise<PageEditor> {
   let { frontMatter, body } = splitFrontMatter(options.markdown);
@@ -102,6 +119,7 @@ export async function createPageEditor(options: PageEditorOptions): Promise<Page
   let pending: { doc: Node; markdown: string } | null = null;
   let onDisk = options.markdown; // the file as last loaded or saved
   let dirty = false;
+  let reader = options.reader ?? NOBODY;
 
   const updateDirty = () => {
     if (!baseline) return;
@@ -113,7 +131,7 @@ export async function createPageEditor(options: PageEditorOptions): Promise<Page
     }
   };
 
-  const editor = await createMilkdown(options.root, body, updateDirty, options.handleKeyDown);
+  const editor = await createMilkdown(options.root, body, updateDirty, options.handleKeyDown, () => reader);
   const view = editor.action((ctx) => ctx.get(editorViewCtx));
   const parse = editor.action((ctx) => ctx.get(parserCtx));
   const serialize = editor.action((ctx) => ctx.get(serializerCtx));
@@ -128,6 +146,22 @@ export async function createPageEditor(options: PageEditorOptions): Promise<Page
       return view;
     },
     commands,
+    get conflicts() {
+      return conflictBlocks(view.state);
+    },
+    showConflict() {
+      const first = conflictBlocks(view.state)[0];
+      if (!first) return false;
+      const bar = view.nodeDOM(first.start.from);
+      if (bar instanceof HTMLElement) bar.scrollIntoView?.({ block: "center", behavior: "smooth" });
+      return true;
+    },
+    setReader(next) {
+      const keys = ["person", "personId", "device", "deviceId"] as const;
+      if (keys.every((k) => (next[k] ?? null) === (reader[k] ?? null))) return;
+      reader = next;
+      refreshConflicts(view);
+    },
     save() {
       const doc = view.state.doc;
       if (doc.eq(baseline!)) return null;

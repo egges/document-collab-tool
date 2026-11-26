@@ -90,6 +90,35 @@ pub fn conflict_copy_path(path: &str, label: &str, id: &str) -> String {
     format!("{dir}{stem}{CONFLICT_COPY_MARKER}{}-{id}{ext}", slug(label))
 }
 
+/// Where a device's own email address is: a commit's committer is the
+/// device it was made on, and so is its author when nobody was signed in.
+const DEVICE_EMAIL_DOMAIN: &str = "@devices.invalid";
+
+/// The email address of the device called `name`, for its commits:
+/// `macbook-pro+3f9a1c2b@devices.invalid`, with the device's id when it has
+/// one (see [`device_id`]).
+pub fn device_email(name: &str, id: Option<&str>) -> String {
+    match id {
+        Some(id) => format!("{}+{}{DEVICE_EMAIL_DOMAIN}", slug(name), slug(id)),
+        None => format!("{}{DEVICE_EMAIL_DOMAIN}", slug(name)),
+    }
+}
+
+/// The id of the device whose commit email is `email`, from
+/// [`device_email`]. `None` for a person's email, or a device's from before
+/// devices had ids.
+pub fn device_id(email: &str) -> Option<String> {
+    let local = email.strip_suffix(DEVICE_EMAIL_DOMAIN)?;
+    let (_, id) = local.rsplit_once('+')?;
+    (!id.is_empty()).then(|| id.to_string())
+}
+
+/// Whether a commit's author or committer email is a device's rather than
+/// a person's.
+pub fn is_device_email(email: &str) -> bool {
+    email.ends_with(DEVICE_EMAIL_DOMAIN)
+}
+
 /// Lowercase ASCII letters, digits and dashes.
 pub fn slug(text: &str) -> String {
     let mut out = String::new();
@@ -123,6 +152,16 @@ mod tests {
         assert_eq!(dir_entity("pages/abc"), None);
         assert_eq!(dir_entity("workspace.json"), None);
         assert_eq!(dir_entity("other/abc/x"), None);
+    }
+
+    #[test]
+    fn ids_come_from_commit_emails() {
+        let email = device_email("Arjan's MacBook", Some("3f9a1c2b"));
+        assert_eq!(email, "arjan-s-macbook+3f9a1c2b@devices.invalid");
+        assert!(is_device_email(&email));
+        assert_eq!(device_id(&email).as_deref(), Some("3f9a1c2b"));
+        assert_eq!(device_id(&device_email("Laptop", None)), None);
+        assert_eq!(device_id("1+ada@users.noreply.github.com"), None);
     }
 
     #[test]

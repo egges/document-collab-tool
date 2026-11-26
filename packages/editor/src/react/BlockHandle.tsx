@@ -216,7 +216,9 @@ export function BlockHandle({ editor, container }: {
         const box = view.dom.getBoundingClientRect();
         const near = y >= box.top - 8 && y <= box.bottom + 8 && x >= box.left - GUTTER && x <= box.right + 24;
         const block = near ? blockFromPoint(view, x, y) : null;
-        setHovered(block?.pos ?? null);
+        // Not on a conflict block's bars: they aren't blocks to move or add after.
+        const bar = block && blockElement(view, block)?.classList.contains("page-conflict-bar");
+        setHovered(block && !bar ? block.pos : null);
       });
     };
     // Typing hides it until the pointer moves again.

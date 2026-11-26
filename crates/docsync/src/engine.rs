@@ -8,6 +8,7 @@ use serde_json::json;
 use crate::error::IoContext;
 use crate::git::{GitBackend, Oid, PushResult, Signature};
 use crate::merge::{self, ResolvedConflict};
+use crate::text_merge::{VersionLabel, Writer};
 use crate::{Clock, Error, Result, Workspace, conflicts, json_merge, layout, text_merge};
 
 /// Label for the on-disk side when [`SyncEngine::write_page_body`] merges.
@@ -44,16 +45,40 @@ pub enum RemoteCheck {
     Unreachable(String),
 }
 
+/// The commit trailer that records who made a commit by their
+/// [`Person::id`]: `Person-Id: 3f9a1c2b5e6d7f80`.
+pub const PERSON_ID_TRAILER: &str = "Person-Id";
+
+/// Who is using this device, as new commits record them.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Person {
+    /// Shown with their edits, e.g. in conflict blocks.
+    pub name: String,
+    /// The commit author's email.
+    pub email: String,
+    /// What tells them apart from others with the same name. Ours, not a
+    /// Git host's: the app decides it (see the desktop app's `session.rs`).
+    /// Recorded in every commit they make as a [`PERSON_ID_TRAILER`], and
+    /// read back from there when a merge labels a conflict block.
+    pub id: Option<String>,
+}
+
 /// Settings for one device's copy of a workspace.
 #[derive(Debug, Clone)]
 pub struct SyncConfig {
     pub remote: String,
     pub branch: String,
     pub layout: RemoteLayout,
-    /// Shown in conflict blocks and conflict-copy names, e.g. "Arjan's MacBook".
+    /// Shown in conflict blocks and conflict-copy names, e.g. "Arjan's
+    /// MacBook", and recorded in every commit. The name to start with: see
+    /// [`SyncEngine::set_device_name`].
     pub device_name: String,
-    pub author_name: String,
-    pub author_email: String,
+    /// What tells this device apart from others with the same name, and
+    /// stays when it's renamed: the desktop app's id for its install.
+    /// Recorded in every commit and conflict block, so a version can be
+    /// matched to the device it came from. Not the [`RemoteLayout`]'s
+    /// device id, which is per copy of a workspace.
+    pub device_id: Option<String>,
     /// How many fetch/merge/push rounds to try before giving up when other
     /// devices keep pushing in between.
     pub max_attempts: u32,
@@ -64,14 +89,12 @@ pub struct SyncConfig {
 
 impl SyncConfig {
     pub fn new(device_name: impl Into<String>) -> Self {
-        let device_name = device_name.into();
         Self {
             remote: "origin".into(),
             branch: "main".into(),
             layout: RemoteLayout::SharedBranch,
-            author_email: format!("{}@devices.invalid", layout::slug(&device_name)),
-            author_name: device_name.clone(),
-            device_name,
+            device_name: device_name.into(),
+            device_id: None,
             max_attempts: 8,
             stale_lock_age: Duration::from_secs(60),
         }
@@ -126,23 +149,26 @@ pub struct SyncEngine {
     root: PathBuf,
     config: SyncConfig,
     clock: Arc<dyn Clock>,
-    /// Name and email for new commits; starts as the config's, and changes
-    /// with [`SyncEngine::set_author`] when the user signs in or out.
-    author: std::sync::Mutex<(String, String)>,
+    /// Starts as the config's; see [`SyncEngine::set_device_name`].
+    device_name: std::sync::Mutex<String>,
+    /// Name and email of the person signed in on this device, if anyone;
+    /// see [`SyncEngine::set_person`].
+    person: std::sync::Mutex<Option<Person>>,
     /// Starts as the config's; see [`SyncEngine::set_remote_layout`].
     layout: std::sync::Mutex<RemoteLayout>,
 }
 
 impl SyncEngine {
     fn new(git: Arc<dyn GitBackend>, root: PathBuf, config: SyncConfig, clock: Arc<dyn Clock>) -> Self {
-        let author = (config.author_name.clone(), config.author_email.clone());
+        let device_name = config.device_name.clone();
         let layout = config.layout.clone();
         Self {
             git,
             root,
             config,
             clock,
-            author: std::sync::Mutex::new(author),
+            device_name: std::sync::Mutex::new(device_name),
+            person: std::sync::Mutex::new(None),
             layout: std::sync::Mutex::new(layout),
         }
     }
@@ -264,21 +290,40 @@ impl SyncEngine {
         &self.root
     }
 
-    /// The settings the engine was opened with. The author may have changed
-    /// since; see [`SyncEngine::author`].
+    /// The settings the engine was opened with. The device's name may have
+    /// changed since; see [`SyncEngine::device_name`].
     pub fn config(&self) -> &SyncConfig {
         &self.config
     }
 
-    /// Name and email that new commits get.
-    pub fn author(&self) -> (String, String) {
-        self.author.lock().unwrap().clone()
+    /// This device's name, as conflict blocks and new commits have it.
+    pub fn device_name(&self) -> String {
+        self.device_name.lock().unwrap().clone()
     }
 
-    /// Who new commits are by from now on, e.g. after signing in. Earlier
-    /// commits keep their author.
-    pub fn set_author(&self, name: impl Into<String>, email: impl Into<String>) {
-        *self.author.lock().unwrap() = (name.into(), email.into());
+    /// Rename this device. Earlier commits, and the conflict blocks already
+    /// in pages, keep the name they were written with.
+    pub fn set_device_name(&self, name: impl Into<String>) {
+        *self.device_name.lock().unwrap() = name.into();
+    }
+
+    /// Who is using this device, or `None` when nobody is known. New
+    /// commits are by that person, made on this device; without one they're
+    /// by the device itself. Earlier commits keep their author.
+    pub fn set_person(&self, person: Option<Person>) {
+        *self.person.lock().unwrap() = person;
+    }
+
+    /// Who writes on this device now: what conflict blocks call this
+    /// device's version.
+    pub fn writer(&self) -> Writer {
+        let person = self.person.lock().unwrap().clone();
+        Writer {
+            person_id: person.as_ref().and_then(|p| p.id.clone()),
+            person: person.map(|p| p.name),
+            device: Some(self.device_name()),
+            device_id: self.config.device_id.clone(),
+        }
     }
 
     pub fn set_remote(&self, url: &str) -> Result<()> {
@@ -438,11 +483,14 @@ impl SyncEngine {
             &base_oid?,
             &ours?,
             &theirs?,
-            [&self.config.device_name, "base", OTHER_CHANGES_LABEL],
+            ["ours", "base", "theirs"],
             text_merge::MARKER_SIZE,
         )?;
-        let merged =
-            text_merge::rewrite_conflicts(&merge.content, &self.config.device_name, OTHER_CHANGES_LABEL);
+        let merged = text_merge::rewrite_conflicts(
+            &merge.content,
+            &VersionLabel::By(self.writer()),
+            &VersionLabel::Text(OTHER_CHANGES_LABEL.to_string()),
+        );
         let merged = String::from_utf8(merged).map_err(|e| Error::InvalidData {
             path: format!("body of page {id}"),
             message: format!("merged page is not UTF-8: {e}"),
@@ -540,21 +588,10 @@ impl SyncEngine {
                     }
                 }
                 Some(remote) => {
-                    let outcome = merge::merge_commits(
-                        self.git.as_ref(),
-                        &self.root,
-                        &local,
-                        &remote,
-                        &self.config.device_name,
-                    )?;
+                    let outcome =
+                        merge::merge_commits(self.git.as_ref(), &self.root, &local, &remote, &self.writer())?;
                     let message = merge_message(&outcome.conflicts);
-                    let commit = self.git.commit_tree(
-                        &self.root,
-                        &outcome.tree,
-                        &[local.clone(), remote],
-                        &message,
-                        &self.signature(),
-                    )?;
+                    let commit = self.commit(&outcome.tree, &[local.clone(), remote], &message)?;
                     match self.move_to(&local, &commit) {
                         Ok(()) => {
                             report.merged = true;
@@ -631,19 +668,12 @@ impl SyncEngine {
                     target = tip.clone();
                     continue;
                 }
-                let outcome = merge::merge_commits(
-                    self.git.as_ref(),
-                    &self.root,
-                    &target,
-                    tip,
-                    &self.config.device_name,
-                )?;
-                target = self.git.commit_tree(
-                    &self.root,
+                let outcome =
+                    merge::merge_commits(self.git.as_ref(), &self.root, &target, tip, &self.writer())?;
+                target = self.commit(
                     &outcome.tree,
                     &[target.clone(), tip.clone()],
                     &merge_message(&outcome.conflicts),
-                    &self.signature(),
                 )?;
                 conflicts.extend(outcome.conflicts);
                 merged = true;
@@ -727,11 +757,44 @@ impl SyncEngine {
         format!("refs/heads/{}", self.config.branch)
     }
 
-    fn signature(&self) -> Signature {
-        let (name, email) = self.author();
+    /// Who new commits are by: the person signed in, or else this device.
+    fn author(&self) -> Signature {
+        match self.person.lock().unwrap().clone() {
+            Some(person) => Signature {
+                name: person.name,
+                email: person.email,
+                time: self.clock.now(),
+            },
+            None => self.committer(),
+        }
+    }
+
+    /// Write a commit by [`SyncEngine::author`] on this device, with the
+    /// person's id as a trailer when there is one.
+    fn commit(&self, tree: &Oid, parents: &[Oid], message: &str) -> Result<Oid> {
+        let id = self.person.lock().unwrap().as_ref().and_then(|p| p.id.clone());
+        let message = match id {
+            Some(id) => format!("{}\n\n{PERSON_ID_TRAILER}: {id}\n", message.trim_end()),
+            None => message.to_string(),
+        };
+        self.git.commit_tree(
+            &self.root,
+            tree,
+            parents,
+            &message,
+            &self.author(),
+            &self.committer(),
+        )
+    }
+
+    /// The device new commits are made on. Recorded as the committer, so a
+    /// later merge can say whose version is whose by person and by device
+    /// (see `merge::commit_writer`).
+    fn committer(&self) -> Signature {
+        let name = self.device_name();
         Signature {
+            email: layout::device_email(&name, self.config.device_id.as_deref()),
             name,
-            email,
             time: self.clock.now(),
         }
     }
@@ -750,9 +813,7 @@ impl SyncEngine {
             return Ok(None);
         }
         let parents: Vec<Oid> = head.iter().cloned().collect();
-        let commit = self
-            .git
-            .commit_tree(&self.root, &tree, &parents, message, &self.signature())?;
+        let commit = self.commit(&tree, &parents, message)?;
         self.git
             .update_ref(&self.root, &self.branch_ref(), &commit, head.as_ref())?;
         Ok(Some(commit))

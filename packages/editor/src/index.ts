@@ -23,3 +23,5 @@ export {
 export type { TableCell, TableEdit, TableLayout, TableLine, TableWidths } from "./tables.ts";
 export { parseWidthsComment, widthsComment } from "./tableView.ts";
 export { WRITE_HINT, placeholderAt } from "./placeholder.ts";
+export { findConflicts, isReader, keepVersion, parseMarker, versionTitle } from "./conflicts.ts";
+export type { ConflictBlock, ConflictMarker, ConflictVersion, Reader, VersionWriter } from "./conflicts.ts";

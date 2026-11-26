@@ -5,8 +5,14 @@ import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 export interface WorkspaceInfo {
   path: string;
   name: string;
-  /** This device's name, as it appears in conflict blocks. */
+  /** This device's name, as it appears with the person's in conflict blocks. Set in Settings. */
   device: string;
+  /** What tells this device apart from others with the same name: the app install's id. */
+  deviceId: string;
+  /** Who new edits here are by, if anyone yet: set in Settings, filled in from GitHub or Git. */
+  person: string | null;
+  /** Their id, as conflict blocks record it: whose versions are "You". */
+  personId: string | null;
   remote: string | null;
   /** Where it's kept besides this device: "Dropbox › Work", "GitHub", ... */
   keptIn: string | null;
@@ -89,7 +95,15 @@ export interface TextMatch {
 }
 
 export interface ConflictVersion {
+  /** Who wrote it, as plain text: "Anna Smith (Laptop)". */
   label: string;
+  /** The same in parts, when the block says: the person, if they were signed in, and their device. */
+  person: string | null;
+  /** Tells people with the same name apart (see `WorkspaceInfo.personId`). */
+  personId: string | null;
+  device: string | null;
+  /** Tells devices with the same name apart: the app install's id (`WorkspaceInfo.deviceId`). */
+  deviceId: string | null;
   text: string;
 }
 
@@ -252,6 +266,16 @@ export const api = {
   workspaceInfo: () => invoke<WorkspaceInfo | null>("workspace_info"),
   /** Rename the workspace on every device; folders and remotes keep their names. */
   renameWorkspace: (name: string) => invoke<WorkspaceInfo>("rename_workspace", { name }),
+  /**
+   * Rename this device, in every workspace on it. An empty name goes back
+   * to the computer's own. The open workspace comes back with the name in use.
+   */
+  setDeviceName: (name: string) => invoke<WorkspaceInfo>("set_device_name", { name }),
+  /**
+   * The name new edits are by, on every workspace on this device. An empty
+   * one goes back to the name from GitHub or Git.
+   */
+  setPersonName: (name: string) => invoke<WorkspaceInfo>("set_person_name", { name }),
   closeWorkspace: () => invoke<void>("close_workspace"),
   /** Known workspaces, most recently opened first. */
   listWorkspaces: () => invoke<WorkspaceEntry[]>("list_workspaces"),

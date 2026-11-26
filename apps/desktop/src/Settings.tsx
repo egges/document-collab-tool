@@ -1,5 +1,6 @@
 // Settings (⌘, or the gear in the sidebar): how the app looks on this
-// device, the open workspace, the GitHub account, and what this build is.
+// device and what the device is called, the open workspace, the GitHub
+// account, and what this build is.
 import { type ReactNode, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { Check, CircleUser, Info, Keyboard, Minus, Plus, SlidersHorizontal, X } from "lucide-react";
@@ -85,9 +86,9 @@ export function Settings(props: SettingsProps) {
           <button className="icon-button settings-close" aria-label="Close" title="Close (Esc)" onClick={props.onClose}>
             <X size={16} />
           </button>
-          {section === "preferences" && <Preferences />}
+          {section === "preferences" && <Preferences {...props} />}
           {section === "workspace" && <WorkspaceSettings {...props} setCovered={setCovered} />}
-          {section === "account" && <Account setCovered={setCovered} />}
+          {section === "account" && <Account {...props} setCovered={setCovered} />}
           {section === "about" && <About onShowShortcuts={props.onShowShortcuts} />}
         </div>
       </div>
@@ -108,7 +109,50 @@ function Row({ label, hint, wide, children }: { label: string; hint?: ReactNode;
   );
 }
 
-function Preferences() {
+/** This device's name: saved when the field is left (or on Enter), as the workspace's name is. */
+function DeviceName({ workspace, onWorkspaceChange }: Pick<SettingsProps, "workspace" | "onWorkspaceChange">) {
+  const [name, setName] = useState(workspace.device);
+  const [problem, setProblem] = useState<string | null>(null);
+  useEffect(() => setName(workspace.device), [workspace.device]);
+
+  const save = async () => {
+    if (name.trim() === workspace.device) return setName(workspace.device);
+    try {
+      setProblem(null);
+      const changed = await api.setDeviceName(name);
+      // Cleared: back to the computer's own name.
+      setName(changed.device);
+      onWorkspaceChange(changed);
+    } catch (e) {
+      setProblem(errorText(e));
+    }
+  };
+
+  return (
+    <>
+      <Row
+        label="Device name"
+        hint="Shown next to your name when the same text was edited in two places, so you can tell your devices apart. Clear it to use the computer's own name."
+      >
+        <input
+          className="input settings-input"
+          value={name}
+          aria-label="Device name"
+          maxLength={60}
+          spellCheck={false}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={() => void save()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur();
+          }}
+        />
+      </Row>
+      {problem && <p className="error small">{problem}</p>}
+    </>
+  );
+}
+
+function Preferences(props: Pick<SettingsProps, "workspace" | "onWorkspaceChange">) {
   const chosenTheme = theme.use();
   const chosenAccent = accent.use();
   const font = pageFont.use();
@@ -176,6 +220,9 @@ function Preferences() {
       <Row label="Check spelling" hint="Underlines misspelled words as you type, with your computer's own dictionaries.">
         <Switch label="Check spelling" checked={spelling === "on"} onChange={(on) => spellcheck.set(on ? "on" : "off")} />
       </Row>
+
+      <h3 className="settings-subtitle">This device</h3>
+      <DeviceName {...props} />
     </>
   );
 }
@@ -273,10 +320,6 @@ function WorkspaceSettings({
           Move…
         </button>
       </Row>
-      <Row label="This device" hint="How this device is named in the two versions of a conflicting edit.">
-        <span className="settings-value">{workspace.device}</span>
-      </Row>
-
       <h3 className="settings-subtitle">Leave this workspace</h3>
       <Row label="Close workspace" hint="It stays on this device; open it again from the workspace menu.">
         <button className="button" onClick={() => leave(() => api.closeWorkspace().then(() => null))}>
@@ -314,11 +357,64 @@ function WorkspaceSettings({
   );
 }
 
-function Account({ setCovered }: { setCovered: (covered: boolean) => void }) {
-  const [user, setUser] = useGitHubAccount();
+/** The name the user's edits are by: saved when the field is left (or on Enter). */
+function PersonName({ workspace, onWorkspaceChange }: Pick<SettingsProps, "workspace" | "onWorkspaceChange">) {
+  const [name, setName] = useState(workspace.person ?? "");
+  const [problem, setProblem] = useState<string | null>(null);
+  useEffect(() => setName(workspace.person ?? ""), [workspace.person]);
+
+  const save = async () => {
+    if (name.trim() === (workspace.person ?? "")) return setName(workspace.person ?? "");
+    try {
+      setProblem(null);
+      const changed = await api.setPersonName(name);
+      // Cleared: back to the name from GitHub or Git, if there is one.
+      setName(changed.person ?? "");
+      onWorkspaceChange(changed);
+    } catch (e) {
+      setProblem(errorText(e));
+    }
+  };
+
+  return (
+    <>
+      <Row
+        label="Your name"
+        hint="Shown with your edits when the same text was edited in two places. Filled in from GitHub or Git; clear it to use that again."
+      >
+        <input
+          className="input settings-input"
+          value={name}
+          placeholder="Not set"
+          aria-label="Your name"
+          maxLength={60}
+          spellCheck={false}
+          onChange={(e) => setName(e.target.value)}
+          onBlur={() => void save()}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") e.currentTarget.blur();
+          }}
+        />
+      </Row>
+      {problem && <p className="error small">{problem}</p>}
+    </>
+  );
+}
+
+function Account({
+  workspace,
+  onWorkspaceChange,
+  setCovered,
+}: Pick<SettingsProps, "workspace" | "onWorkspaceChange"> & { setCovered: (covered: boolean) => void }) {
+  const [user, setUserState] = useGitHubAccount();
   const [signingIn, setSigningIn] = useState(false);
   const [problem, setProblem] = useState<string | null>(null);
   useEffect(() => setCovered(signingIn), [signingIn, setCovered]);
+  // Signing in or out can change the name filled in.
+  const setUser = (u: Parameters<typeof setUserState>[0]) => {
+    setUserState(u);
+    void api.workspaceInfo().then((w) => w && onWorkspaceChange(w));
+  };
 
   return (
     <>
@@ -327,6 +423,7 @@ function Account({ setCovered }: { setCovered: (covered: boolean) => void }) {
         Pagemesh has no account of its own. Signing in with GitHub lets you keep workspaces there, and your edits are
         signed with your name.
       </p>
+      <PersonName workspace={workspace} onWorkspaceChange={onWorkspaceChange} />
       {user === undefined ? null : user ? (
         <div className="account-card">
           <img className="avatar" src={user.avatarUrl} alt="" width={44} height={44} />

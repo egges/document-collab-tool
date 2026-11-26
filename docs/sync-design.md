@@ -140,14 +140,56 @@ Conflict blocks are HTML comments, so a page is still valid Markdown:
 
 ```markdown
 <!-- sync-conflict:start -->
-<!-- sync-conflict:version Laptop -->
-The laptop's version.
-<!-- sync-conflict:version Desktop -->
-The desktop's version.
+<!-- sync-conflict:version person="Anna Smith" person-id="5e6d7f803f9a1c2b" device="Laptop" device-id="3f9a1c2b" -->
+Anna's version, written on her laptop.
+<!-- sync-conflict:version device="Desktop" device-id="7c01e5aa" -->
+The version from a desktop nobody was signed in on.
 <!-- sync-conflict:end -->
 ```
 
-The editor should render these blocks with a "keep this version" action.
+Each version says who wrote it: the person, when the device was signed in,
+and the device (`text_merge::VersionLabel`). Both come from the newest
+commit that changed the page on that side of the merge: its author is the
+person, or the device when nobody was signed in, and its committer is always
+the device (`<slug>+<device id>@devices.invalid`). So the label is right even when the
+device was renamed or signed out between the edit and the sync, and with a
+folder remote, where one side of a merge can hold another device's edits.
+Commits from before devices were recorded name only the person.
+
+Each name comes with an id where one is known, and "You" is decided by id,
+so two people or devices with the same name are never mixed up. A person's
+id is ours, not a Git host's, and each commit records it in a `Person-Id:`
+trailer (`docsync::Person`), which merges read back. The desktop app decides
+it (`apps/desktop/src-tauri/src/person.rs`):
+
+- Signed in (to GitHub, for now), we know who you are: the id is derived
+  from the account's no-reply address, in every workspace, whether it's
+  kept in a Git repository or synced through a cloud folder.
+- Otherwise, in a workspace kept in a Git repository (any URL), it's
+  derived from Git's own `user.email`, the email commits go by there.
+- Otherwise, as through a cloud folder such as Dropbox, persons aren't
+  linked: the id is the app install's own, made once, and commits carry a
+  placeholder email (`<id>@people.invalid`).
+
+The same email gives the same id on every device, so a person's devices are
+linked, without the email itself appearing in pages.
+
+The person's name is a setting (Settings › Account), filled in from the
+GitHub account or Git's `user.name` until changed. With no name at all,
+commits are by the device, as before. A device's id is the desktop
+app's id for its install, recorded in the committer email
+(`SyncConfig::device_id`), so it survives renaming the device. Names are
+only compared for versions without ids, in blocks written before ids were
+recorded. A marker may
+also hold plain text: "Changed elsewhere" for the file's side when a save
+merges with it (`SyncEngine::write_page_body`), or a device name in a block
+written by an older version.
+
+The editor draws a block as one frame, with a bar over each version that
+names the person ("You" for whoever is reading) and the device, and buttons
+to keep one version or both (`packages/editor/src/conflicts.ts`). A device
+is named after the computer until the user renames it in Settings; the name
+is kept in the app's `settings.json`, for every workspace on that device.
 Every resolution is listed in `SyncReport::conflicts` and in the merge commit
 message.
 
@@ -311,9 +353,12 @@ user, installing picks the repositories.
   environment, so it reaches github.com only and never lands in
   `.git/config`, remote URLs or process listings. GitHub HTTPS remotes need
   nothing else; SSH remotes are unaffected.
-- **Commits.** While signed in, new commits are by the account's name and
-  no-reply address (`<id>+<login>@users.noreply.github.com`,
-  `SyncEngine::set_author`); signed out, by the device as before.
+- **Commits.** While signed in, new commits in every workspace are by the
+  person's name and the account's no-reply address
+  (`<id>+<login>@users.noreply.github.com`, `SyncEngine::set_person`). The
+  committer is always the device, so history and conflict blocks can say
+  which of a person's devices an edit came from. See
+  [Conflict rules](#conflict-rules) for the person's id.
 - **Finding workspaces.** After signing in, onboarding lists the workspaces
   in the repositories the App can reach, to join with one click: those with
   the `pagemesh-workspace` topic (set on the repos the app creates) and up
@@ -598,8 +643,6 @@ Limits that follow from the git model:
   checks on the hosted service's side.
 - Read-only access needs a host that enforces it. On a shared folder, anyone
   who can read can usually write.
-- Commits should record the person as well as the device, so conflict blocks
-  and history say "Anna (Laptop)" rather than just "Laptop".
 - Removing someone stops future syncs; they keep the copy they have.
 
 ## What the tests guarantee

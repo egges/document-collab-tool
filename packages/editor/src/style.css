@@ -11,6 +11,9 @@
   --page-menu-bg: #ffffff;
   --page-menu-hover: #eef1f4;
   --page-menu-shadow: 0 1px 3px rgb(0 0 0 / 0.12), 0 6px 20px rgb(0 0 0 / 0.12);
+  /* Conflict blocks: where two devices edited the same text. */
+  --page-conflict: #8250df;
+  --page-conflict-bg: #f6f0ff;
   --page-font: system-ui, -apple-system, "Segoe UI", sans-serif;
   --page-font-code: ui-monospace, SFMono-Regular, Menlo, monospace;
   /* For the editor's menus and labels; the text itself uses --page-font. */
@@ -46,6 +49,8 @@
   --page-menu-bg: #1c2129;
   --page-menu-hover: #2a313c;
   --page-menu-shadow: 0 1px 3px rgb(0 0 0 / 0.5), 0 6px 20px rgb(0 0 0 / 0.4);
+  --page-conflict: #ab7df8;
+  --page-conflict-bg: #2a2140;
   --page-hl-keyword: #ff7b72;
   --page-hl-string: #a5d6ff;
   --page-hl-comment: #8b949e;
@@ -68,6 +73,8 @@
     --page-menu-bg: #1c2129;
     --page-menu-hover: #2a313c;
     --page-menu-shadow: 0 1px 3px rgb(0 0 0 / 0.5), 0 6px 20px rgb(0 0 0 / 0.4);
+    --page-conflict: #ab7df8;
+    --page-conflict-bg: #2a2140;
     --page-hl-keyword: #ff7b72;
     --page-hl-string: #a5d6ff;
     --page-hl-comment: #8b949e;
@@ -623,4 +630,93 @@
   opacity: 0.65;
   pointer-events: none;
   user-select: none;
+}
+
+/* --- Conflict blocks (conflicts.ts) --------------------------------------- */
+
+/*
+ * A conflict marker is an HTML comment, which the editor shows as its raw
+ * text. Hide that text: the marker's bar says what it means. One that isn't
+ * part of a block the editor understands (a block inside a version of
+ * another, or one that lost a marker) shows as a small label instead.
+ */
+.page-editor .ProseMirror span[data-type="html"][data-value^="<!-- sync-conflict:"] {
+  display: inline-block;
+  font-size: 0;
+  color: transparent;
+}
+.page-editor .ProseMirror span[data-type="html"][data-value^="<!-- sync-conflict:"]::before {
+  font: 600 11px/1.6 var(--page-font-ui);
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--page-conflict);
+  background: var(--page-conflict-bg);
+  border-radius: 4px;
+  padding: 1px 8px;
+}
+.page-editor .ProseMirror span[data-type="html"][data-value^="<!-- sync-conflict:start"]::before { content: "Two versions"; }
+.page-editor .ProseMirror span[data-type="html"][data-value^="<!-- sync-conflict:version"]::before { content: "Version"; }
+.page-editor .ProseMirror span[data-type="html"][data-value^="<!-- sync-conflict:end"]::before { content: "End"; }
+.page-editor .ProseMirror .page-conflict-bar span[data-type="html"]::before { content: none; }
+
+/*
+ * A block: a bar that says what happened, then a bar over each version that
+ * says who wrote it, with the version's own blocks under it, set in a
+ * little. The outline around it all is .page-conflict-frame.
+ */
+.page-editor .ProseMirror > .page-conflict-bar {
+  display: flow-root;
+  margin-top: 0.9em;
+  padding: 6px 8px 6px 14px;
+  font: 600 12.5px/22px var(--page-font-ui);
+  color: var(--page-conflict);
+  background: color-mix(in srgb, var(--page-conflict-bg) 55%, transparent);
+  cursor: default;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.page-editor .ProseMirror > .page-conflict-bar::before { content: attr(data-label); }
+/* The line break the editor adds after the marker would put the note on a line of its own. */
+.page-editor .ProseMirror > .page-conflict-bar br { display: none; }
+.page-editor .ProseMirror > .page-conflict-bar[data-note]::after {
+  content: attr(data-note);
+  margin-left: 10px;
+  font-weight: 400;
+  color: var(--page-muted);
+}
+.page-editor .ProseMirror > .page-conflict-start {
+  margin-top: 1.1em;
+  border-radius: 8px 8px 0 0;
+  background: var(--page-conflict-bg);
+}
+.page-editor .ProseMirror > .page-conflict-start::before { color: var(--page-text); }
+.page-editor .ProseMirror > .page-conflict-start + .page-conflict-version { margin-top: 0; }
+.page-editor .ProseMirror > .page-conflict-end {
+  height: 12px;
+  padding: 0;
+  font-size: 0;
+  line-height: 0;
+  background: none;
+  margin-bottom: 0.6em;
+}
+.page-editor .ProseMirror > .page-conflict-bar:first-child { margin-top: 0; }
+.page-editor .ProseMirror > .page-conflict-body { margin-inline: 14px; }
+.page-conflict-keep {
+  float: right;
+  margin-left: 8px;
+  padding: 0 9px;
+  font: 500 12px/20px var(--page-font-ui);
+  color: var(--page-text);
+  background: var(--page-menu-bg);
+  border: 1px solid color-mix(in srgb, var(--page-conflict) 35%, var(--page-border));
+  border-radius: 6px;
+  cursor: pointer;
+}
+.page-conflict-keep:hover { border-color: var(--page-conflict); color: var(--page-conflict); }
+.page-conflict-frame {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--page-conflict) 40%, var(--page-border));
+  border-radius: 8px;
+  pointer-events: none;
 }

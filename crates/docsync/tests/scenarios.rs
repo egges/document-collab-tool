@@ -6,9 +6,10 @@ use std::fs;
 use std::time::{Duration, SystemTime};
 
 use common::{Crash, Net, Op, assert_converged, assert_valid, settle};
+use docsync::conflicts::find_conflicts;
 use docsync::database::{ColumnChange, ColumnType};
 use docsync::text_merge::{BLOCK_END, BLOCK_START};
-use docsync::{Resolution, Workspace};
+use docsync::{Person, Resolution, Workspace};
 use serde_json::json;
 
 fn body(lines: &[&str]) -> String {
@@ -123,10 +124,81 @@ fn overlapping_edits_keep_both_versions_in_a_conflict_block() {
     assert_eq!(
         text,
         format!(
-            "intro\n{BLOCK_START}\n<!-- sync-conflict:version Desktop -->\nthe desktop plan\n\
-             <!-- sync-conflict:version Laptop -->\nthe laptop plan\n{BLOCK_END}\noutro\n"
+            "intro\n{BLOCK_START}\n<!-- sync-conflict:version device=\"Desktop\" device-id=\"desktop-id\" -->\nthe desktop plan\n\
+             <!-- sync-conflict:version device=\"Laptop\" device-id=\"laptop-id\" -->\nthe laptop plan\n{BLOCK_END}\noutro\n"
         )
     );
+}
+
+#[test]
+fn a_conflict_block_names_the_person_and_the_device_of_each_version() {
+    let net = Net::new();
+    let laptop = net.device("Laptop");
+    let page = laptop.ws.create_page("Plan", None).unwrap();
+    laptop.ws.write_body(&page, &body(&["the plan"])).unwrap();
+    laptop.sync();
+    let desktop = net.device("Desktop");
+    let person = |name: &str, id: &str| {
+        Some(Person {
+            name: name.to_string(),
+            email: format!("{id}@example.com"),
+            id: Some(id.to_string()),
+        })
+    };
+    laptop.engine.set_person(person("Ada", "ada-id"));
+    desktop.engine.set_person(person("Ben", "ben-id"));
+
+    laptop.ws.write_body(&page, &body(&["Ada's plan"])).unwrap();
+    laptop.commit();
+    // Signing out or renaming the device afterwards doesn't change who
+    // wrote what was already saved.
+    laptop.engine.set_person(None);
+    laptop.engine.set_device_name("Renamed");
+    desktop.ws.write_body(&page, &body(&["Ben's plan"])).unwrap();
+    desktop.sync();
+    laptop.sync();
+    settle(&[&laptop, &desktop]);
+
+    let block = find_conflicts(&desktop.ws.read_body(&page).unwrap()).remove(0);
+    // Ids tell people and devices apart even if their names are the same.
+    let ids: Vec<_> = block
+        .versions
+        .iter()
+        .map(|v| match &v.label {
+            docsync::VersionLabel::By(w) => (w.person_id.clone(), w.device_id.clone()),
+            other => panic!("{other:?}"),
+        })
+        .collect();
+    let id = |s: &str| Some(s.to_string());
+    assert_eq!(
+        ids,
+        [(id("ada-id"), id("laptop-id")), (id("ben-id"), id("desktop-id"))]
+    );
+    let labels: Vec<_> = block
+        .versions
+        .iter()
+        .map(|v| (v.label.person(), v.label.device(), v.text.as_str()))
+        .collect();
+    assert_eq!(
+        labels,
+        [
+            (Some("Ada"), Some("Laptop"), "Ada's plan\n"),
+            (Some("Ben"), Some("Desktop"), "Ben's plan\n"),
+        ]
+    );
+
+    // From now on the laptop writes under its new name, signed out.
+    let resolved = laptop.engine.resolve_page_conflict(&page, 0, 0).unwrap();
+    assert_eq!(resolved, body(&["Ada's plan"]));
+    laptop.sync();
+    desktop.sync();
+    laptop.ws.write_body(&page, &body(&["the renamed plan"])).unwrap();
+    desktop.ws.write_body(&page, &body(&["Ben's next plan"])).unwrap();
+    desktop.sync();
+    laptop.sync();
+    let block = find_conflicts(&laptop.ws.read_body(&page).unwrap()).remove(0);
+    assert_eq!(block.versions[0].label.to_string(), "Renamed");
+    assert_eq!(block.versions[1].label.to_string(), "Ben (Desktop)");
 }
 
 #[test]
@@ -632,23 +704,30 @@ fn files_are_plain_and_readable_without_the_app() {
 }
 
 #[test]
-fn commits_use_the_author_set_after_opening() {
+fn commits_are_by_the_person_and_made_on_the_device() {
     let net = Net::new();
     let a = net.device("laptop");
-    a.engine
-        .set_author("Ada Lovelace", "1+ada@users.noreply.github.com");
+    a.engine.set_person(Some(Person {
+        name: "Ada Lovelace".into(),
+        email: "1+ada@users.noreply.github.com".into(),
+        id: Some("3f9a1c2b5e6d7f80".into()),
+    }));
     let page = a.ws.create_page("Signed in", None).unwrap();
     a.ws.write_body(&page, "hello\n").unwrap();
     a.commit();
     let out = common::git_command()
         .arg("-C")
         .arg(a.root())
-        .args(["log", "-1", "--format=%an <%ae>|%cn <%ce>"])
+        .args([
+            "log",
+            "-1",
+            "--format=%an <%ae>|%cn <%ce>|%(trailers:key=Person-Id,valueonly)",
+        ])
         .output()
         .unwrap();
     assert_eq!(
         String::from_utf8(out.stdout).unwrap().trim(),
-        "Ada Lovelace <1+ada@users.noreply.github.com>|Ada Lovelace <1+ada@users.noreply.github.com>"
+        "Ada Lovelace <1+ada@users.noreply.github.com>|laptop <laptop+laptop-id@devices.invalid>|3f9a1c2b5e6d7f80"
     );
 }
 

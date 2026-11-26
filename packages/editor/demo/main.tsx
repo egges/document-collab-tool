@@ -111,6 +111,8 @@ function App() {
           <PageEditorView
             key={openCount}
             markdown={onDisk}
+            // For the conflict blocks in 11-conflict.md: Anna's versions say "You".
+            reader={{ person: "Anna Smith", device: "Anna's MacBook" }}
             onReady={(ed) => {
               editor.current = ed;
               refresh();

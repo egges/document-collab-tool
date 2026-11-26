@@ -1,6 +1,8 @@
 import { useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
 import { type PageEditor, createPageEditor } from "../editor.ts";
+import type { Reader } from "../conflicts.ts";
 import { BlockHandle } from "./BlockHandle.tsx";
+import { ConflictFrames } from "./ConflictFrames.tsx";
 import { LinkPopover } from "./LinkPopover.tsx";
 import { SelectionToolbar } from "./SelectionToolbar.tsx";
 import { SlashMenu } from "./SlashMenu.tsx";
@@ -19,6 +21,11 @@ export interface PageEditorViewProps {
    * links open with `window.open`.
    */
   onOpenLink?: (href: string) => void;
+  /**
+   * Who is reading: the person signed in on this device (if anyone) and the
+   * device's name. Their own versions in a conflict block are labelled "You".
+   */
+  reader?: Reader;
   className?: string;
 }
 
@@ -27,11 +34,11 @@ export type KeyHandler = (event: KeyboardEvent) => boolean;
 
 /**
  * The page editor with its toolbar (on selection), slash menu, block
- * handle (drag to move, click for the block menu) and table handles (insert
- * and delete rows and columns). Styles:
+ * handle (drag to move, click for the block menu), table handles (insert
+ * and delete rows and columns) and the frames around conflict blocks. Styles:
  * import "@pagemesh/editor/style.css".
  */
-export function PageEditorView({ markdown, onReady, onDirtyChange, onChange, onOpenLink, className }: PageEditorViewProps) {
+export function PageEditorView({ markdown, onReady, onDirtyChange, onChange, onOpenLink, reader, className }: PageEditorViewProps) {
   const container = useRef<HTMLDivElement>(null);
   const root = useRef<HTMLDivElement>(null);
   const [editor, setEditor] = useState<PageEditor | null>(null);
@@ -58,6 +65,7 @@ export function PageEditorView({ markdown, onReady, onDirtyChange, onChange, onO
         if (created) callbacks.current.onChange?.(created);
       },
       handleKeyDown: (event) => keyHandler.current(event),
+      reader,
     }).then((ed) => {
       if (cancelled) {
         void ed.destroy();
@@ -83,6 +91,9 @@ export function PageEditorView({ markdown, onReady, onDirtyChange, onChange, onO
       editor.load(markdown);
     }
   }, [editor, markdown]);
+
+  const { person = null, personId = null, device = null, deviceId = null } = reader ?? {};
+  useEffect(() => editor?.setReader({ person, personId, device, deviceId }), [editor, person, personId, device, deviceId]);
 
   // Focus changes don't change the editor state, but they show and hide the menus.
   useEffect(() => {
@@ -129,6 +140,7 @@ export function PageEditorView({ markdown, onReady, onDirtyChange, onChange, onO
       {editor && <SlashMenu editor={editor} container={container} keyHandler={keyHandler} />}
       {editor && <BlockHandle editor={editor} container={container} />}
       {editor && <TableHandles editor={editor} container={container} />}
+      {editor && <ConflictFrames editor={editor} container={container} />}
     </div>
   );
 }

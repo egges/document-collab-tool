@@ -100,6 +100,18 @@ function WorkspaceView({
     setErrorState(message);
   }, []);
   const dev = useDevPanel();
+  // Who is reading: in a conflict block, their own versions say "You".
+  const reader = {
+    person: workspace.person,
+    personId: workspace.personId,
+    device: workspace.device,
+    deviceId: workspace.deviceId,
+  };
+  // Signing in or out can change who that is.
+  useEffect(() => {
+    const unlisten = events.onAccountChanged(() => void api.workspaceInfo().then((w) => w && onChange(w)));
+    return () => void unlisten.then((f) => f());
+  }, [onChange]);
   // Bumped when files change on disk, so the open page rereads its file.
   const [diskVersion, setDiskVersion] = useState(0);
   const page = useRef<PageViewHandle>(null);
@@ -320,6 +332,7 @@ function WorkspaceView({
               }}
               onError={setError}
               onOpenPage={(id) => void reload().then(() => select(id))}
+              reader={reader}
             />
           ) : (
             <div className="empty">

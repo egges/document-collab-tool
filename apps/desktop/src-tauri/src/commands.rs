@@ -7,7 +7,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use docsync::conflicts::find_conflicts;
-use docsync::{PageWrite, SyncEngine, Workspace};
+use docsync::{PageWrite, SyncEngine, VersionLabel, Workspace};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -17,6 +17,7 @@ use crate::devlog::{self, Entry, Level};
 use crate::github::{self, Access, DeviceCode, GitHubUser, RemoteWorkspace};
 use crate::locations;
 use crate::page_properties::{self, Kind, Properties, RowOf};
+use crate::person;
 use crate::search::{self, TextMatch};
 use crate::session::{self, Session, WorkspaceInfo};
 use crate::tree::{self, PageSummary};
@@ -36,7 +37,7 @@ impl AppState {
     /// Signed in or out: new commits are by the new account.
     pub fn account_changed(&self) {
         if let Some(session) = self.session.lock().unwrap().as_ref() {
-            session.set_author(github::user().as_ref());
+            session.refresh_person();
             // Signing in may be what the workspace was waiting for.
             session.worker.sync_now();
         }
@@ -124,6 +125,58 @@ fn update_settings(app: &AppHandle, change: impl FnOnce(&mut AppSettings)) {
     if let Err(e) = settings.save(&path) {
         devlog::warn("app", format!("Couldn't save {}: {e}", path.display()));
     }
+}
+
+/// At startup: the names the user chose for this device and themselves,
+/// this install's person id (made on first start), and Git's own identity.
+pub fn load_identity(app: &AppHandle) {
+    let mut settings = load_settings(app);
+    session::set_device_name(settings.device_name.as_deref());
+    let local_id = match settings.person_id.clone() {
+        Some(id) => id,
+        None => {
+            let id = person::new_local_id();
+            update_settings(app, |s| s.person_id = Some(id.clone()));
+            settings.person_id = Some(id.clone());
+            id
+        }
+    };
+    person::load(settings.person_name, local_id);
+    if let Ok(git) = crate::git::find_git() {
+        person::load_git_identity(git.binary());
+    }
+}
+
+/// Choose the name new edits are by, on every workspace on this device. An
+/// empty one goes back to the name from GitHub or Git.
+#[tauri::command]
+pub async fn set_person_name(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    name: String,
+) -> CmdResult<WorkspaceInfo> {
+    let kept = person::set_name(&name, github::user().as_ref());
+    update_settings(&app, |s| s.person_name = kept);
+    let guard = state.session.lock().unwrap();
+    let session = guard.as_ref().ok_or("No workspace is open")?;
+    session.refresh_person();
+    Ok(session.info())
+}
+
+/// Rename this device, for every workspace on it: the name shown with the
+/// person's in conflict blocks. An empty name goes back to the computer's.
+#[tauri::command]
+pub async fn set_device_name(
+    app: AppHandle,
+    state: State<'_, AppState>,
+    name: String,
+) -> CmdResult<WorkspaceInfo> {
+    let kept = session::set_device_name(Some(&name));
+    update_settings(&app, |s| s.device_name = kept);
+    let mut guard = state.session.lock().unwrap();
+    let session = guard.as_mut().ok_or("No workspace is open")?;
+    session.device_renamed();
+    Ok(session.info())
 }
 
 // ---- workspaces ----------------------------------------------------------
@@ -1079,8 +1132,18 @@ pub struct Conflict {
 }
 
 #[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ConflictVersion {
+    /// Who wrote it, as plain text: "Anna Smith (Laptop)".
     label: String,
+    /// The same in parts, when the block says: the person, if they were
+    /// signed in, and their device, each with an id where it's known
+    /// (`github:<id>` for a person, the app install's for a device), to
+    /// match the reader by rather than by name.
+    person: Option<String>,
+    person_id: Option<String>,
+    device: Option<String>,
+    device_id: Option<String>,
     text: String,
 }
 
@@ -1091,9 +1154,19 @@ fn conflicts_in(body: &str) -> Vec<Conflict> {
             versions: block
                 .versions
                 .into_iter()
-                .map(|v| ConflictVersion {
-                    label: v.label,
-                    text: v.text,
+                .map(|v| {
+                    let ids = match &v.label {
+                        VersionLabel::By(w) => (w.person_id.clone(), w.device_id.clone()),
+                        VersionLabel::Text(_) => (None, None),
+                    };
+                    ConflictVersion {
+                        label: v.label.to_string(),
+                        person: v.label.person().map(String::from),
+                        person_id: ids.0,
+                        device: v.label.device().map(String::from),
+                        device_id: ids.1,
+                        text: v.text,
+                    }
                 })
                 .collect(),
         })
