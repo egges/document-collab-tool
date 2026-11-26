@@ -10,6 +10,7 @@ mod git;
 mod github;
 mod locations;
 mod page_properties;
+mod person;
 mod search;
 mod session;
 mod tree;
@@ -36,6 +37,7 @@ pub fn run() {
             if let Ok(dir) = app.path().app_config_dir() {
                 session::init_install_id(&dir);
             }
+            commands::load_identity(app.handle());
             let handle = app.handle().clone();
             // Debug builds keep the sign-in in a file: see github::init.
             let dev_file = cfg!(debug_assertions)
@@ -72,6 +74,8 @@ pub fn run() {
             commands::show_workspace_folder,
             commands::workspace_info,
             commands::rename_workspace,
+            commands::set_device_name,
+            commands::set_person_name,
             commands::close_workspace,
             commands::list_workspaces,
             commands::forget_workspace,

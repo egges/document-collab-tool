@@ -20,10 +20,14 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use crate::git::{BlobRef, ConflictEntry, GitBackend, Oid, TreeEdit};
+use crate::git::{BlobRef, CommitInfo, ConflictEntry, GitBackend, Oid, TreeEdit};
 use crate::json_merge::{self, Side};
 use crate::layout::{self, FileKind};
+use crate::text_merge::{VersionLabel, Writer};
 use crate::{Result, text_merge};
+
+/// Labels the remote's version when its history doesn't say who wrote it.
+const UNKNOWN_WRITER: &str = "Another device";
 
 /// How a conflict was resolved automatically.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -70,12 +74,14 @@ pub(crate) struct MergeOutcome {
 
 type Probe<'p> = &'p dyn Fn(Option<&Oid>) -> Result<Option<String>>;
 
+/// Merge `theirs` into `ours`. `local` is who is merging: the label for
+/// our side where its history doesn't say who wrote it.
 pub(crate) fn merge_commits(
     git: &dyn GitBackend,
     repo: &Path,
     ours: &Oid,
     theirs: &Oid,
-    local_label: &str,
+    local: &Writer,
 ) -> Result<MergeOutcome> {
     let base = git.merge_base(repo, ours, theirs)?;
     let merged = git.merge_trees(repo, ours, theirs)?;
@@ -85,7 +91,7 @@ pub(crate) fn merge_commits(
         ours,
         theirs,
         base,
-        local_label,
+        local,
         edits: BTreeMap::new(),
         conflicts: Vec::new(),
     };
@@ -124,7 +130,7 @@ struct Merger<'a> {
     ours: &'a Oid,
     theirs: &'a Oid,
     base: Option<Oid>,
-    local_label: &'a str,
+    local: &'a Writer,
     /// Final content per path; `None` removes the path.
     edits: BTreeMap<String, Option<BlobRef>>,
     conflicts: Vec<ResolvedConflict>,
@@ -163,17 +169,22 @@ impl Merger<'_> {
             Some(base) => base.oid.clone(),
             None => self.git.write_blob(self.repo, b"")?,
         };
-        let remote_label = self.remote_label(&c.path)?;
+        // Git's own markers, which never reach the page: see below.
         let merged = self.git.merge_text(
             self.repo,
             &base,
             &ours.oid,
             &theirs.oid,
-            [self.local_label, "base", &remote_label],
+            ["ours", "base", "theirs"],
             text_merge::MARKER_SIZE,
         )?;
         let content = if merged.conflicts > 0 {
-            text_merge::rewrite_conflicts(&merged.content, self.local_label, &remote_label)
+            let local = VersionLabel::By(self.local_writer(&c.path)?);
+            let remote = match self.remote_writer(&c.path)? {
+                Some(writer) => VersionLabel::By(writer),
+                None => VersionLabel::Text(UNKNOWN_WRITER.to_string()),
+            };
+            text_merge::rewrite_conflicts(&merged.content, &local, &remote)
         } else {
             merged.content
         };
@@ -207,11 +218,11 @@ impl Merger<'_> {
             // Hand-edited into invalid JSON on one side: the valid version
             // wins and the broken one is kept for the user to look at.
             (Some(_), None) => {
-                let label = self.remote_label(&c.path)?;
+                let label = self.remote_copy_label(&c.path)?;
                 return self.keep_with_copy(&c.path, ours, theirs, &label);
             }
             (None, Some(_)) => {
-                let label = self.local_label.to_string();
+                let label = self.local_copy_label(&c.path)?;
                 return self.keep_with_copy(&c.path, theirs, ours, &label);
             }
             (None, None) => return self.keep_newest_with_copy(&c.path, ours, theirs),
@@ -242,8 +253,8 @@ impl Merger<'_> {
     fn keep_newest_with_copy(&mut self, path: &str, ours: &BlobRef, theirs: &BlobRef) -> Result<()> {
         let side = self.newest_side(path, &|blob| Ok(blob.map(|b| b.to_string())))?;
         let (winner, loser, loser_label) = match side {
-            Side::Ours => (ours, theirs, self.remote_label(path)?),
-            Side::Theirs => (theirs, ours, self.local_label.to_string()),
+            Side::Ours => (ours, theirs, self.remote_copy_label(path)?),
+            Side::Theirs => (theirs, ours, self.local_copy_label(path)?),
         };
         self.keep_with_copy(path, winner, loser, &loser_label)
     }
@@ -346,15 +357,63 @@ impl Merger<'_> {
             .and_then(|v| json_merge::value_at(&v, key_path).map(Value::to_string)))
     }
 
-    /// Name of the device that last changed `path` on the remote side.
-    fn remote_label(&self, path: &str) -> Result<String> {
-        let history = self
-            .git
-            .path_history(self.repo, self.base.as_ref(), self.theirs, path)?;
+    /// Who last changed `path` on `tip`'s side of the merge, as its commits
+    /// say: `None` when no commit there changed it, or the newest one names
+    /// neither a person nor a device.
+    fn writer(&self, tip: &Oid, path: &str) -> Result<Option<Writer>> {
+        let history = self.git.path_history(self.repo, self.base.as_ref(), tip, path)?;
         Ok(history
             .first()
-            .map(|c| c.author.clone())
-            .filter(|a| !a.is_empty())
+            .map(commit_writer)
+            .filter(|w| w.person.is_some() || w.device.is_some()))
+    }
+
+    /// Who last changed `path` on our side. Usually whoever is merging, but
+    /// not always: they may have signed in or renamed the device since, and
+    /// with a folder remote our side holds the devices merged so far.
+    fn local_writer(&self, path: &str) -> Result<Writer> {
+        Ok(self
+            .writer(self.ours, path)?
+            .unwrap_or_else(|| self.local.clone()))
+    }
+
+    /// Who last changed `path` on the remote side, when its history says.
+    fn remote_writer(&self, path: &str) -> Result<Option<Writer>> {
+        self.writer(self.theirs, path)
+    }
+
+    /// The name in a conflict copy's file name of our version of `path`.
+    fn local_copy_label(&self, path: &str) -> Result<String> {
+        Ok(copy_label(&self.local_writer(path)?).unwrap_or_else(|| "local".to_string()))
+    }
+
+    /// The name in a conflict copy's file name of the remote's version.
+    fn remote_copy_label(&self, path: &str) -> Result<String> {
+        Ok(self
+            .remote_writer(path)?
+            .as_ref()
+            .and_then(copy_label)
             .unwrap_or_else(|| "remote".to_string()))
     }
+}
+
+/// Who a commit is by. The committer is the device it was made on, and the
+/// author is the person, or the device again when nobody was signed in.
+/// Commits from before devices were recorded have the person as both.
+fn commit_writer(commit: &CommitInfo) -> Writer {
+    let named = |name: &str, wanted: bool| (wanted && !name.is_empty()).then(|| name.to_string());
+    let by_person = !layout::is_device_email(&commit.author_email);
+    let on_device = layout::is_device_email(&commit.committer_email);
+    Writer {
+        person: named(&commit.author, by_person),
+        person_id: commit.person_id.clone().filter(|_| by_person),
+        device: named(&commit.committer, on_device),
+        device_id: layout::device_id(&commit.committer_email),
+    }
+}
+
+/// A conflict copy is named after the device its version came from, or
+/// after the person when the device isn't known.
+fn copy_label(writer: &Writer) -> Option<String> {
+    writer.device.clone().or_else(|| writer.person.clone())
 }

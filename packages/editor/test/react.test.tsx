@@ -557,3 +557,39 @@ describe("table handles", () => {
     expect(editor.save()).toBe("| Name | Role |\n| - | - |\n| Ada | Lead |\n| | |\n| Alan | Staff |\n");
   });
 });
+
+describe("conflict blocks", () => {
+  const PAGE =
+    'intro\n\n<!-- sync-conflict:start -->\n\n<!-- sync-conflict:version person="Anna" device="Laptop" -->\n\nmine\n\n' +
+    '<!-- sync-conflict:version person="Ben" device="Desktop" -->\n\ntheirs\n\n<!-- sync-conflict:end -->\n\noutro\n';
+
+  async function mountAs(person: string): Promise<{ editor: PageEditor; as: (person: string) => Promise<void> }> {
+    container = document.createElement("div");
+    document.body.append(container);
+    const root = createRoot(container);
+    let ready!: (editor: PageEditor) => void;
+    const editor = new Promise<PageEditor>((resolve) => (ready = resolve));
+    const render = (who: string) =>
+      act(async () => root.render(<PageEditorView markdown={PAGE} onReady={ready} reader={{ person: who, device: "Laptop" }} />));
+    await render(person);
+    return { editor: await editor, as: render };
+  }
+
+  const labels = () => [...container.querySelectorAll(".page-conflict-version")].map((bar) => bar.getAttribute("data-label"));
+
+  test("each block gets a frame, and the reader's version says You", async () => {
+    const { editor, as } = await mountAs("Anna");
+    await act(async () => {});
+    expect(container.querySelectorAll(".page-conflict-frame")).toHaveLength(1);
+    expect(labels()).toEqual(["You · Laptop", "Ben · Desktop"]);
+
+    // Someone else signs in on this device.
+    await as("Ben");
+    expect(labels()).toEqual(["Anna · Laptop", "You · Desktop"]);
+    expect(editor.dirty).toBe(false);
+
+    await act(() => container.querySelectorAll<HTMLButtonElement>(".page-conflict-keep")[1].click());
+    expect(container.querySelectorAll(".page-conflict-frame")).toHaveLength(0);
+    expect(editor.save()).toBe("intro\n\nmine\n\noutro\n");
+  });
+});

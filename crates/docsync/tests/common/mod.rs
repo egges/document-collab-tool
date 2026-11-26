@@ -185,11 +185,13 @@ impl GitBackend for FaultyGit {
         parents: &[Oid],
         message: &str,
         author: &Signature,
+        committer: &Signature,
     ) -> Result<Oid> {
         wrap!(
             self,
             Op::CommitTree,
-            self.inner.commit_tree(repo, tree, parents, message, author)
+            self.inner
+                .commit_tree(repo, tree, parents, message, author, committer)
         )
     }
     fn update_ref(&self, repo: &Path, refname: &str, new: &Oid, expected_old: Option<&Oid>) -> Result<()> {
@@ -423,6 +425,7 @@ impl Net {
 
     fn config(&self, name: &str) -> SyncConfig {
         let mut config = SyncConfig::new(name);
+        config.device_id = Some(format!("{name}-id"));
         config.stale_lock_age = std::time::Duration::ZERO;
         if self.cloud.is_some() {
             config.layout = RemoteLayout::DeviceRefs {

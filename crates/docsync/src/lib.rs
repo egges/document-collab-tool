@@ -25,10 +25,11 @@ pub mod workspace;
 
 pub use clock::{Clock, ManualClock, SystemClock};
 pub use engine::{
-    DEVICE_REFS, OTHER_CHANGES_LABEL, PageWrite, RemoteCheck, RemoteLayout, SyncConfig, SyncEngine,
-    SyncReport, prepare_folder_remote,
+    DEVICE_REFS, OTHER_CHANGES_LABEL, PERSON_ID_TRAILER, PageWrite, Person, RemoteCheck, RemoteLayout,
+    SyncConfig, SyncEngine, SyncReport, prepare_folder_remote,
 };
 pub use error::{Error, Result};
 pub use git::{CliGit, GitBackend};
 pub use merge::{Resolution, ResolvedConflict};
+pub use text_merge::{VersionLabel, Writer};
 pub use workspace::Workspace;

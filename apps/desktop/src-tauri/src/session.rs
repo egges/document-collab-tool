@@ -54,10 +54,24 @@ pub fn init_install_id(config_dir: &Path) {
     let _ = INSTALL_ID.set(id);
 }
 
+/// This app install's id; "tests" in tests, which don't make one.
+fn install_id() -> &'static str {
+    INSTALL_ID.get().map(String::as_str).unwrap_or("tests")
+}
+
+/// The settings every workspace opens with on this device.
+fn sync_config() -> SyncConfig {
+    let mut config = SyncConfig::new(device_name());
+    // The install's id, so two devices with the same name are still told
+    // apart, and a renamed one is still known.
+    config.device_id = Some(install_id().to_string());
+    config
+}
+
 /// This copy of a workspace: the app install plus its folder.
 fn copy_key(root: &Path) -> String {
     let root = root.canonicalize().unwrap_or_else(|_| root.to_path_buf());
-    let install = INSTALL_ID.get().map(String::as_str).unwrap_or("tests");
+    let install = install_id();
     format!("{install} {}", root.display())
 }
 
@@ -67,6 +81,13 @@ pub struct WorkspaceInfo {
     pub path: String,
     pub name: String,
     pub device: String,
+    /// What tells this device apart from others with the same name: the
+    /// app install's id. Conflict blocks record it with each version.
+    pub device_id: String,
+    /// Who new edits here are by (see `person.rs`), if anyone yet, with the
+    /// id that conflict blocks record: whose versions are "You".
+    pub person: Option<String>,
+    pub person_id: Option<String>,
     pub remote: Option<String>,
     /// Where it's kept besides this device, for the sync panel:
     /// "Dropbox › Work", "GitHub", "gitlab.com".
@@ -103,7 +124,7 @@ impl Session {
     /// doesn't exist.
     pub fn open_or_create(path: &Path, events: impl Events) -> Result<Self, String> {
         let git = Arc::new(crate::git::find_git()?);
-        let config = SyncConfig::new(device_name());
+        let config = sync_config();
         let clock = Arc::new(SystemClock);
         let engine = if path.join(".git").exists() {
             if !path.join(layout::WORKSPACE_FILE).is_file() {
@@ -149,7 +170,7 @@ impl Session {
             remote: Some(url.to_string()),
             ..DeviceSettings::default()
         };
-        let mut config = SyncConfig::new(device_name());
+        let mut config = sync_config();
         config.layout = remote_layout(&mut settings, path);
         let engine = SyncEngine::clone_remote(git, url, path, config, Arc::new(SystemClock))
             .map_err(|e| e.to_string())?;
@@ -177,14 +198,17 @@ impl Session {
             "app",
             format!(
                 "Workspace open as \"{}\", remote: {}",
-                engine.config().device_name,
+                engine.device_name(),
                 settings.remote.as_deref().unwrap_or("none")
             ),
         );
         let info = WorkspaceInfo {
             path: root.display().to_string(),
             name: String::new(),
-            device: engine.config().device_name.clone(),
+            device: engine.device_name(),
+            device_id: install_id().to_string(),
+            person: None,
+            person_id: None,
             remote: settings.remote.clone(),
             kept_in: settings.remote.as_deref().map(kept_in),
             inside_cloud: cloud::containing(&root, &cloud::detect()).map(|f| f.name),
@@ -193,9 +217,10 @@ impl Session {
         if let Some(cloud) = &info.inside_cloud {
             devlog::warn("cloud", format!("The workspace's folder is inside {cloud}"));
         }
-        if let Some(user) = crate::github::user() {
-            engine.set_author(user.display_name(), user.noreply_email());
-        }
+        engine.set_person(crate::person::person(
+            crate::github::user().as_ref(),
+            crate::person::linked(settings.remote.as_deref()),
+        ));
         let engine = Arc::new(engine);
         let worker = SyncWorker::start(
             engine.clone(),
@@ -252,8 +277,11 @@ impl Session {
     /// arrived with a sync shows up.
     pub fn info(&self) -> WorkspaceInfo {
         let root = self.engine.root();
+        let writer = self.engine.writer();
         WorkspaceInfo {
             name: Workspace::new(root).name().unwrap_or_else(|| folder_label(root)),
+            person: writer.person,
+            person_id: writer.person_id,
             ..self.info.clone()
         }
     }
@@ -269,16 +297,23 @@ impl Session {
         Ok(self.info())
     }
 
-    /// Who new commits are by: the GitHub account when signed in, otherwise
-    /// this device, as before signing in.
-    pub fn set_author(&self, user: Option<&crate::github::GitHubUser>) {
-        let config = self.engine.config();
-        match user {
-            Some(user) => self.engine.set_author(user.display_name(), user.noreply_email()),
-            None => self
-                .engine
-                .set_author(config.author_name.clone(), config.author_email.clone()),
-        }
+    /// Work out again who new commits are by (see `person.rs`): after
+    /// signing in or out, changing the name, or moving the workspace
+    /// between a Git repository and a cloud folder.
+    pub fn refresh_person(&self) {
+        self.engine.set_person(crate::person::person(
+            crate::github::user().as_ref(),
+            crate::person::linked(self.info.remote.as_deref()),
+        ));
+    }
+
+    /// This device was renamed (see [`set_device_name`]): new commits and
+    /// conflict blocks use the new name.
+    pub fn device_renamed(&mut self) {
+        let name = device_name();
+        devlog::info("app", format!("This device is now called \"{name}\""));
+        self.engine.set_device_name(name.clone());
+        self.info.device = name;
     }
 
     /// Set or clear the remote this device syncs with. Refuses a remote
@@ -322,6 +357,7 @@ impl Session {
         self.info.kept_in = url.as_deref().map(kept_in);
         self.info.remote = url;
         self.info.moved_to = None;
+        self.refresh_person();
         self.watch_remote();
         Ok(())
     }
@@ -583,8 +619,30 @@ fn save_device_settings(root: &Path, settings: &DeviceSettings) -> Result<(), St
         .map_err(|e| format!("can't save {}: {e}", path.display()))
 }
 
-/// Shown in conflict blocks, e.g. "Arjans-MacBook-Pro".
-fn device_name() -> String {
+/// The name the user gave this device in Settings, if any. For every
+/// workspace on this device; kept in the app's `settings.json`.
+static DEVICE_NAME: std::sync::Mutex<Option<String>> = std::sync::Mutex::new(None);
+
+/// Call this device `name` from now on, in every workspace, or go back to
+/// the computer's own name with an empty one (or with that very name, so a
+/// later change to the computer's name is followed). Returns what to keep
+/// in the settings. An open workspace needs [`Session::device_renamed`].
+pub fn set_device_name(name: Option<&str>) -> Option<String> {
+    let name = name
+        .map(crate::person::clean_name)
+        .filter(|name| !name.is_empty() && *name != computer_name());
+    *DEVICE_NAME.lock().unwrap() = name.clone();
+    name
+}
+
+/// This device's name, shown with the person's in conflict blocks and
+/// recorded in every commit: the one chosen in Settings, or else the
+/// computer's, e.g. "Arjans-MacBook-Pro".
+pub fn device_name() -> String {
+    DEVICE_NAME.lock().unwrap().clone().unwrap_or_else(computer_name)
+}
+
+fn computer_name() -> String {
     let host = gethostname::gethostname().to_string_lossy().into_owned();
     let host = host.strip_suffix(".local").unwrap_or(&host).trim();
     if host.is_empty() {
@@ -618,6 +676,31 @@ mod tests {
 
         let session = Session::open_or_create(&root, NoEvents).unwrap();
         assert!(Workspace::new(session.engine.root()).page_exists(&page));
+    }
+
+    #[test]
+    fn renaming_the_device_names_its_next_edits() {
+        let dir = tempfile::tempdir().unwrap();
+        let mut session = Session::open_or_create(&dir.path().join("Notes"), NoEvents).unwrap();
+        let computer = computer_name();
+
+        // One line with single spaces; this is the only test that renames.
+        let kept = set_device_name(Some("  Arjan's \n  Mac "));
+        assert_eq!(kept.as_deref(), Some("Arjan's Mac"));
+        session.device_renamed();
+        assert_eq!(session.info().device, "Arjan's Mac");
+        assert_eq!(session.engine.writer().device.as_deref(), Some("Arjan's Mac"));
+        // Renaming keeps the id that tells this device apart.
+        assert_eq!(session.engine.writer().device_id.as_deref(), Some("tests"));
+        assert_eq!(session.info().device_id, "tests");
+
+        // No name, or the computer's own, goes back to following the computer.
+        for name in ["  ", computer.as_str()] {
+            set_device_name(Some("Other"));
+            assert_eq!(set_device_name(Some(name)), None);
+            session.device_renamed();
+            assert_eq!(session.info().device, computer);
+        }
     }
 
     #[test]

@@ -1,5 +1,5 @@
 import { ask } from "@tauri-apps/plugin-dialog";
-import type { PageEditor } from "@pagemesh/editor";
+import type { PageEditor, Reader } from "@pagemesh/editor";
 import { PageEditorView } from "@pagemesh/editor/react";
 import { type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { type Conflict, type Page, type PageDisplay, type PageProperties as Properties, api, errorText } from "./api.ts";
@@ -34,6 +34,8 @@ interface PageViewProps {
   onError: (message: string) => void;
   /** Open another page: a database's row, from a database page. */
   onOpenPage: (id: string) => void;
+  /** Who is reading: their own versions in a conflict block say "You". */
+  reader: Reader;
   ref?: Ref<PageViewHandle>;
 }
 
@@ -62,9 +64,14 @@ export function PageView(props: PageViewProps) {
   return <LoadedPage {...props} initial={page} />;
 }
 
-function LoadedPage({ id, initial, diskVersion, reveal, onOpenLink, onRenamed, onTitleChange, display, onDisplay, onDeleted, onError, ref }: PageViewProps & { initial: Page }) {
+function LoadedPage({ id, initial, diskVersion, reveal, onOpenLink, onRenamed, onTitleChange, display, onDisplay, onDeleted, onError, reader, ref }: PageViewProps & { initial: Page }) {
   const [title, setTitle] = useState(initial.title);
+  // The conflict blocks in the file, and how many the editor shows as blocks right now.
   const [conflicts, setConflicts] = useState<Conflict[]>(initial.conflicts);
+  const [conflictsInPage, setConflictsInPage] = useState(0);
+  // The file holds a conflict the editor can't show as a block (one inside
+  // a code block, say): list them all above the page instead.
+  const [listConflicts, setListConflicts] = useState(false);
   const [properties, setProperties] = useState<Properties>(initial.properties);
   const [notice, setNotice] = useState<string | null>(null);
   // A save problem the saver is retrying. Shown only if it lasts.
@@ -88,9 +95,13 @@ function LoadedPage({ id, initial, diskVersion, reveal, onOpenLink, onRenamed, o
         log: (message) => log("debug", "save", `Page ${id}: ${message}`),
         onEvent: (event) => {
           switch (event.kind) {
-            case "conflicts":
+            case "conflicts": {
+              // The page was just written or loaded, so the editor shows what the file holds.
+              const editor = editorRef.current;
               setConflicts(event.conflicts);
+              setListConflicts(!!editor && event.conflicts.length > editor.conflicts.length);
               break;
+            }
             case "gone":
               log("warn", "save", `Page ${id} was deleted on another device while open`);
               setNotice("This page was deleted on another device. Your latest edits weren't saved.");
@@ -279,15 +290,30 @@ function LoadedPage({ id, initial, diskVersion, reveal, onOpenLink, onRenamed, o
         )}
       </header>
       <PageProperties properties={properties} database={initial.row?.name ?? null} actions={propertyActions} />
-      <ConflictPanel conflicts={conflicts} busy={busy} onKeep={(i, v) => void keep(i, v)} />
+      <ConflictPanel
+        conflicts={conflicts}
+        inPage={conflictsInPage}
+        listed={listConflicts}
+        reader={reader}
+        busy={busy}
+        onKeep={(i, v) => void keep(i, v)}
+        onShow={() => editorRef.current?.showConflict()}
+      />
       <PageEditorView
         markdown={initial.body}
+        reader={reader}
         onReady={(editor: PageEditor) => {
-          saver.attach(editor);
           editorRef.current = editor;
+          setConflictsInPage(editor.conflicts.length);
+          setListConflicts(initial.conflicts.length > editor.conflicts.length);
+          // After those: a newer version that arrived meanwhile is shown now, and counts instead.
+          saver.attach(editor);
           if (reveal && editor.commands.find(reveal)) editor.view.focus();
         }}
-        onChange={() => saver.changed()}
+        onChange={(editor: PageEditor) => {
+          saver.changed();
+          setConflictsInPage(editor.conflicts.length);
+        }}
         onOpenLink={onOpenLink}
       />
     </article>

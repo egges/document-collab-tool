@@ -50,6 +50,16 @@ In React, `<PageEditorView>` is the editor with its menus:
   the page) moves on to text, Backspace in an empty block makes it text
   again, and ⌘A selects just the code.
 
+- **Conflict blocks**: where two devices edited the same lines, sync keeps
+  both versions between `<!-- sync-conflict:… -->` comments. The editor draws
+  that as one framed block, with a bar over each version that says who wrote
+  it and on which device ("You · MacBook Pro", "Anna Smith · Laptop"; pass
+  `reader` so it knows who "You" is), "Keep this version" on each and "Keep
+  both" on the block. Keeping is an ordinary edit, so undo brings the block
+  back. The cursor steps over the bars, and Backspace can't pull text into
+  one. `editor.conflicts` lists the blocks and `editor.showConflict()`
+  scrolls to the first (`src/conflicts.ts`).
+
 ```tsx
 import { PageEditorView } from "@pagemesh/editor/react";
 import "@pagemesh/editor/style.css";

@@ -14,7 +14,7 @@
 //! marker before any other text, and an end marker. Anything else is left
 //! alone, because resolving a block we don't understand could lose text.
 
-use crate::text_merge::{BLOCK_END, BLOCK_START, VERSION_PREFIX};
+use crate::text_merge::{BLOCK_END, BLOCK_START, VERSION_PREFIX, VersionLabel, parse_version_label};
 
 /// A conflict block in a page.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -28,8 +28,8 @@ pub struct ConflictBlock {
 /// One version inside a conflict block.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ConflictVersion {
-    /// Usually the name of the device that wrote it.
-    pub label: String,
+    /// Who wrote it: the person and their device, when the block says.
+    pub label: VersionLabel,
     /// The version's Markdown without the blank lines around it. Ends with a
     /// newline unless it's empty (one side deleted the lines).
     pub text: String,
@@ -50,7 +50,7 @@ fn marker(line: &str) -> Option<Marker<'_>> {
     } else {
         line.strip_prefix(VERSION_PREFIX)
             .and_then(|rest| rest.strip_suffix("-->"))
-            .map(|label| Marker::Version(label.trim()))
+            .map(Marker::Version)
     }
 }
 
@@ -63,7 +63,7 @@ fn is_blank(line: &str) -> bool {
 pub fn find_conflicts(page: &str) -> Vec<ConflictBlock> {
     struct Open {
         start: usize,
-        versions: Vec<(String, Vec<String>)>,
+        versions: Vec<(VersionLabel, Vec<String>)>,
         /// How many nested blocks we're inside, within the current version.
         depth: usize,
         malformed: bool,
@@ -105,7 +105,9 @@ pub fn find_conflicts(page: &str) -> Vec<ConflictBlock> {
                     });
                 }
             }
-            (Some(Marker::Version(label)), 0) => block.versions.push((label.to_string(), Vec::new())),
+            (Some(Marker::Version(label)), 0) => {
+                block.versions.push((parse_version_label(label), Vec::new()))
+            }
             (marker, depth) => {
                 match marker {
                     Some(Marker::Start) => block.depth += 1,
@@ -223,7 +225,12 @@ mod tests {
     fn versions(page: &str) -> Vec<Vec<(String, String)>> {
         find_conflicts(page)
             .into_iter()
-            .map(|b| b.versions.into_iter().map(|v| (v.label, v.text)).collect())
+            .map(|b| {
+                b.versions
+                    .into_iter()
+                    .map(|v| (v.label.to_string(), v.text))
+                    .collect()
+            })
             .collect()
     }
 
@@ -345,13 +352,22 @@ mod tests {
     fn round_trips_blocks_written_by_the_merge() {
         let m = |c: char| c.to_string().repeat(crate::text_merge::MARKER_SIZE);
         let merged = format!("a\n{} x\nours\n{}\ntheirs\n{} y\nb\n", m('<'), m('='), m('>'));
+        let mac = VersionLabel::By(crate::text_merge::Writer {
+            person: Some("Anna".into()),
+            device: Some("Mac".into()),
+            ..Default::default()
+        });
         let page = String::from_utf8(crate::text_merge::rewrite_conflicts(
             merged.as_bytes(),
-            "Mac",
-            "PC",
+            &mac,
+            &VersionLabel::Text("PC".into()),
         ))
         .unwrap();
-        assert_eq!(versions(&page), [vec![v("Mac", "ours\n"), v("PC", "theirs\n")]]);
+        assert_eq!(
+            versions(&page),
+            [vec![v("Anna (Mac)", "ours\n"), v("PC", "theirs\n")]]
+        );
+        assert_eq!(find_conflicts(&page)[0].versions[0].label, mac);
         assert_eq!(resolve_conflict(&page, 0, 1).unwrap(), "a\ntheirs\nb\n");
     }
 }

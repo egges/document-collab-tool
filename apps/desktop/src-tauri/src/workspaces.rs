@@ -24,6 +24,16 @@ pub struct AppSettings {
     pub last_workspace: Option<PathBuf>,
     #[serde(default)]
     pub workspaces: Vec<KnownWorkspace>,
+    /// What the user called this device; without it, the computer's name.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device_name: Option<String>,
+    /// The name the user chose for themselves; without it, GitHub's or Git's.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub person_name: Option<String>,
+    /// This install's own person id, for workspaces where persons aren't
+    /// linked (see `person.rs`). Made on first start.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub person_id: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

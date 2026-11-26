@@ -155,6 +155,8 @@
   --page-code-bg: var(--sidebar-bg);
   --page-menu-bg: var(--bg);
   --page-menu-hover: var(--hover);
+  --page-conflict: var(--conflict);
+  --page-conflict-bg: var(--conflict-bg);
 }
 
 /*
@@ -1666,6 +1668,22 @@ button.workspace-name[aria-expanded="true"] {
 
 /* ---- conflicts ------------------------------------------------------------ */
 
+.conflict-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 8px 8px 8px 14px;
+  margin-bottom: 20px;
+  border-radius: 8px;
+  background: var(--conflict-bg);
+  font-size: 13px;
+}
+
+.conflict-notice .button {
+  flex: none;
+}
+
 .conflicts {
   border: 1px solid var(--border);
   background: var(--sidebar-bg);
@@ -1722,36 +1740,6 @@ button.workspace-name[aria-expanded="true"] {
 
 .version .button {
   align-self: flex-start;
-}
-
-/* Conflict markers in the editor are HTML comments, which the editor shows
-   as raw text. Draw them as labelled dividers instead. */
-.page-editor span[data-type="html"][data-value^="<!-- sync-conflict:"] {
-  display: inline-block;
-  font-size: 0;
-  color: transparent;
-}
-
-.page-editor span[data-type="html"][data-value^="<!-- sync-conflict:"]::before {
-  font: 600 11px/1.6 var(--font);
-  letter-spacing: 0.02em;
-  text-transform: uppercase;
-  color: var(--conflict);
-  background: var(--conflict-bg);
-  border-radius: 4px;
-  padding: 1px 8px;
-}
-
-.page-editor span[data-type="html"][data-value^="<!-- sync-conflict:start"]::before {
-  content: "Two versions";
-}
-
-.page-editor span[data-type="html"][data-value^="<!-- sync-conflict:version"]::before {
-  content: "Version";
-}
-
-.page-editor span[data-type="html"][data-value^="<!-- sync-conflict:end"]::before {
-  content: "End";
 }
 
 /* ---- developer panel (debug builds only) ----------------------------------- */
