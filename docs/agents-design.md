@@ -181,7 +181,7 @@ and subscription, and shows the session in the thread it was started from.
 - **The working directory is a draft of the agent's space** (below), with
   the agent's own folder in it. The harness writes skills, scripts and
   assets there. Access to pages and databases goes through the app's own
-  MCP server ([roadmap step 4](roadmap.md#4-ask-an-agent-from-a-page)),
+  MCP server ([roadmap step 4](roadmap.md#4-release-for-daily-use-and-ask-an-agent-from-a-page)),
   passed to the session, along with the agent's declared actions. Spaces on
   its reading list are there to read only.
 - **The app enforces approval, not the harness.** The MCP `send` tool never

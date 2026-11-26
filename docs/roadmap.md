@@ -13,6 +13,12 @@ company's team works, with agents doing much of the work
 Steps 4 to 7 need no server. The first server, a small relay, comes with
 chat in step 8. The app is for our own team until step 10.
 
+On 2026-11-26 we decided to start using the app for real work as soon as
+possible: an installed version for daily use, with agents handling email
+and the video pipeline, while the rest is built. Step 4 therefore starts
+with a release for one person, and step 5 starts with the parts of agents
+that those two jobs need (marked **First**).
+
 ## 1. Harden what we have — done
 
 - [x] **Continuous integration.** Lint and tests on Linux for every PR and
@@ -185,7 +191,7 @@ chat in step 8. The app is for our own team until step 10.
       by `apps/desktop/scripts/fetch-git.mjs`), and uses an installed Git
       only when a build has none.
 
-## 4. Ask an agent from a page
+## 4. Release for daily use, and ask an agent from a page
 
 The smallest thing that tests the core claim of
 [product-design.md](product-design.md): someone who has never heard of git
@@ -195,6 +201,43 @@ Claude Code on this computer, no server.
 The workspace is plain files in git, so the way to bring in AI is to be the
 place the agents people already use (Claude Code, Codex) can work in, rather
 than shipping our own agent.
+
+### Release for one person
+
+Done first, so an installed version can hold real work while development
+goes on. It protects that work from development builds.
+
+- [ ] **Separate development and release builds.** The release uses the
+      identifier `dev.pagemesh.app` (decided 2026-11-26, replacing
+      `dev.documentcollabtool.desktop`). It sets the data folder and the
+      keychain service, so it stays even if the product name changes.
+      Development builds get their own identifier (`dev.pagemesh.app.dev`),
+      name and icon, so they never open or change the workspaces of the
+      installed app.
+- [ ] **Workspace format version.** A format version in `workspace.json`.
+      An app that finds a newer version than it knows says "Update Pagemesh
+      to open this workspace" instead of reading or syncing it, and every
+      format change comes with a migration. Needed because the installed
+      app and development builds sync the same workspaces.
+- [ ] **Releases.** Pushing a tag (`v0.2.0`) makes GitHub Actions build the
+      app and attach it to a GitHub Release (extending `app.yml`).
+- [ ] **Automatic updates.** Tauri's updater plugin, reading GitHub
+      Releases, with its own signing key. macOS code signing and
+      notarization wait for the internal release in step 7 (there is no
+      Apple Developer account yet, as of 2026-11-26).
+- [ ] **A stable signature without Apple.** Until then, macOS builds are
+      signed with a self-made code-signing certificate, kept as a CI
+      secret. macOS ties keychain access to the app's signature, and the
+      throwaway signature an unsigned build gets changes with every build,
+      so without this each update would ask again for the GitHub tokens in
+      the keychain. The first install needs "Open Anyway" in System
+      Settings › Privacy & Security once; updates installed by the app
+      don't.
+- [ ] **Logs.** A log file reachable from the app's menu, and the full
+      output of each agent run kept in `.docsync/`, so problems found in
+      daily use can be traced.
+
+### Agents
 
 - [ ] **MCP server.** Built on the same crate, with tools to search, read
       pages, create and update pages, query databases and list backlinks.
@@ -212,7 +255,8 @@ than shipping our own agent.
       ([agents-design.md](agents-design.md#what-it-changes-in-the-sync-engine)).
 - [ ] **Thread panel.** A panel beside the page to write to an agent about
       it. The run's steps stay folded away, and it ends with "Changes to
-      review".
+      review". For daily use a minimal version comes first: the agent's
+      summary, the pages it changed, and Apply or Discard.
 - [ ] **Review and apply.** The draft's changes shown as outcomes, never as
       file paths or diffs: the agent's summary, each page with its changes
       marked, the rows added. Apply, ask for changes (the agent continues on
@@ -228,14 +272,23 @@ An agent becomes something that lasts: a teammate defined by files in the
 space, with instructions, rules and connections
 ([agents-design.md](agents-design.md)).
 
-- [ ] **Agent format.** `agents/<id>/` with `agent.json`, skills, databases
-      and an optional `ui/`; device-only state in `.docsync/`. Agents are
-      entities in the sync engine, like pages and databases.
-- [ ] **Rules.** What an agent does alone and what it asks first. The app
-      enforces them: an action with side effects, such as sending an email,
-      only happens when a person approves it.
-- [ ] **Connections.** Outside services through MCP servers, with the scopes
-      the agent may use. Credentials stay in the system keychain.
+The items marked **First** come right after step 4, so the email agent and
+the video pipeline can be used daily; the rest follows.
+
+- [ ] **Agent format.** **First.** `agents/<id>/` with `agent.json`,
+      skills, scripts, databases and an optional `ui/`; device-only state
+      in `.docsync/`. Agents are entities in the sync engine, like pages
+      and databases.
+- [ ] **Running an agent.** **First.** Start an agent from the app (a
+      button on the agent, or a message to it in a thread); the harness
+      runs its scripts in a draft, as in step 4.
+- [ ] **Rules.** **First,** in a simple form: an action with side effects,
+      such as sending an email, waits for an "Approve" card in the thread.
+      Later the full rules: what an agent does alone and what it asks
+      first, enforced by the app.
+- [ ] **Connections.** **First** for credentials: they stay in the system
+      keychain and never sync. Then outside services through MCP servers,
+      with the scopes the agent may use.
 - [ ] **Agent profile.** A page per agent that says in plain words what it
       may do, with its recent activity, and "Agents" in the sidebar.
 - [ ] **Harness adapter: Codex.** The second adapter, so the harness is a
@@ -246,7 +299,13 @@ space, with instructions, rules and connections
       fetched when a file is opened, so video, audio and generated images
       stay out of the repo
       ([product-design.md](product-design.md#what-stays-out-of-git)).
-- [ ] **First agent: email.** Triage, drafts and sending after approval.
+- [ ] **First agent: email.** **First.** Triage, drafts and sending after
+      approval.
+- [ ] **Video pipeline.** **First.** The pipeline's scripts, scripts for
+      the videos and settings live in the agent's folder; footage and
+      renders stay in an ordinary folder outside the workspace, set per
+      device. The large-file store above replaces that folder later, when
+      other spaces need the output (thumbnails for marketing).
 
 ## 6. Search and links
 
@@ -341,9 +400,9 @@ trusted rather than verified, as in a shared folder.
       pages belong in the private space. Read-only members come from the
       sync target (read access on GitHub, a view-only folder share), and
       can't comment, since a comment is a write.
-- [ ] **Internal release.** Code signing and notarization for macOS,
-      automatic updates (Git already ships with the app), so teammates
-      can install it.
+- [ ] **Internal release.** Code signing and notarization for macOS, so
+      teammates can install it. Releases and automatic updates already
+      exist from step 4 (and Git ships with the app).
 
 ## 8. Channels and direct messages
 
