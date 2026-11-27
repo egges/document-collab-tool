@@ -125,6 +125,73 @@ both. Universal macOS builds aren't supported yet. On Linux, install
 The shortcuts live in `src/shortcuts.ts`, so tooltips and the overview stay
 in step with them.
 
+## Development and release builds
+
+They are two apps that never share data. `npm run tauri dev` (and a plain
+`tauri build`) makes **Pagemesh Dev**, `dev.pagemesh.app.dev`, with an orange
+icon (`src-tauri/icons-dev`, drawn from `assets/icon-dev.svg`). Release
+builds add `src-tauri/tauri.release.conf.json`, which makes **Pagemesh**,
+`dev.pagemesh.app`. The identifier sets the app's settings and data folders,
+its log folder and its keychain service, so a development build never opens
+or changes the workspaces of the installed app. Both can sync the same
+workspace from GitHub or a cloud folder; the workspace format version keeps
+an older one from damaging what a newer one wrote
+([sync-design.md](../../docs/sync-design.md#on-disk-format)).
+
+The identifier stays even if the product name changes. Builds from before
+2026-11-27 used `dev.documentcollabtool.desktop`; their folders are left as
+they were, and the new apps start empty: join workspaces again from GitHub
+or the cloud folder.
+
+## Releases
+
+Push a tag and GitHub Actions builds the app and publishes it as a GitHub
+Release (`.github/workflows/release.yml`):
+
+```sh
+git tag v0.2.0 && git push origin v0.2.0
+```
+
+The tag sets the version. For now it builds for Apple Silicon Macs only.
+
+- **Updates.** Release builds check the latest release 20 seconds after
+  starting and every 4 hours (`src-tauri/src/updater.rs`), download and
+  install a newer version in the background, and show an arrow at the
+  bottom of the sidebar: "Restart to update". Otherwise the new version runs
+  from the next start. Update files are signed with a key of our own (the
+  public half is in `tauri.release.conf.json`); the private key and its
+  password are the `TAURI_SIGNING_PRIVATE_KEY` and
+  `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` secrets. Losing them means installed
+  apps can no longer update themselves.
+- **Signing.** Until there is an Apple Developer account, the app is signed
+  with a self-made certificate (`scripts/make-signing-cert.sh`, secrets
+  `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD` and
+  `APPLE_SIGNING_IDENTITY`). It doesn't get past Gatekeeper, so the first
+  install needs "Open Anyway" in System Settings › Privacy & Security, but
+  it gives every release the same signature, so macOS keeps letting the
+  updated app read its keychain items (the GitHub sign-in). Keep the
+  certificate: a new one asks for keychain access again.
+- **GitHub sign-in.** The `PAGEMESH_GITHUB_CLIENT_SECRET` secret, as in
+  `build.rs`. Without it, releases sign in with a code instead of the
+  browser.
+
+To try a release build locally, without the certificate (so ad hoc
+signed):
+
+```sh
+export TAURI_SIGNING_PRIVATE_KEY="$(cat ~/.tauri/pagemesh-updater.key)"
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD="$(cat ~/.tauri/pagemesh-updater.key.password)"
+npx tauri build --bundles app --config src-tauri/tauri.release.conf.json
+```
+
+## Log file
+
+Every build writes its log to a file as well, in the app's log folder
+(`~/Library/Logs/dev.pagemesh.app/pagemesh.log` on macOS, `…app.dev` for
+development builds). Settings › About › Log file shows it. It holds the same
+entries as the developer log below, never page text, and moves to
+`pagemesh.1.log` at 5 MB. Crashes are logged too.
+
 ## Developer log
 
 Debug builds have a developer panel: press ⌘J (Ctrl+J on Windows and Linux)

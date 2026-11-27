@@ -14,6 +14,7 @@ mod person;
 mod search;
 mod session;
 mod tree;
+mod updater;
 mod worker;
 mod workspaces;
 
@@ -21,16 +22,45 @@ use tauri::{Emitter, Manager, WindowEvent};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    tauri::Builder::default()
+    let context = tauri::generate_context!();
+    // Release builds only: see updater.rs.
+    let updates = updater::configured(context.config());
+    let mut builder = tauri::Builder::default()
         .plugin(tauri_plugin_dialog::init())
-        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_opener::init());
+    if updates {
+        builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
+    }
+    builder
         .manage(commands::AppState::default())
-        .setup(|app| {
+        .manage(updater::UpdateState::default())
+        .setup(move |app| {
+            if let Ok(dir) = app.path().app_log_dir()
+                && let Err(e) = devlog::set_file(&dir.join("pagemesh.log"))
+            {
+                eprintln!("Can't write the log file in {}: {e}", dir.display());
+            }
+            let default_hook = std::panic::take_hook();
+            std::panic::set_hook(Box::new(move |info| {
+                devlog::error("app", format!("Crashed: {info}"));
+                default_hook(info);
+            }));
             let handle = app.handle().clone();
             devlog::set_sink(move |entry| {
                 let _ = handle.emit("dev-log", entry);
             });
-            devlog::info("app", format!("Started version {}", app.package_info().version));
+            devlog::info(
+                "app",
+                format!(
+                    "Started {} {} ({})",
+                    app.package_info().name,
+                    app.package_info().version,
+                    app.config().identifier
+                ),
+            );
+            if updates {
+                updater::start(app.handle());
+            }
             if let Ok(dir) = app.path().resource_dir() {
                 git::set_bundled_dir(dir.join("git"));
             }
@@ -137,7 +167,10 @@ pub fn run() {
             commands::dev_log_entries,
             commands::dev_log_clear,
             commands::dev_log_add,
+            commands::show_log_file,
+            updater::update_ready,
+            updater::restart_to_update,
         ])
-        .run(tauri::generate_context!())
+        .run(context)
         .expect("error while running the app");
 }

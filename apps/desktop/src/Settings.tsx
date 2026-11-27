@@ -3,7 +3,7 @@
 // account, and what this build is.
 import { type ReactNode, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, CircleUser, Info, Keyboard, Minus, Plus, SlidersHorizontal, X } from "lucide-react";
+import { Check, CircleUser, FolderOpen, Info, Keyboard, Minus, Plus, SlidersHorizontal, X } from "lucide-react";
 import { type DevInfo, type WorkspaceInfo, api, devApi, errorText } from "./api.ts";
 import { DeleteWorkspace } from "./DeleteWorkspace.tsx";
 import { showInFolderLabel } from "./fileManager.ts";
@@ -513,6 +513,11 @@ function About({ onShowShortcuts }: { onShowShortcuts: () => void }) {
           disabled={!!info?.enabled}
           onChange={(on) => devLog.set(on ? "on" : "off")}
         />
+      </Row>
+      <Row label="Log file" hint="What the app did, without the text of your pages. Attach it to a bug report.">
+        <button className="button" onClick={() => void devApi.showLogFile().catch(() => {})}>
+          <FolderOpen size={15} aria-hidden /> {showInFolderLabel()}
+        </button>
       </Row>
       <Row label="Keyboard shortcuts" hint="Every shortcut, in one place.">
         <button className="button" onClick={onShowShortcuts}>

@@ -26,7 +26,7 @@ pub mod workspace;
 pub use clock::{Clock, ManualClock, SystemClock};
 pub use engine::{
     DEVICE_REFS, OTHER_CHANGES_LABEL, PERSON_ID_TRAILER, PageWrite, Person, RemoteCheck, RemoteLayout,
-    SyncConfig, SyncEngine, SyncReport, prepare_folder_remote,
+    SyncConfig, SyncEngine, SyncReport, WORKSPACE_FORMAT, prepare_folder_remote,
 };
 pub use error::{Error, Result};
 pub use git::{CliGit, GitBackend};

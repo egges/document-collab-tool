@@ -11,6 +11,7 @@ import {
   api,
   errorText,
   events,
+  updates,
 } from "./api.ts";
 import { DevPanel, useDevPanel } from "./DevPanel.tsx";
 import { PagesArt } from "./Graphics.tsx";
@@ -148,6 +149,18 @@ function WorkspaceView({
     void Promise.all(unlisten).then(() => api.syncStatus().then((s) => s && setStatus((now) => now ?? s)));
     return () => unlisten.forEach((u) => void u.then((f) => f()));
   }, [reload, setError, onChange]);
+
+  // A newer version installed in the background (release builds only).
+  const [updateVersion, setUpdateVersion] = useState<string | null>(null);
+  useEffect(() => {
+    void updates.ready().then(setUpdateVersion, () => {});
+    const unlisten = events.onUpdateReady(setUpdateVersion);
+    return () => void unlisten.then((f) => f());
+  }, []);
+  const restartToUpdate = async () => {
+    await page.current?.flush();
+    await updates.restart();
+  };
 
   // Save before the window goes away or loses focus (and so before a sync on refocus).
   useEffect(() => {
@@ -293,6 +306,8 @@ function WorkspaceView({
         hidden={sidebar.hidden}
         onResize={sidebar.setWidth}
         onOpenDevPanel={dev.enabled ? dev.toggle : undefined}
+        updateVersion={updateVersion}
+        onRestartToUpdate={() => void restartToUpdate().catch((e) => setError(errorText(e)))}
       />
       <main className="main">
         <PageTitleBar

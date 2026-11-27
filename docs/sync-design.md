@@ -35,6 +35,17 @@ The format is designed so most concurrent edits never conflict:
 
 Everything stays readable and editable without the app.
 
+**The format has a version:** the `"format"` field of `workspace.json`
+(`docsync::WORKSPACE_FORMAT`, 1 so far; a workspace without the field is
+format 1). A change that older versions of the app would misread raises it
+and comes with a migration. A version that finds a newer format than it
+knows changes nothing: it won't open the workspace, join it, or take in
+changes from a device that has moved it on (`Error::NewerFormat`), and the
+app says to update. Its own edits stay committed locally until it is
+updated. This matters as soon as two versions of the app share a
+workspace, such as an installed release and a development build, or two
+devices updated at different times (`tests/format.rs`).
+
 Database columns are an object keyed by column id, so adding, renaming or
 retyping different columns on two devices touches different fields. Their
 order is each column's `position` and a row's is its own `position` (the

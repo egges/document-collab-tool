@@ -14,6 +14,13 @@ use crate::{Clock, Error, Result, Workspace, conflicts, json_merge, layout, text
 /// Label for the on-disk side when [`SyncEngine::write_page_body`] merges.
 pub const OTHER_CHANGES_LABEL: &str = "Changed elsewhere";
 
+/// The newest workspace format this version reads and writes: the
+/// `"format"` field of `workspace.json` (a workspace without one is format
+/// 1). A change to the files that older versions would misread raises it,
+/// with a migration. A version that finds a newer format refuses to open,
+/// clone or merge it ([`Error::NewerFormat`]) rather than damage it.
+pub const WORKSPACE_FORMAT: u32 = 1;
+
 /// Where device refs live in a folder remote.
 pub const DEVICE_REFS: &str = "refs/heads/devices/";
 
@@ -241,6 +248,7 @@ impl SyncEngine {
         };
         match start {
             Some(remote) => {
+                engine.check_format(&remote)?;
                 let empty_tree = engine.git.write_index_tree(&engine.root)?;
                 engine.git.checkout(&engine.root, &empty_tree, &remote)?;
                 engine
@@ -280,8 +288,9 @@ impl SyncEngine {
                 )));
             }
         }
-        if engine.head()?.is_none() {
-            return Err(Error::InvalidState(format!("{expected} has no commits")));
+        match engine.head()? {
+            Some(head) => engine.check_format(&head)?,
+            None => return Err(Error::InvalidState(format!("{expected} has no commits"))),
         }
         Ok(engine)
     }
@@ -575,6 +584,7 @@ impl SyncEngine {
                 Some(remote) if remote == local => return Ok(report),
                 Some(remote) if self.git.is_ancestor(&self.root, &remote, &local)? => local,
                 Some(remote) if self.git.is_ancestor(&self.root, &local, &remote)? => {
+                    self.check_format(&remote)?;
                     match self.move_to(&local, &remote) {
                         Ok(()) => {
                             report.fast_forwarded = true;
@@ -588,6 +598,7 @@ impl SyncEngine {
                     }
                 }
                 Some(remote) => {
+                    self.check_format(&remote)?;
                     let outcome =
                         merge::merge_commits(self.git.as_ref(), &self.root, &local, &remote, &self.writer())?;
                     let message = merge_message(&outcome.conflicts);
@@ -664,6 +675,7 @@ impl SyncEngine {
                 if self.git.is_ancestor(&self.root, tip, &target)? {
                     continue;
                 }
+                self.check_format(tip)?;
                 if self.git.is_ancestor(&self.root, &target, tip)? {
                     target = tip.clone();
                     continue;
@@ -753,6 +765,35 @@ impl SyncEngine {
         Ok(PathBuf::from(url.strip_prefix("file://").unwrap_or(&url)))
     }
 
+    /// The workspace format of `commit`: the `"format"` field of its
+    /// `workspace.json`, or 1 when the file or field is missing or can't be
+    /// read (workspaces made before the field existed).
+    pub fn format_at(&self, commit: &Oid) -> Result<u32> {
+        let rev = format!("{commit}:{}", layout::WORKSPACE_FILE);
+        let Some(blob) = self.git.resolve(&self.root, &rev)? else {
+            return Ok(1);
+        };
+        let bytes = self.git.read_blob(&self.root, &blob)?;
+        Ok(serde_json::from_slice::<serde_json::Value>(&bytes)
+            .ok()
+            .and_then(|v| v.get("format")?.as_u64())
+            .and_then(|f| u32::try_from(f).ok())
+            .unwrap_or(1))
+    }
+
+    /// Refuse a commit written in a newer workspace format than this
+    /// version knows: reading, merging or syncing it could damage it.
+    fn check_format(&self, commit: &Oid) -> Result<()> {
+        let found = self.format_at(commit)?;
+        if found > WORKSPACE_FORMAT {
+            return Err(Error::NewerFormat {
+                found,
+                supported: WORKSPACE_FORMAT,
+            });
+        }
+        Ok(())
+    }
+
     fn branch_ref(&self) -> String {
         format!("refs/heads/{}", self.config.branch)
     }
@@ -834,7 +875,7 @@ impl SyncEngine {
             (".gitignore", layout::GITIGNORE.as_bytes().to_vec()),
             (
                 layout::WORKSPACE_FILE,
-                json_merge::to_canonical_bytes(&json!({ "format": 1 })),
+                json_merge::to_canonical_bytes(&json!({ "format": WORKSPACE_FORMAT })),
             ),
         ];
         for (name, content) in files {
