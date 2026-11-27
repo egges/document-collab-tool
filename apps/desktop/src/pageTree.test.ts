@@ -1,5 +1,5 @@
 import { expect, test } from "vitest";
-import { ancestry, displayOrder, search, trail } from "./pageTree.ts";
+import { ancestry, displayOrder, insideText, pagesInside, search, trail } from "./pageTree.ts";
 
 const pages = [
   { id: "a", title: "Alpha", parent: null, kind: "page" as const, database: null },
@@ -7,6 +7,15 @@ const pages = [
   { id: "a1", title: "Plans", parent: "a", kind: "page" as const, database: null },
   { id: "a1x", title: "Launch", parent: "a1", kind: "page" as const, database: null },
 ];
+
+test("pages inside a page are counted at any depth, without rows", () => {
+  const withRow = [...pages, { id: "r", title: "Row", parent: "a", kind: "row" as const, database: "d" }];
+  expect(pagesInside(withRow, "a")).toEqual(["a1", "a1x"]);
+  expect(pagesInside(withRow, "a1x")).toEqual([]);
+  expect(insideText(0)).toBe("");
+  expect(insideText(1)).toBe(" and the page inside it");
+  expect(insideText(2)).toBe(" and the 2 pages inside it");
+});
 
 test("display order is depth first, like the sidebar", () => {
   expect(displayOrder(pages).map((p) => p.id)).toEqual(["a", "a1", "a1x", "b"]);

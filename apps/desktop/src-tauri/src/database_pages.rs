@@ -169,13 +169,15 @@ pub async fn set_page_view(
     .await
 }
 
-/// The database a page shows, when no other page shows it: deleting the page
-/// deletes it too, as the page is where people see it.
-pub fn database_to_delete_with(ws: &Workspace, page: &str) -> Option<String> {
+/// The database a page shows, when no page outside `deleting` (the pages
+/// being deleted with it) shows it: deleting the page deletes it too, as the
+/// page is where people see it.
+pub fn database_to_delete_with(ws: &Workspace, page: &str, deleting: &[String]) -> Option<String> {
     let meta = ws.read_page_meta(page).ok()?;
     let database = DatabasePage::from_meta(&meta)?.database?;
     let others = ws.pages_showing(&database).ok()?;
-    (others.iter().all(|p| p == page) && ws.database_exists(&database)).then_some(database)
+    (others.iter().all(|p| p == page || deleting.contains(p)) && ws.database_exists(&database))
+        .then_some(database)
 }
 
 #[cfg(test)]
@@ -210,12 +212,20 @@ mod tests {
             .unwrap()
             .database
             .unwrap();
-        assert_eq!(database_to_delete_with(&ws, &a).as_deref(), Some(db.as_str()));
+        assert_eq!(
+            database_to_delete_with(&ws, &a, &[]).as_deref(),
+            Some(db.as_str())
+        );
         let b = ws.create_database_page("B", None, Some(&db)).unwrap();
-        assert_eq!(database_to_delete_with(&ws, &a), None);
-        assert_eq!(database_to_delete_with(&ws, &b), None);
+        assert_eq!(database_to_delete_with(&ws, &a, &[]), None);
+        assert_eq!(database_to_delete_with(&ws, &b, &[]), None);
+        // Unless the other page goes too.
+        assert_eq!(
+            database_to_delete_with(&ws, &a, std::slice::from_ref(&b)).as_deref(),
+            Some(db.as_str())
+        );
         let plain = ws.create_page("Plain", None).unwrap();
-        assert_eq!(database_to_delete_with(&ws, &plain), None);
+        assert_eq!(database_to_delete_with(&ws, &plain, &[]), None);
     }
 
     #[test]

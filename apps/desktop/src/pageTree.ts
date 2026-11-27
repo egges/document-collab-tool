@@ -29,6 +29,29 @@ export function displayOrder(pages: PageSummary[]): PageSummary[] {
   return out;
 }
 
+/** The ids of the pages inside a page, at any depth: what deleting it deletes too. Rows aren't included. */
+export function pagesInside(pages: PageSummary[], id: string): string[] {
+  const children = childrenOf(pages.filter((p) => p.kind !== "row"));
+  const seen = new Set([id]);
+  const out: string[] = [];
+  const visit = (parent: string) => {
+    for (const page of children.get(parent) ?? []) {
+      if (seen.has(page.id)) continue;
+      seen.add(page.id);
+      out.push(page.id);
+      visit(page.id);
+    }
+  };
+  visit(id);
+  return out;
+}
+
+/** What deleting a page takes with it, for the question before deleting: " and the 3 pages inside it". */
+export function insideText(count: number): string {
+  if (count === 0) return "";
+  return count === 1 ? " and the page inside it" : ` and the ${count} pages inside it`;
+}
+
 /** Titles of a page's ancestors, outermost first. */
 export function ancestry(pages: PageSummary[], id: string): string[] {
   const byId = new Map(pages.map((p) => [p.id, p]));
