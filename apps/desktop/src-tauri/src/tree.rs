@@ -23,10 +23,18 @@ pub struct PageSummary {
 /// Every page, sorted by title, with orphans moved to the top level.
 pub fn list_pages(ws: &Workspace) -> docsync::Result<Vec<PageSummary>> {
     let mut pages = Vec::new();
+    // Rows are pages too: under the first page that shows their database,
+    // for the breadcrumb and search. The sidebar leaves them out. Their
+    // title is their title column's cell.
+    let mut rows = Vec::new();
     for id in ws.list_pages()? {
         // A hand-edited meta.json may not parse. Show the page anyway, so it
         // can still be opened and fixed.
         let meta = ws.read_page_meta(&id).unwrap_or_default();
+        if let Some(db) = docsync::workspace::row_database(&meta).filter(|db| ws.database_exists(db)) {
+            rows.push((id, db.to_string(), meta));
+            continue;
+        }
         let database = DatabasePage::from_meta(&meta);
         pages.push(PageSummary {
             title: meta["title"].as_str().unwrap_or_default().to_string(),
@@ -36,31 +44,30 @@ pub fn list_pages(ws: &Workspace) -> docsync::Result<Vec<PageSummary>> {
             id,
         });
     }
-    // Rows are pages too: under the first page that shows their database,
-    // for the breadcrumb and search. The sidebar leaves them out.
     let mut shown_on: HashMap<String, String> = HashMap::new();
     for page in &pages {
         if let Some(db) = &page.database {
             shown_on.entry(db.clone()).or_insert_with(|| page.id.clone());
         }
     }
-    for db in ws.list_databases()? {
-        let Ok(schema) = ws.read_schema(&db) else { continue };
-        let title = schema.title_column().map(|c| c.id.clone());
-        for row in ws.read_rows(&db)? {
-            pages.push(PageSummary {
-                title: title
-                    .as_ref()
-                    .and_then(|c| row.cells.get(c))
-                    .and_then(|v| v.as_str())
-                    .unwrap_or_default()
-                    .to_string(),
-                parent: shown_on.get(&db).cloned(),
-                kind: "row",
-                database: Some(db.clone()),
-                id: row.id,
-            });
-        }
+    let mut title_columns: HashMap<String, Option<String>> = HashMap::new();
+    for (id, db, meta) in rows {
+        let title_column = title_columns.entry(db.clone()).or_insert_with(|| {
+            ws.read_schema(&db)
+                .ok()
+                .and_then(|s| s.title_column().map(|c| c.id.clone()))
+        });
+        pages.push(PageSummary {
+            title: title_column
+                .as_ref()
+                .and_then(|c| meta["properties"][c].as_str())
+                .unwrap_or_default()
+                .to_string(),
+            parent: shown_on.get(&db).cloned(),
+            kind: "row",
+            database: Some(db),
+            id,
+        });
     }
     normalize_parents(&mut pages);
     pages.sort_by(|a, b| (a.title.to_lowercase(), &a.id).cmp(&(b.title.to_lowercase(), &b.id)));

@@ -1,22 +1,25 @@
-//! Databases: typed columns and rows, read from the files described in
-//! [`crate::layout`].
+//! Databases: typed columns, and rows that are pages, read from the files
+//! described in [`crate::layout`].
 //!
 //! ```text
 //! databases/<db>/schema.json
 //!   {"id", "name", "columns": {"<col>": {"name", "type", "position", "options"?}}}
-//! databases/<db>/rows/<row>.json
-//!   {"id", "position"?, "cells": {"<col>": value}, "display"?}
-//! databases/<db>/rows/<row>.md
-//!   the row's text, as a page (missing until written)
+//! pages/<row>/meta.json
+//!   {"id", "title", "properties": {"<col>": value}, "row": {"database": "<db>", "position"?}, ...}
+//! pages/<row>/page.md
+//!   the row's text
 //! ```
 //!
-//! Every row is a page too, as in Notion: its title is the cell of the first
-//! text column ([`Schema::title_column`]), its other cells are its
-//! properties, and its text is the `.md` file beside it. The page functions
-//! of [`crate::Workspace`] that take a page id (`read_body`, `write_body`,
-//! `set_page_display`) accept a row's id. Rows stay inside their database's
-//! folder, so a database is still one entity for sync: deleting it while a
-//! row is edited elsewhere restores the whole database.
+//! Every row is a page, as in Notion: a page like any other, with its text,
+//! attachments and display options, whose `row` field names its database.
+//! Its properties are its cells, keyed by column id, and their types are the
+//! database's columns. Its title is the cell of the first text column
+//! ([`Schema::title_column`]). Rows don't show in the page tree.
+//!
+//! A row is its own entity for sync, but a database and its rows are
+//! restored together: a database deleted on one device while one of its rows
+//! is edited or added on another comes back with all its rows
+//! ([`crate::merge`]).
 //!
 //! Columns are an object keyed by column id, not a list, so two devices that
 //! add, rename or retype different columns change different fields and merge
@@ -235,11 +238,13 @@ pub struct Row {
 }
 
 impl Row {
-    pub fn from_json(id: &str, value: &Value) -> Row {
+    /// A row from its page's meta.json: the position in its `row` field,
+    /// the cells in its properties.
+    pub fn from_meta(id: &str, meta: &Value) -> Row {
         Row {
             id: id.to_string(),
-            position: value["position"].as_f64(),
-            cells: value["cells"].as_object().cloned().unwrap_or_default(),
+            position: meta["row"]["position"].as_f64(),
+            cells: meta["properties"].as_object().cloned().unwrap_or_default(),
         }
     }
 }
@@ -338,9 +343,9 @@ mod tests {
     #[test]
     fn rows_sort_by_position_then_id() {
         let mut rows = vec![
-            Row::from_json("c", &json!({"cells": {}})),
-            Row::from_json("b", &json!({"position": 2, "cells": {"x": 1}})),
-            Row::from_json("a", &json!({"position": 5})),
+            Row::from_meta("c", &json!({"properties": {}})),
+            Row::from_meta("b", &json!({"row": {"position": 2}, "properties": {"x": 1}})),
+            Row::from_meta("a", &json!({"row": {"position": 5}})),
         ];
         sort_rows(&mut rows);
         let ids: Vec<&str> = rows.iter().map(|r| r.id.as_str()).collect();

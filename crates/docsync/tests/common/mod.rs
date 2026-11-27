@@ -758,12 +758,14 @@ pub fn assert_valid(device: &Device) {
             device.name
         );
     }
-    for db in device.ws.list_databases().unwrap() {
-        assert!(
-            device.ws.database_exists(&db),
-            "{}: database {db} has rows but no schema",
-            device.name
-        );
+    for page in device.ws.list_pages().unwrap() {
+        if let Some(db) = device.ws.find_row(&page) {
+            assert!(
+                device.ws.database_exists(&db),
+                "{}: row {page} is in database {db}, which has no schema",
+                device.name
+            );
+        }
     }
     let git_dir = device.root().join(".git");
     for leftover in ["MERGE_HEAD", "index.lock", "rebase-merge", "rebase-apply"] {

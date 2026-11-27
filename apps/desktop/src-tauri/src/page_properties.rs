@@ -38,22 +38,24 @@ pub enum Kind {
     Row { database: String },
 }
 
+/// A row whose database is gone (a hand edit) reads as a regular page, so
+/// it can still be opened, copied from and deleted.
 pub fn kind(ws: &Workspace, id: &str) -> CmdResult<Kind> {
-    if ws.page_exists(id) {
-        return Ok(Kind::Page);
+    if !ws.page_exists(id) {
+        return Err("This page no longer exists.".into());
     }
     match ws.find_row(id) {
-        Some(database) => Ok(Kind::Row { database }),
-        None => Err("This page no longer exists.".into()),
+        Some(database) if ws.database_exists(&database) => Ok(Kind::Row { database }),
+        _ => Ok(Kind::Page),
     }
 }
 
-/// A row as a page: its title (the title column's cell), its row file (for
+/// A row as a page: its title (the title column's cell), its meta.json (for
 /// display options), its properties and its database.
 pub fn row_parts(ws: &Workspace, database: &str, row: &str) -> CmdResult<(String, Value, Properties, RowOf)> {
     let schema = ws.read_schema(database).map_err(text)?;
-    let json = ws.read_row(database, row).map_err(text)?;
-    let cells = json["cells"].as_object().cloned().unwrap_or_default();
+    let json = ws.read_page_meta(row).map_err(text)?;
+    let cells = ws.read_row(database, row).map_err(text)?.cells;
     let title_column = schema.title_column().map(|c| c.id.clone());
     let title = title_column
         .as_ref()

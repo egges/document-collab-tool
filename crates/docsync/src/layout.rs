@@ -2,13 +2,14 @@
 //!
 //! ```text
 //! workspace.json                      workspace settings: {"format", "name", "kept_in"}
-//! pages/<page-id>/meta.json           title, parent, properties (+ their types), display, database
+//! pages/<page-id>/meta.json           title, parent, properties (+ their types), display, database, row
 //! pages/<page-id>/page.md             page body
 //! pages/<page-id>/assets/...          attachments
 //! databases/<db-id>/schema.json       name, columns
-//! databases/<db-id>/rows/<row>.json   one file per row: its cells (its properties)
-//! databases/<db-id>/rows/<row>.md     the row's text: every row is a page too
 //! ```
+//!
+//! A database's rows are pages: a row's meta.json has a `row` field naming
+//! its database, and its properties are its cells (see [`crate::database`]).
 //!
 //! Paths are derived from stable random ids, never from titles, so renaming
 //! or moving a page only edits a JSON field. Each page and database is an
@@ -21,7 +22,10 @@ pub const PAGE_META: &str = "meta.json";
 pub const PAGE_BODY: &str = "page.md";
 pub const PAGE_ASSETS: &str = "assets";
 pub const DATABASE_SCHEMA: &str = "schema.json";
-pub const DATABASE_ROWS: &str = "rows";
+/// Where rows were kept before they were pages (workspace format 1):
+/// `databases/<db-id>/rows/<row>.json` and `.md`. See
+/// [`crate::Workspace::move_rows_into_pages`].
+pub const LEGACY_DATABASE_ROWS: &str = "rows";
 
 /// Suffix for temporary files written before an atomic rename.
 pub const TEMP_SUFFIX: &str = ".docsync-tmp";
@@ -148,7 +152,7 @@ mod tests {
     fn finds_entities() {
         assert_eq!(dir_entity("pages/abc/meta.json"), Some("pages/abc"));
         assert_eq!(dir_entity("pages/abc/assets/x.png"), Some("pages/abc"));
-        assert_eq!(dir_entity("databases/d1/rows/r1.json"), Some("databases/d1"));
+        assert_eq!(dir_entity("databases/d1/schema.json"), Some("databases/d1"));
         assert_eq!(dir_entity("pages/abc"), None);
         assert_eq!(dir_entity("workspace.json"), None);
         assert_eq!(dir_entity("other/abc/x"), None);

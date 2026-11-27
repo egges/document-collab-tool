@@ -11,7 +11,9 @@ use serde_json::{Map, Value, json};
 use crate::database::{Column, ColumnChange, ColumnType, Row, Schema, sort_rows};
 use crate::database_page::{DatabasePage, View, ViewType};
 use crate::error::IoContext;
-use crate::layout::{self, DATABASE_ROWS, DATABASE_SCHEMA, DATABASES_DIR, PAGE_BODY, PAGE_META, PAGES_DIR};
+use crate::layout::{
+    self, DATABASE_SCHEMA, DATABASES_DIR, LEGACY_DATABASE_ROWS, PAGE_BODY, PAGE_META, PAGES_DIR,
+};
 use crate::{Error, Result, front_matter, json_merge};
 
 #[derive(Debug, Clone)]
@@ -68,6 +70,28 @@ impl Workspace {
         })
     }
 
+    /// The workspace format of the files on disk: the `format` field of
+    /// `workspace.json`, or 1 when it's missing (see
+    /// [`crate::WORKSPACE_FORMAT`]).
+    pub fn format(&self) -> u32 {
+        self.read_json(&self.root.join(layout::WORKSPACE_FILE))
+            .ok()
+            .and_then(|v| v.get("format")?.as_u64())
+            .and_then(|f| u32::try_from(f).ok())
+            .unwrap_or(1)
+    }
+
+    /// Record the workspace format. Doesn't commit.
+    pub fn set_format(&self, format: u32) -> Result<()> {
+        let path = self.root.join(layout::WORKSPACE_FILE);
+        if self.read_json(&path).is_err() {
+            return self.write_json(&path, &json!({ "format": format }));
+        }
+        self.update_json(&path, |settings| {
+            settings.insert("format".into(), format.into());
+        })
+    }
+
     /// Where the workspace is kept besides each device, from
     /// `workspace.json`: written by the device that last moved it, so the
     /// others follow (see "Following a move" in docs/sync-design.md). The
@@ -120,11 +144,7 @@ impl Workspace {
         self.page_dir(id).join(PAGE_META).is_file()
     }
 
-    /// Whether `id` is a page or a database row: both have a body.
-    pub fn has_body(&self, id: &str) -> bool {
-        self.page_exists(id) || self.find_row(id).is_some()
-    }
-
+    /// Every page, database rows included (see [`Workspace::find_row`]).
     pub fn list_pages(&self) -> Result<Vec<String>> {
         list_ids(&self.root.join(PAGES_DIR), Some(PAGE_META))
     }
@@ -216,9 +236,8 @@ impl Workspace {
     /// How the page is shown (`"width"`, `"textSize"`, ...), in the
     /// `display` field of its meta.json. `None` removes the option, which
     /// means the default. Options merge one by one, like properties.
-    /// A database row is a page too, and keeps its display options in its row file.
     pub fn set_page_display(&self, id: &str, key: &str, value: Option<Value>) -> Result<()> {
-        self.update_json(&self.meta_path(id), |meta| {
+        self.update_json(&self.page_dir(id).join(PAGE_META), |meta| {
             let display = meta.entry("display").or_insert_with(|| json!({}));
             if !display.is_object() {
                 *display = json!({});
@@ -234,23 +253,13 @@ impl Workspace {
         })
     }
 
-    /// The body of a page, or of a database row (empty until written).
     pub fn read_body(&self, id: &str) -> Result<String> {
-        let path = self.body_path(id);
-        match fs::read_to_string(&path) {
-            Err(e)
-                if e.kind() == std::io::ErrorKind::NotFound
-                    && !self.page_exists(id)
-                    && self.find_row(id).is_some() =>
-            {
-                Ok(String::new())
-            }
-            read => read.at(&path),
-        }
+        let path = self.page_dir(id).join(PAGE_BODY);
+        fs::read_to_string(&path).at(&path)
     }
 
     pub fn write_body(&self, id: &str, body: &str) -> Result<()> {
-        self.write_file(&self.body_path(id), body.as_bytes())
+        self.write_file(&self.page_dir(id).join(PAGE_BODY), body.as_bytes())
     }
 
     /// Move YAML front matter at the top of the page's body into its
@@ -262,8 +271,9 @@ impl Workspace {
     /// meta.json is written first: if the process stops in between, the
     /// front matter is still in the body and is moved again next time.
     pub fn lift_front_matter(&self, id: &str) -> Result<bool> {
-        if !self.page_exists(id) {
-            // A database row: its properties are typed cells, not front matter.
+        if !self.page_exists(id) || self.find_row(id).is_some() {
+            // A database row's properties are its database's columns, keyed
+            // by column id, which front matter can't name.
             return Ok(false);
         }
         let body = match self.read_body(id) {
@@ -422,21 +432,6 @@ impl Workspace {
         Ok(Schema::from_json(id, &self.read_database_json(id)?))
     }
 
-    /// Every row, in display order. A row file that doesn't parse (a hand
-    /// edit) is left out rather than hiding the whole database.
-    pub fn read_rows(&self, db: &str) -> Result<Vec<Row>> {
-        let mut rows = Vec::new();
-        for id in self.list_rows(db)? {
-            match self.read_row(db, &id) {
-                Ok(value) => rows.push(Row::from_json(&id, &value)),
-                Err(Error::InvalidData { .. }) => {}
-                Err(e) => return Err(e),
-            }
-        }
-        sort_rows(&mut rows);
-        Ok(rows)
-    }
-
     pub fn rename_database(&self, id: &str, name: &str) -> Result<()> {
         self.update_json(&self.database_dir(id).join(DATABASE_SCHEMA), |schema| {
             schema.insert("name".into(), name.into());
@@ -501,9 +496,9 @@ impl Workspace {
         })
     }
 
-    /// Add a row after the others. Its position is the time it was made, so
-    /// rows added on different devices meanwhile end up in the order they
-    /// were added.
+    /// Add a row after the others, as a page of its own. Its position is
+    /// the time it was made, so rows added on different devices meanwhile
+    /// end up in the order they were added.
     pub fn add_row(&self, db: &str, cells: Map<String, Value>) -> Result<String> {
         let id = new_id();
         self.add_row_with_id(db, &id, cells)?;
@@ -515,68 +510,131 @@ impl Workspace {
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis() as f64)
             .unwrap_or_default();
-        self.write_json(
-            &self.row_path(db, row),
-            &json!({ "id": row, "position": millis, "cells": cells }),
-        )
+        let meta = json!({
+            "id": row,
+            "title": "",
+            "parent": null,
+            "properties": cells,
+            ROW_FIELD: { "database": db, "position": millis },
+        });
+        self.write_json(&self.page_dir(row).join(PAGE_META), &meta)?;
+        self.write_file(&self.page_dir(row).join(PAGE_BODY), b"")
     }
 
+    /// Whether `row` is a row of `db`.
     pub fn row_exists(&self, db: &str, row: &str) -> bool {
-        self.row_path(db, row).is_file()
+        self.find_row(row).as_deref() == Some(db)
     }
 
+    /// The ids of a database's rows, in no particular order.
     pub fn list_rows(&self, db: &str) -> Result<Vec<String>> {
-        list_ids(&self.database_dir(db).join(DATABASE_ROWS), None)
+        Ok(self.read_rows(db)?.into_iter().map(|r| r.id).collect())
     }
 
-    pub fn read_row(&self, db: &str, row: &str) -> Result<Value> {
-        self.read_json(&self.row_path(db, row))
-    }
-
-    pub fn set_cell(&self, db: &str, row: &str, column: &str, value: Value) -> Result<()> {
-        self.update_json(&self.row_path(db, row), |r| {
-            let cells = r.entry("cells").or_insert_with(|| json!({}));
-            if !cells.is_object() {
-                *cells = json!({});
+    /// Every row, in display order: the pages whose `row` field names
+    /// `db`. A meta.json that doesn't parse (a hand edit) is left out rather
+    /// than hiding the whole database.
+    pub fn read_rows(&self, db: &str) -> Result<Vec<Row>> {
+        let mut rows = Vec::new();
+        for id in self.list_pages()? {
+            let Ok(meta) = self.read_page_meta(&id) else {
+                continue;
+            };
+            if row_database(&meta) == Some(db) {
+                rows.push(Row::from_meta(&id, &meta));
             }
-            cells
-                .as_object_mut()
-                .expect("object")
-                .insert(column.into(), value);
-        })
+        }
+        sort_rows(&mut rows);
+        Ok(rows)
+    }
+
+    /// One row, refusing a page that isn't a row of `db`.
+    pub fn read_row(&self, db: &str, row: &str) -> Result<Row> {
+        let meta = self.read_page_meta(row)?;
+        if row_database(&meta) != Some(db) {
+            return Err(Error::InvalidData {
+                path: self.page_dir(row).join(PAGE_META).display().to_string(),
+                message: format!("not a row of database {db}"),
+            });
+        }
+        Ok(Row::from_meta(row, &meta))
+    }
+
+    /// Set a row's cell: the property of its page, keyed by column id.
+    pub fn set_cell(&self, _db: &str, row: &str, column: &str, value: Value) -> Result<()> {
+        self.set_page_property(row, column, value)
     }
 
     /// Empty a cell: its key is removed.
-    pub fn clear_cell(&self, db: &str, row: &str, column: &str) -> Result<()> {
-        self.update_json(&self.row_path(db, row), |r| {
-            if let Some(cells) = r.get_mut("cells").and_then(Value::as_object_mut) {
-                cells.remove(column);
-            }
-        })
+    pub fn clear_cell(&self, _db: &str, row: &str, column: &str) -> Result<()> {
+        self.clear_page_property(row, column)
     }
 
-    /// Delete a row with its body.
-    pub fn delete_row(&self, db: &str, row: &str) -> Result<()> {
-        let body = self.row_body_path(db, row);
-        if body.is_file() {
-            fs::remove_file(&body).at(&body)?;
-        }
-        let path = self.row_path(db, row);
-        fs::remove_file(&path).at(&path)
+    /// Delete a row: its page, with its text and attachments.
+    pub fn delete_row(&self, _db: &str, row: &str) -> Result<()> {
+        self.delete_page(row)
     }
 
-    /// The database a row is in. Row ids are random, so unique across databases.
+    /// The database a page is a row of, if it is one.
     pub fn find_row(&self, row: &str) -> Option<String> {
         if row.is_empty() || row.contains(['/', '\\', '.']) {
             return None;
         }
-        self.list_databases()
-            .ok()?
-            .into_iter()
-            .find(|db| self.row_path(db, row).is_file())
+        let meta = self.read_page_meta(row).ok()?;
+        row_database(&meta).map(str::to_string)
     }
 
+    /// Move rows from the first layout (`databases/<db>/rows/<row>.json`
+    /// and `.md`) into pages of their own. Returns how many were moved.
+    /// Safe to run again, and after a crash halfway: a row's page is
+    /// written before its old files are removed.
+    pub fn move_rows_into_pages(&self) -> Result<usize> {
+        let mut moved = 0;
+        for db in self.list_databases()? {
+            let dir = self.database_dir(&db).join(LEGACY_DATABASE_ROWS);
+            for row in list_ids(&dir, None)? {
+                let json_path = dir.join(format!("{row}.json"));
+                let body_path = dir.join(format!("{row}.md"));
+                let Ok(old) = self.read_json(&json_path) else {
+                    continue;
+                };
+                let mut meta = json!({
+                    "id": row,
+                    "title": "",
+                    "parent": null,
+                    "properties": old["cells"].as_object().cloned().unwrap_or_default(),
+                    ROW_FIELD: { "database": db },
+                });
+                if let Some(position) = old["position"].as_f64() {
+                    meta[ROW_FIELD]["position"] = json!(position);
+                }
+                if old["display"].is_object() {
+                    meta["display"] = old["display"].clone();
+                }
+                let body = match fs::read_to_string(&body_path) {
+                    Ok(body) => body,
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => String::new(),
+                    Err(e) => return Err(e).at(&body_path),
+                };
+                self.write_file(&self.page_dir(&row).join(PAGE_BODY), body.as_bytes())?;
+                self.write_json(&self.page_dir(&row).join(PAGE_META), &meta)?;
+                if body_path.is_file() {
+                    fs::remove_file(&body_path).at(&body_path)?;
+                }
+                fs::remove_file(&json_path).at(&json_path)?;
+                moved += 1;
+            }
+            // Gone once empty; whatever else is left (a conflict copy) stays.
+            let _ = fs::remove_dir(&dir);
+        }
+        Ok(moved)
+    }
+
+    /// Delete a database with its rows.
     pub fn delete_database(&self, id: &str) -> Result<()> {
+        for row in self.list_rows(id)? {
+            self.delete_page(&row)?;
+        }
         let dir = self.database_dir(id);
         fs::remove_dir_all(&dir).at(&dir)
     }
@@ -589,38 +647,6 @@ impl Workspace {
 
     fn database_dir(&self, id: &str) -> PathBuf {
         self.root.join(DATABASES_DIR).join(id)
-    }
-
-    /// A page's body, or a row's: `rows/<row>.md` next to its `.json`.
-    fn body_path(&self, id: &str) -> PathBuf {
-        if !self.page_exists(id)
-            && let Some(db) = self.find_row(id)
-        {
-            return self.row_body_path(&db, id);
-        }
-        self.page_dir(id).join(PAGE_BODY)
-    }
-
-    /// The JSON holding a page's metadata: its meta.json, or a row's file.
-    fn meta_path(&self, id: &str) -> PathBuf {
-        if !self.page_exists(id)
-            && let Some(db) = self.find_row(id)
-        {
-            return self.row_path(&db, id);
-        }
-        self.page_dir(id).join(PAGE_META)
-    }
-
-    fn row_body_path(&self, db: &str, row: &str) -> PathBuf {
-        self.database_dir(db)
-            .join(DATABASE_ROWS)
-            .join(format!("{row}.md"))
-    }
-
-    fn row_path(&self, db: &str, row: &str) -> PathBuf {
-        self.database_dir(db)
-            .join(DATABASE_ROWS)
-            .join(format!("{row}.json"))
     }
 
     fn read_json(&self, path: &Path) -> Result<Value> {
@@ -657,6 +683,15 @@ impl Workspace {
         fs::write(&tmp, content).at(&tmp)?;
         fs::rename(&tmp, path).at(path)
     }
+}
+
+/// The field of a row's meta.json that makes it a row:
+/// `{"database": "<db-id>", "position": <sort key>}`.
+pub const ROW_FIELD: &str = "row";
+
+/// The database a page is a row of, from its meta.json.
+pub fn row_database(meta: &Value) -> Option<&str> {
+    meta[ROW_FIELD]["database"].as_str().filter(|db| !db.is_empty())
 }
 
 /// Where a page keeps its properties' types; see [`page_properties_from`].

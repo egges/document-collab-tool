@@ -19,7 +19,12 @@ pub const OTHER_CHANGES_LABEL: &str = "Changed elsewhere";
 /// 1). A change to the files that older versions would misread raises it,
 /// with a migration. A version that finds a newer format refuses to open,
 /// clone or merge it ([`Error::NewerFormat`]) rather than damage it.
-pub const WORKSPACE_FORMAT: u32 = 1;
+///
+/// - 1: the first format.
+/// - 2: database rows are pages (`pages/<row>/`), no longer files in their
+///   database's folder. Workspaces are moved when opened, joined or synced
+///   ([`crate::Workspace::move_rows_into_pages`]).
+pub const WORKSPACE_FORMAT: u32 = 2;
 
 /// Where device refs live in a folder remote.
 pub const DEVICE_REFS: &str = "refs/heads/devices/";
@@ -254,6 +259,7 @@ impl SyncEngine {
                 engine
                     .git
                     .update_ref(&engine.root, &engine.branch_ref(), &remote, None)?;
+                engine.upgrade()?;
             }
             None => {
                 engine.write_initial_files()?;
@@ -292,7 +298,30 @@ impl SyncEngine {
             Some(head) => engine.check_format(&head)?,
             None => return Err(Error::InvalidState(format!("{expected} has no commits"))),
         }
+        engine.upgrade()?;
         Ok(engine)
+    }
+
+    /// Move the files of a workspace in an older format to the current one
+    /// ([`WORKSPACE_FORMAT`]), and commit that.
+    fn upgrade(&self) -> Result<()> {
+        let _lock = self.lock()?;
+        self.upgrade_locked()
+    }
+
+    fn upgrade_locked(&self) -> Result<()> {
+        let workspace = Workspace::new(&self.root);
+        // Also after the format is raised: a device still on the old format
+        // may have added rows in the old layout before it saw the new one.
+        let mut changed = workspace.move_rows_into_pages()? > 0;
+        if workspace.format() < WORKSPACE_FORMAT {
+            workspace.set_format(WORKSPACE_FORMAT)?;
+            changed = true;
+        }
+        if changed {
+            self.commit_locked("Upgrade the workspace")?;
+        }
+        Ok(())
     }
 
     pub fn root(&self) -> &Path {
@@ -470,8 +499,7 @@ impl SyncEngine {
     pub fn write_page_body(&self, id: &str, base: &str, body: &str) -> Result<PageWrite> {
         let _lock = self.lock()?;
         let workspace = Workspace::new(&self.root);
-        // A database row is a page too, with its body next to its row file.
-        if !workspace.has_body(id) {
+        if !workspace.page_exists(id) {
             return Ok(PageWrite::PageGone);
         }
         let on_disk = match workspace.read_body(id) {
@@ -553,6 +581,14 @@ impl SyncEngine {
     /// remote is unreachable this succeeds with [`SyncReport::offline`] set.
     pub fn sync(&self) -> Result<SyncReport> {
         let _lock = self.lock()?;
+        let report = self.sync_locked()?;
+        // What came in may be in an older format (a device that hasn't been
+        // updated yet); the upgrade is pushed with the next sync.
+        self.upgrade_locked()?;
+        Ok(report)
+    }
+
+    fn sync_locked(&self) -> Result<SyncReport> {
         let mut report = SyncReport {
             removed_locks: self.remove_stale_locks()?,
             ..SyncReport::default()

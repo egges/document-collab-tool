@@ -128,20 +128,19 @@ that those two jobs need (marked **First**).
       `# Heading` on the first line becomes the title, links between the
       files (including `[[wikilinks]]`) point at the new pages, and linked
       images and files are copied into each page's `assets/`
-      (`docsync::import`). Showing those images in the editor is still to
-      come.
+      (`docsync::import`). Showing those images in the editor is its own
+      item ("Images in the editor" below).
 - [x] **App shell** (`apps/desktop`). Tauri 2 + React, calling `docsync`
       directly from the Rust side. Opens, creates or joins a workspace and sets
       the remote this device syncs with.
 - [x] **Pages.** A page tree, a page view with the editor, and conflict blocks
       shown above the page with "keep this version" (now in the page itself:
       see "Conflict markers in the editor" below).
-- [ ] **Databases.** A database table view. Done so far: typed columns
-      (text, number, select, checkbox, date, URL) that merge column by
-      column (`docsync::database`), a table view in the developer
-      panel's Databases tab to create, view and edit databases
-      (`apps/desktop/src/TableView.tsx`), database pages (next item), and
-      rows as pages (the item after).
+- [x] **Databases.** Typed columns (text, number, select, checkbox, date,
+      URL) that merge column by column (`docsync::database`), a table view
+      (`apps/desktop/src/TableView.tsx`, also in the developer panel's
+      Databases tab), database pages (next item), and rows as pages (the
+      item after). What's left is in the items below.
 - [x] **Database pages.** "New database" in the sidebar makes a page that
       shows a database, like a full-page database in Notion. In a workspace
       without databases it gets a new one at once; otherwise the page asks
@@ -155,8 +154,8 @@ that those two jobs need (marked **First**).
       view, for everyone, as in Notion. A page whose database was deleted
       elsewhere says so and offers to show a new or existing one. Deleting
       a database page deletes its database too, unless another page shows
-      it. Still to come: reordering cards within a lane, filters, and more
-      view types (list, calendar).
+      it. Still to come: filters and more view types (list, calendar);
+      card order is its own item below.
 - [x] **Rows as pages, and properties on every page.** Every row of a
       database is a page, as in Notion: open it from the table (the button
       by its row number) or by clicking its card on a board. Its title is
@@ -167,8 +166,32 @@ that those two jobs need (marked **First**).
       is the database's column, so adding or deleting one does it for every
       row (deleting asks first). Rows don't show in the sidebar; they're
       found by search and sit under their database page in the breadcrumb.
-      Still to come: choosing which column is the title, a side peek
-      instead of opening the row in full, and images in a row's text.
+      Rows are now pages like any other (next item); the title and
+      images follow below.
+- [x] **Rows are pages like any other.** A row is stored as a page,
+      `pages/<row>/` with `meta.json`, `page.md` and `assets/`, whose `row`
+      field names its database; its cells are its properties. So text,
+      attachments, links, search and (later) history and agent tools work
+      the same for rows as for pages. A database and its rows are restored
+      together when the database is deleted on one device while a row is
+      edited or added on another. Workspace format 2: workspaces are moved
+      over when opened or synced ([sync-design.md](sync-design.md#on-disk-format)).
+- [ ] **A fixed title.** Every database has one title column, always
+      first, that can be renamed but not moved, deleted or retyped, as in
+      Notion's "Name" (which Notion does let you move). It's the row page's
+      `title`, like any page's, not a cell. Existing databases get their
+      first text column promoted, or an empty title.
+- [ ] **Images in the editor.** Show images in a page's text, and add
+      them by pasting or dropping, kept in the page's `assets/`. Rows are
+      pages, so this covers them too. The importer already copies images
+      into `assets/` (see "Importer" above).
+- [ ] **Card order, as in Notion.** On a board without a sort, drag cards
+      up and down within a lane as well as between lanes; the order is the
+      view's, kept as a position per view in each row's `row` field, so
+      moving a card changes one value in one file. In a sorted view,
+      dragging within a lane asks whether to remove the sort.
+- [ ] **Side peek.** Nice to have: open a row beside the table or board
+      instead of in full.
 - [x] **Conflict markers in the editor.** A place two devices edited at once
       shows as one framed block: a bar over each version says who wrote it
       ("You" for the reader, otherwise the person's name) and on which
