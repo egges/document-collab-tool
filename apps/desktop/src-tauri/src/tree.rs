@@ -67,6 +67,59 @@ pub fn list_pages(ws: &Workspace) -> docsync::Result<Vec<PageSummary>> {
     Ok(pages)
 }
 
+/// A page and every page inside it, at any depth, deepest first, so the page
+/// itself is last. Rows aren't included: they belong to their database,
+/// which goes or stays with the pages that show it.
+pub fn subtree(pages: &[PageSummary], id: &str) -> Vec<String> {
+    let mut children: HashMap<&str, Vec<&str>> = HashMap::new();
+    for page in pages.iter().filter(|p| p.kind != "row") {
+        if let Some(parent) = &page.parent {
+            children.entry(parent).or_default().push(&page.id);
+        }
+    }
+    let mut out = Vec::new();
+    let mut seen = HashSet::new();
+    fn visit<'a>(
+        id: &'a str,
+        children: &HashMap<&str, Vec<&'a str>>,
+        seen: &mut HashSet<&'a str>,
+        out: &mut Vec<String>,
+    ) {
+        if !seen.insert(id) {
+            return;
+        }
+        for child in children.get(id).into_iter().flatten() {
+            visit(child, children, seen, out);
+        }
+        out.push(id.to_string());
+    }
+    visit(id, &children, &mut seen, &mut out);
+    out
+}
+
+/// Delete a page with every page inside it, and the databases that only
+/// those pages show, with their rows. Returns the pages and databases
+/// deleted. The deepest pages go first, so if the app stops halfway what's
+/// left is still a tree under the page, never pages moved to the top level.
+pub fn delete_page_tree(ws: &Workspace, id: &str) -> docsync::Result<(Vec<String>, Vec<String>)> {
+    let pages = subtree(&list_pages(ws)?, id);
+    let mut databases: Vec<String> = Vec::new();
+    for page in &pages {
+        if let Some(db) = crate::database_pages::database_to_delete_with(ws, page, &pages)
+            && !databases.contains(&db)
+        {
+            databases.push(db);
+        }
+    }
+    for page in &pages {
+        ws.delete_page(page)?;
+    }
+    for db in &databases {
+        ws.delete_database(db)?;
+    }
+    Ok((pages, databases))
+}
+
 /// Move a page to the top level when its parent doesn't exist (deleted on
 /// another device while this page was edited: sync restores the page but not
 /// the parent) or when it's part of a cycle (a hand edit made pages each
@@ -188,5 +241,54 @@ mod tests {
         let listed = pages.iter().find(|p| p.id == row).unwrap();
         assert_eq!((listed.title.as_str(), listed.kind), ("Plan", "row"));
         assert_eq!(listed.parent.as_deref(), Some(shown.as_str()));
+    }
+
+    #[test]
+    fn a_subtree_lists_the_deepest_pages_first_without_rows() {
+        let mut pages = vec![
+            page("a", None),
+            page("a1", Some("a")),
+            page("a1x", Some("a1")),
+            page("a2", Some("a")),
+            page("b", None),
+            page("r", Some("a")),
+        ];
+        pages[5].kind = "row";
+        let tree = subtree(&pages, "a");
+        assert_eq!(tree.last().map(String::as_str), Some("a"));
+        assert_eq!(tree.len(), 4);
+        let at = |id: &str| tree.iter().position(|p| p == id).unwrap();
+        assert!(at("a1x") < at("a1"));
+        assert_eq!(subtree(&pages, "b"), ["b"]);
+    }
+
+    #[test]
+    fn deleting_a_page_deletes_the_pages_inside_it_and_their_databases() {
+        let dir = tempfile::tempdir().unwrap();
+        let ws = Workspace::new(dir.path());
+        let top = ws.create_page("Top", None).unwrap();
+        let child = ws.create_page("Child", Some(&top)).unwrap();
+        let grandchild = ws.create_page("Grandchild", Some(&child)).unwrap();
+        let db = ws.create_database("Tasks", &["name"]).unwrap();
+        let tasks = ws.create_database_page("Tasks", Some(&child), Some(&db)).unwrap();
+        // A database also shown outside the tree stays.
+        let shared_db = ws.create_database("Shared", &["name"]).unwrap();
+        let shared = ws
+            .create_database_page("Shared", Some(&top), Some(&shared_db))
+            .unwrap();
+        let elsewhere = ws
+            .create_database_page("Elsewhere", None, Some(&shared_db))
+            .unwrap();
+        let other = ws.create_page("Other", None).unwrap();
+
+        let (pages, databases) = delete_page_tree(&ws, &top).unwrap();
+        assert_eq!(pages.len(), 5);
+        assert_eq!(databases, std::slice::from_ref(&db));
+        for id in [&top, &child, &grandchild, &tasks, &shared] {
+            assert!(!ws.page_exists(id), "{id} is still there");
+        }
+        assert!(!ws.database_exists(&db));
+        assert!(ws.database_exists(&shared_db));
+        assert!(ws.page_exists(&elsewhere) && ws.page_exists(&other));
     }
 }

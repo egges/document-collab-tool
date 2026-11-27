@@ -20,6 +20,7 @@ import {
 import { BoardView } from "./BoardView.tsx";
 import { groupableColumns, newViewName, nextViewPosition } from "./boards.ts";
 import { log } from "./devlog.ts";
+import { insideText, pagesInside } from "./pageTree.ts";
 import type { PageViewHandle } from "./PageView.tsx";
 import { Popover } from "./Popover.tsx";
 import { TableView } from "./TableView.tsx";
@@ -139,13 +140,17 @@ export function DatabasePageView({
   };
 
   const remove = async () => {
-    const others = info.id ? (await api.listPages()).filter((p) => p.id !== id && p.database === info.id) : [];
+    const pages = await api.listPages();
+    const going = new Set([id, ...pagesInside(pages, id)]);
+    // Pages that keep showing the database once this one and those inside it are gone.
+    const others = info.id ? pages.filter((p) => !going.has(p.id) && p.database === info.id) : [];
     const name = title || "Untitled";
+    const inside = insideText(going.size - 1);
     const takesDatabase = db && others.length === 0;
     const confirmed = await ask(
       takesDatabase
-        ? `Delete “${name}” with its database of ${db.rows.length} ${db.rows.length === 1 ? "row" : "rows"}? Pages inside it move to the top level.`
-        : `Delete “${name}”? Its database stays, shown on ${others.length === 1 ? "another page" : "other pages"}. Pages inside it move to the top level.`,
+        ? `Delete “${name}”${inside} with its database of ${db.rows.length} ${db.rows.length === 1 ? "row" : "rows"}?`
+        : `Delete “${name}”${inside}? Its database stays, shown on ${others.length === 1 ? "another page" : "other pages"}.`,
       { title: "Delete page", kind: "warning", okLabel: "Delete" },
     );
     if (!confirmed) return;

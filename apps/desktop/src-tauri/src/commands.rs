@@ -1419,8 +1419,8 @@ pub async fn set_page_display(
     .await
 }
 
-/// Delete a page. Its child pages move to the top level. A database page
-/// takes its database with it, unless another page shows it too.
+/// Delete a page with the pages inside it. A database page takes its
+/// database with it, unless a page that stays shows it too.
 #[tauri::command]
 pub async fn delete_page(state: State<'_, AppState>, id: String) -> CmdResult<()> {
     let (engine, edited) = state.engine()?;
@@ -1432,13 +1432,15 @@ pub async fn delete_page(state: State<'_, AppState>, id: String) -> CmdResult<()
             edited();
             return Ok(());
         }
-        let database = database_pages::database_to_delete_with(&ws, &id);
-        ws.delete_page(&id).map_err(text)?;
-        devlog::info("app", format!("Deleted page {id}"));
-        if let Some(database) = database {
-            ws.delete_database(&database).map_err(text)?;
-            devlog::info("app", format!("Deleted database {database} with its page"));
-        }
+        let (pages, databases) = tree::delete_page_tree(&ws, &id).map_err(text)?;
+        devlog::info(
+            "app",
+            format!(
+                "Deleted page {id} with {} pages inside it and {} databases",
+                pages.len() - 1,
+                databases.len()
+            ),
+        );
         edited();
         Ok(())
     })

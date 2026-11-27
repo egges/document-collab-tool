@@ -3,6 +3,7 @@ import type { PageEditor, Reader } from "@sawmill/editor";
 import { PageEditorView } from "@sawmill/editor/react";
 import { type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { type Conflict, type Page, type PageDisplay, type PageProperties as Properties, api, errorText } from "./api.ts";
+import { insideText, pagesInside } from "./pageTree.ts";
 import { ConflictPanel } from "./ConflictPanel.tsx";
 import { DatabasePageView } from "./DatabasePageView.tsx";
 import { log } from "./devlog.ts";
@@ -229,7 +230,7 @@ function LoadedPage({ id, initial, diskVersion, reveal, onOpenLink, onRenamed, o
   const remove = async () => {
     const question = initial.row
       ? `Delete “${title || "Untitled"}” from “${initial.row.name || "Untitled"}”?`
-      : `Delete “${title || "Untitled"}”? Pages inside it move to the top level.`;
+      : `Delete “${title || "Untitled"}”${insideText(pagesInside(await api.listPages(), id).length)}?`;
     const confirmed = await ask(question, {
       title: "Delete page",
       kind: "warning",
