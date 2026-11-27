@@ -1,7 +1,7 @@
 #!/bin/sh
 # Installs (or reinstalls) the latest Pagemesh release on this Mac:
 #
-#   curl -fsSL https://raw.githubusercontent.com/egges/document-collab-tool/main/scripts/install.sh | sh
+#   curl -fsSL https://raw.githubusercontent.com/egges/sawmill/main/scripts/install.sh | sh
 #
 # Downloads the .dmg from the latest GitHub Release, copies Pagemesh.app to
 # /Applications and opens it. Files downloaded with curl aren't marked as
@@ -12,7 +12,7 @@
 
 set -eu
 
-REPO="egges/document-collab-tool"
+REPO="egges/sawmill"
 APP="Pagemesh.app"
 DEST="${PAGEMESH_INSTALL_DIR:-/Applications}"
 
