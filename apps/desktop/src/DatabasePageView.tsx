@@ -261,6 +261,7 @@ export function DatabasePageView({
                   view={view}
                   actions={actions}
                   onGroupBy={(groupBy) => saveView({ ...view, groupBy }, view.id)}
+                  onSort={(sort) => saveView({ ...view, sort }, view.id)}
                   onOpenRow={onOpenPage}
                 />
               ) : (

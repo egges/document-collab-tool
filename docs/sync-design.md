@@ -66,6 +66,12 @@ column change (`docsync::database`).
 Every database row is a page, as in Notion: a page like any other in
 `pages/`, with its text, attachments and display options, whose `row` field
 says which database it's in: `{"database": "<db-id>", "position": <n>}`.
+A view whose rows are ordered by hand (a board whose cards were dragged)
+keeps its own order there too, in `"positions": {"<view-id>": <n>}`: a row
+without a position in a view sits where its own `position` puts it, so
+dropping a card between two others writes one number in one row, and two
+devices moving different cards, or one card in different views, merge.
+Positions of a view that was deleted stay behind, unused.
 Its cells are its `properties`, keyed by column id, with the database's
 columns as their types. Its name is its page's `name`, like any page's,
 shown in the database's title column (type `"title"`, called "Name" when

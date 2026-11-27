@@ -5,7 +5,8 @@
 //! databases/<db>/schema.json
 //!   {"id", "name", "columns": {"<col>": {"name", "type", "position", "options"?}}}
 //! pages/<row>/meta.json
-//!   {"id", "name", "properties": {"<col>": value}, "row": {"database": "<db>", "position"?}, ...}
+//!   {"id", "name", "properties": {"<col>": value},
+//!    "row": {"database": "<db>", "position"?, "positions"?: {"<view>": n}}, ...}
 //! pages/<row>/page.md
 //!   the row's text
 //! ```
@@ -33,11 +34,19 @@
 //! moving a column changes one number. Cells are keyed by column id too, so
 //! renaming a column never touches the rows.
 //!
+//! Rows have an order of their own, `position` (the time the row was added),
+//! and one per view that orders them by hand, such as a board whose cards
+//! were dragged: `positions`, keyed by view id ([`crate::database_page`]).
+//! A row without a position in a view sits where its own `position` puts
+//! it, so dropping a card between two others writes one number in one file.
+//!
 //! Reading is lenient, since files can be edited by hand or by an agent: an
 //! unknown type reads as text, a missing position sorts last, and the first
 //! format (`"columns": ["name", ...]`, text columns whose id is their name)
 //! still reads. Writing a column change moves such a schema to the current
 //! format.
+
+use std::collections::BTreeMap;
 
 use serde_json::{Map, Value, json};
 
@@ -255,11 +264,14 @@ pub struct Row {
     pub id: String,
     /// Sort key for the row order; rows without one sort last, by id.
     pub position: Option<f64>,
+    /// Sort keys in views ordered by hand, by view id; a view not in here
+    /// uses `position`.
+    pub view_positions: BTreeMap<String, f64>,
     pub cells: Map<String, Value>,
 }
 
 impl Row {
-    /// A row from its page's meta.json: the position in its `row` field,
+    /// A row from its page's meta.json: the positions in its `row` field,
     /// the cells in its properties, and its page's name as the cell of
     /// `title_column` (left out when empty, like any empty cell).
     pub fn from_meta(id: &str, meta: &Value, title_column: Option<&str>) -> Row {
@@ -270,9 +282,16 @@ impl Row {
                 None => cells.remove(column),
             };
         }
+        let view_positions = meta["row"]["positions"]
+            .as_object()
+            .into_iter()
+            .flatten()
+            .filter_map(|(view, position)| Some((view.clone(), position.as_f64()?)))
+            .collect();
         Row {
             id: id.to_string(),
             position: meta["row"]["position"].as_f64(),
+            view_positions,
             cells,
         }
     }
@@ -384,6 +403,15 @@ mod tests {
         let ids: Vec<&str> = rows.iter().map(|r| r.id.as_str()).collect();
         assert_eq!(ids, ["b", "a", "c"]);
         assert_eq!(rows[0].cells["x"], 1);
+    }
+
+    #[test]
+    fn a_row_reads_its_positions_in_views() {
+        let meta = json!({"row": {"position": 2, "positions": {"board": 1.5, "odd": "x"}}});
+        let row = Row::from_meta("a", &meta, None);
+        assert_eq!(row.position, Some(2.0));
+        assert_eq!(row.view_positions, BTreeMap::from([("board".to_string(), 1.5)]));
+        assert!(Row::from_meta("b", &json!({}), None).view_positions.is_empty());
     }
 
     #[test]

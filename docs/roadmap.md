@@ -147,15 +147,16 @@ that those two jobs need (marked **First**).
       for a new one or an existing one. The page has views as tabs, each a
       **table** (`TableView`) or a **board** (`BoardView`: a lane per choice
       of a select or checkbox column, a card per row; drag a card to
-      another lane, click it to edit every field). Views, with their sort
+      another lane or another place in its lane, click it to edit every
+      field). Views, with their sort
       and grouping, are kept in the page's `meta.json`
       (`docsync::database_page`), so they sync and everyone sees the same;
       which tab is open is per device. Decided: the sort belongs to the
       view, for everyone, as in Notion. A page whose database was deleted
       elsewhere says so and offers to show a new or existing one. Deleting
       a database page deletes its database too, unless another page shows
-      it. Still to come: filters and more view types (list, calendar);
-      card order is its own item below.
+      it. Still to come: filters and more view types (list, calendar).
+      Card order is its own item below.
 - [x] **Rows as pages, and properties on every page.** Every row of a
       database is a page, as in Notion: open it from the table (the button
       by its row number) or by clicking its card on a board. Its title is
@@ -186,11 +187,25 @@ that those two jobs need (marked **First**).
       them by pasting or dropping, kept in the page's `assets/`. Rows are
       pages, so this covers them too. The importer already copies images
       into `assets/` (see "Importer" above).
-- [ ] **Card order, as in Notion.** On a board without a sort, drag cards
-      up and down within a lane as well as between lanes; the order is the
-      view's, kept as a position per view in each row's `row` field, so
-      moving a card changes one value in one file. In a sorted view,
-      dragging within a lane asks whether to remove the sort.
+- [x] **Card order, as in Notion.** On a board without a sort, drag cards
+      up and down within a lane as well as between lanes: a line shows
+      where the card will land, the board and the page scroll when the
+      pointer nears an edge, and Esc puts the card back. The order is the
+      view's, kept as a position per view in each row's `row` field
+      (`positions`, by view id), so moving a card changes one value in one
+      file, and two devices moving different cards merge. A card nobody
+      dragged sits where its row is in the database, and a new one comes
+      last. In a sorted view a card dropped in another lane goes where the
+      sort puts it, and dragging within a lane asks whether to remove the
+      sort (`apps/desktop/src/boards.ts`).
+- [ ] **Drag pages in the sidebar.** Drag a page in the left panel to move
+      it: onto another page to put it inside, out to the top level, or
+      between two pages to order them by hand. Today the tree is sorted by
+      name and a page stays under the page it was made in. The order would
+      be a `position` in each page's `meta.json`, as for columns and cards,
+      so a move changes one file; pages nobody dragged keep sorting by
+      name. `Workspace::set_parent` already moves a page, but the app
+      doesn't call it yet.
 - [ ] **Side peek.** Nice to have: open a row beside the table or board
       instead of in full.
 - [x] **Conflict markers in the editor.** A place two devices edited at once

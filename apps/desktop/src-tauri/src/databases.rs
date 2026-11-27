@@ -3,6 +3,8 @@
 //! `docsync::database`; values are checked against their column's type here,
 //! so the window can't write a cell the table view would misread.
 
+use std::collections::BTreeMap;
+
 use docsync::Workspace;
 use docsync::database::{ColumnChange, ColumnType, Schema};
 use serde::Serialize;
@@ -35,6 +37,10 @@ pub struct ColumnInfo {
 #[derive(Debug, Serialize)]
 pub struct RowInfo {
     id: String,
+    /// Sort key for the row order (the order `rows` is in).
+    position: Option<f64>,
+    /// Sort keys in views ordered by hand (a board's cards), by view id.
+    positions: BTreeMap<String, f64>,
     /// Keyed by column id. May hold cells of removed columns, and values of
     /// another type than their column's (after a type change).
     cells: Map<String, Value>,
@@ -106,6 +112,8 @@ fn read(ws: &Workspace, id: &str) -> CmdResult<Database> {
             .into_iter()
             .map(|r| RowInfo {
                 id: r.id,
+                position: r.position,
+                positions: r.view_positions,
                 cells: r.cells,
             })
             .collect(),
@@ -367,6 +375,50 @@ pub async fn set_cell(
     .await
 }
 
+/// Put rows at positions in a view ordered by hand: a card dropped between
+/// two others on a board. Usually one row; several when the cards around
+/// it left no room between their positions.
+pub(crate) fn write_row_positions(
+    ws: &Workspace,
+    db: &str,
+    view: &str,
+    positions: &BTreeMap<String, f64>,
+) -> CmdResult<()> {
+    if view.is_empty() {
+        return Err("A row is ordered within a view.".into());
+    }
+    for (row, position) in positions {
+        if !position.is_finite() {
+            return Err("A position is a number.".into());
+        }
+        if !ws.row_exists(db, row) {
+            return Err("This row no longer exists.".into());
+        }
+        ws.set_row_view_position(db, row, view, *position).map_err(text)?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn set_row_positions(
+    state: State<'_, AppState>,
+    db: String,
+    view: String,
+    positions: BTreeMap<String, f64>,
+) -> CmdResult<()> {
+    let (engine, edited) = state.engine()?;
+    blocking("set_row_positions", move || {
+        write_row_positions(&Workspace::new(engine.root()), &db, &view, &positions)?;
+        devlog::debug(
+            "app",
+            format!("Database {db}: moved {} row(s) in view {view}", positions.len()),
+        );
+        edited();
+        Ok(())
+    })
+    .await
+}
+
 #[tauri::command]
 pub async fn delete_row(state: State<'_, AppState>, db: String, row: String) -> CmdResult<()> {
     let (engine, edited) = state.engine()?;
@@ -435,6 +487,26 @@ mod tests {
         assert!(ws.read_row(&db, &row).unwrap().cells.is_empty());
         assert!(write_cell(&ws, &db, &row, "nope", Some(json!(1))).is_err());
         assert!(write_cell(&ws, &db, "gone", &count, Some(json!(1))).is_err());
+    }
+
+    #[test]
+    fn rows_are_moved_within_one_view() {
+        let (_dir, ws) = workspace();
+        let db = create(&ws, "T").unwrap();
+        let first = ws.add_row(&db, Map::new()).unwrap();
+        let second = ws.add_row(&db, Map::new()).unwrap();
+        let moved = BTreeMap::from([(second.clone(), 1.5)]);
+        write_row_positions(&ws, &db, "board", &moved).unwrap();
+        let rows = read(&ws, &db).unwrap().rows;
+        let second_row = rows.iter().find(|r| r.id == second).unwrap();
+        assert_eq!(second_row.positions, BTreeMap::from([("board".to_string(), 1.5)]));
+        assert!(second_row.position.is_some());
+        assert!(rows.iter().find(|r| r.id == first).unwrap().positions.is_empty());
+        let gone = BTreeMap::from([("gone".to_string(), 1.0)]);
+        assert!(write_row_positions(&ws, &db, "board", &gone).is_err());
+        let odd = BTreeMap::from([(first, f64::INFINITY)]);
+        assert!(write_row_positions(&ws, &db, "board", &odd).is_err());
+        assert!(write_row_positions(&ws, &db, "", &moved).is_err());
     }
 
     #[test]

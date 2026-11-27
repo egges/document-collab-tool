@@ -5,11 +5,38 @@
 // database is read again, so what's shown is what's on disk. Changes from a
 // sync or another program show up the same way.
 import { useCallback, useEffect, useRef, useState } from "react";
-import { type CellValue, type ColumnChange, type ColumnType, type Database, dbApi, errorText, events } from "./api.ts";
+import {
+  type CellValue,
+  type ColumnChange,
+  type ColumnType,
+  type Database,
+  type Row,
+  dbApi,
+  errorText,
+  events,
+} from "./api.ts";
 import { newColumnName } from "./databases.ts";
+
+/** `cells` with one set, or emptied with null. */
+function withCell(cells: Row["cells"], column: string, value: CellValue | null): Row["cells"] {
+  const next = { ...cells };
+  if (value === null) delete next[column];
+  else next[column] = value;
+  return next;
+}
 
 export interface DatabaseActions {
   setCell: (row: string, column: string, value: CellValue | null) => void;
+  /**
+   * Move a row in a view ordered by hand (a card on a board): to another
+   * lane (`cell`), to other places (`positions`, by row id), or both.
+   */
+  moveRow: (
+    row: string,
+    cell: { column: string; value: CellValue | null } | null,
+    view: string,
+    positions: Record<string, number>,
+  ) => void;
   /** Resolves to the new row's id. */
   addRow: () => Promise<string | null>;
   deleteRow: (row: string) => void;
@@ -89,15 +116,27 @@ export function useDatabase(
       void edit(
         (d) => ({
           ...d,
-          rows: d.rows.map((r) => {
-            if (r.id !== row) return r;
-            const cells = { ...r.cells };
-            if (value === null) delete cells[column];
-            else cells[column] = value;
-            return { ...r, cells };
-          }),
+          rows: d.rows.map((r) => (r.id === row ? { ...r, cells: withCell(r.cells, column, value) } : r)),
         }),
         () => dbApi.setCell(db.id, row, column, value),
+      ),
+    moveRow: (row, cell, view, positions) =>
+      void edit(
+        (d) => ({
+          ...d,
+          rows: d.rows.map((r) => {
+            const position = positions[r.id];
+            if (position === undefined && !(cell && r.id === row)) return r;
+            const next = { ...r };
+            if (position !== undefined) next.positions = { ...r.positions, [view]: position };
+            if (cell && r.id === row) next.cells = withCell(r.cells, cell.column, cell.value);
+            return next;
+          }),
+        }),
+        async () => {
+          if (cell) await dbApi.setCell(db.id, row, cell.column, cell.value);
+          if (Object.keys(positions).length > 0) await dbApi.setRowPositions(db.id, view, positions);
+        },
       ),
     addRow: () => edit(null, () => dbApi.addRow(db.id)),
     deleteRow: (row) =>
