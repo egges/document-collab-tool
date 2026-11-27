@@ -12,7 +12,9 @@ use serde_json::{Map, Value};
 use tauri::State;
 
 use crate::commands::{AppState, CmdResult, blocking, text};
-use crate::databases::{ColumnInfo, clean_options, column_type, columns_info, name_of, write_cell};
+use crate::databases::{
+    ColumnInfo, check_title_change, clean_options, column_type, columns_info, name_of, write_cell,
+};
 use crate::devlog;
 
 /// A page's properties, sent with the page.
@@ -50,19 +52,15 @@ pub fn kind(ws: &Workspace, id: &str) -> CmdResult<Kind> {
     }
 }
 
-/// A row as a page: its title (the title column's cell), its meta.json (for
-/// display options), its properties and its database.
+/// A row as a page: its title, its meta.json (for display options), its
+/// properties (the database's columns but the title column) and its
+/// database.
 pub fn row_parts(ws: &Workspace, database: &str, row: &str) -> CmdResult<(String, Value, Properties, RowOf)> {
     let schema = ws.read_schema(database).map_err(text)?;
     let json = ws.read_page_meta(row).map_err(text)?;
     let cells = ws.read_row(database, row).map_err(text)?.cells;
     let title_column = schema.title_column().map(|c| c.id.clone());
-    let title = title_column
-        .as_ref()
-        .and_then(|c| cells.get(c))
-        .and_then(Value::as_str)
-        .unwrap_or_default()
-        .to_string();
+    let title = docsync::workspace::page_name(&json).to_string();
     let columns: Vec<Column> = schema
         .columns
         .iter()
@@ -96,33 +94,11 @@ pub fn page_properties(meta: &Value) -> Properties {
     }
 }
 
-/// Rename a page, or set a row's title cell. A database without a text
-/// column gets a "Name" column first, before the others.
+/// Rename a page. A row's title is its page's too (its database's title
+/// column shows it).
 pub fn set_title(ws: &Workspace, id: &str, title: &str) -> CmdResult<()> {
-    match kind(ws, id)? {
-        Kind::Page => ws.set_title(id, title).map_err(text),
-        Kind::Row { database } => {
-            let schema = ws.read_schema(&database).map_err(text)?;
-            let column = match schema.title_column() {
-                Some(c) => c.id.clone(),
-                None => {
-                    let first = schema
-                        .columns
-                        .iter()
-                        .filter_map(|c| c.position)
-                        .fold(0.0, f64::min);
-                    let id = ws.add_column(&database, "Name", ColumnType::Text).map_err(text)?;
-                    let change = ColumnChange {
-                        position: Some(first - 1.0),
-                        ..Default::default()
-                    };
-                    ws.update_column(&database, &id, &change).map_err(text)?;
-                    id
-                }
-            };
-            write_cell(ws, &database, id, &column, Some(title.into()))
-        }
-    }
+    kind(ws, id)?;
+    ws.set_title(id, title).map_err(text)
 }
 
 /// Set a regular page's property, checked against its type; `None` (or an
@@ -166,7 +142,10 @@ fn add(ws: &Workspace, id: &str, name: &str, kind_name: &str) -> CmdResult<Strin
 fn update(ws: &Workspace, id: &str, key: &str, change: &ColumnChange) -> CmdResult<()> {
     match kind(ws, id)? {
         Kind::Page => ws.update_page_property(id, key, change).map_err(text),
-        Kind::Row { database } => ws.update_column(&database, key, change).map_err(text),
+        Kind::Row { database } => {
+            check_title_change(ws, &database, key, Some(change))?;
+            ws.update_column(&database, key, change).map_err(text)
+        }
     }
 }
 
@@ -174,10 +153,7 @@ fn remove(ws: &Workspace, id: &str, key: &str) -> CmdResult<()> {
     match kind(ws, id)? {
         Kind::Page => ws.remove_page_property(id, key).map_err(text),
         Kind::Row { database } => {
-            let schema = ws.read_schema(&database).map_err(text)?;
-            if schema.columns.len() <= 1 {
-                return Err("A database keeps at least one column.".into());
-            }
+            check_title_change(ws, &database, key, None)?;
             ws.remove_column(&database, key).map_err(text)
         }
     }
@@ -307,6 +283,7 @@ mod tests {
 
         let (title, _, props, row_of) = row_parts(&ws, &db, &row).unwrap();
         assert_eq!(title, "Write the plan");
+        assert_eq!(ws.read_page_meta(&row).unwrap()["name"], "Write the plan");
         assert_eq!(row_of.name, "Tasks");
         assert_eq!(props.columns.len(), 1);
         assert_eq!(props.values[&due], "2026-12-01");
@@ -314,21 +291,30 @@ mod tests {
         assert!(ws.read_schema(&db).unwrap().column(&due).is_some());
         remove(&ws, &row, &due).unwrap();
         assert_eq!(ws.read_schema(&db).unwrap().columns.len(), 1);
-        // The last column (the title) can't go.
+        // The title column can't go.
         let title_column = ws.read_schema(&db).unwrap().columns[0].id.clone();
         assert!(remove(&ws, &row, &title_column).is_err());
     }
 
     #[test]
-    fn a_row_without_a_text_column_gets_one_for_its_title() {
+    fn a_rows_title_is_its_pages_wherever_the_title_column_is() {
         let (_dir, ws) = workspace();
-        let db = ws.create_database("Numbers", &[]).unwrap();
+        let db = crate::databases::create(&ws, "Tasks").unwrap();
         let n = ws.add_column(&db, "N", ColumnType::Number).unwrap();
+        let title = ws.read_schema(&db).unwrap().title_column().unwrap().id.clone();
+        update(&ws, "x", &title, &ColumnChange::default()).unwrap_err();
         let row = ws.add_row(&db, Map::new()).unwrap();
+        let after_n = ColumnChange {
+            position: Some(5.0),
+            ..Default::default()
+        };
+        update(&ws, &row, &title, &after_n).unwrap();
+        assert_eq!(ws.read_schema(&db).unwrap().columns[1].id, title);
         set_title(&ws, &row, "First").unwrap();
-        let schema = ws.read_schema(&db).unwrap();
-        assert_eq!(schema.columns[0].name, "Name");
-        assert_eq!(schema.columns[1].id, n);
-        assert_eq!(row_parts(&ws, &db, &row).unwrap().0, "First");
+        let (shown, _, props, _) = row_parts(&ws, &db, &row).unwrap();
+        assert_eq!(shown, "First");
+        assert_eq!(props.columns.len(), 1);
+        assert_eq!(props.columns[0].id, n);
+        assert_eq!(ws.read_row(&db, &row).unwrap().cells[&title], "First");
     }
 }

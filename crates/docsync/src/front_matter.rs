@@ -9,7 +9,7 @@
 //! The page itself.
 //! ```
 //!
-//! Our pages keep this in `meta.json` instead: the title in `title`, the rest
+//! Our pages keep this in `meta.json` instead: the title in `name`, the rest
 //! in `properties`. The editor can't show front matter, so it is moved there
 //! before a page reaches the editor ([`crate::Workspace::lift_front_matter`])
 //! and when Markdown files are imported ([`crate::import`]).
@@ -20,7 +20,8 @@ use yaml_rust2::{Yaml, YamlLoader};
 /// Front matter split off a page and read as data.
 #[derive(Debug, Clone, PartialEq)]
 pub struct FrontMatter {
-    /// The `title` field, if it held text (or a number).
+    /// The page's name: the `title` field, else `name`, if it held text (or
+    /// a number).
     pub title: Option<String>,
     /// Every other field, converted to JSON.
     pub properties: Map<String, Value>,
@@ -48,13 +49,20 @@ pub fn parse(markdown: &str) -> Option<FrontMatter> {
             _ => return None,
         }
     };
-    let title = match properties.get("title") {
+    // The page's name: `title` (what most tools write), else `name` (what
+    // meta.json calls it). The one used isn't also a property.
+    let as_name = |value: Option<&Value>| match value {
         Some(Value::String(s)) if !s.trim().is_empty() => Some(s.trim().to_string()),
         Some(Value::Number(n)) => Some(n.to_string()),
         _ => None,
     };
-    if title.is_some() {
-        properties.remove("title");
+    let mut title = None;
+    for key in ["title", "name"] {
+        if let Some(name) = as_name(properties.get(key)) {
+            properties.remove(key);
+            title = Some(name);
+            break;
+        }
     }
     Some(FrontMatter {
         title,
@@ -126,6 +134,16 @@ mod tests {
             json!({"tags": ["travel", 2026], "draft": true})
         );
         assert_eq!(fm.body, "Body\n");
+    }
+
+    #[test]
+    fn name_is_the_title_when_there_is_no_title() {
+        let fm = parse("---\nname: Plan\n---\n").unwrap();
+        assert_eq!(fm.title.as_deref(), Some("Plan"));
+        assert!(fm.properties.is_empty());
+        let fm = parse("---\ntitle: Trip\nname: Anna\n---\n").unwrap();
+        assert_eq!(fm.title.as_deref(), Some("Trip"));
+        assert_eq!(Value::Object(fm.properties), json!({"name": "Anna"}));
     }
 
     #[test]

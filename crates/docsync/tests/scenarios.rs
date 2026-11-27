@@ -233,7 +233,7 @@ fn different_properties_of_one_page_merge() {
     settle(&[&a, &b]);
     let meta = a.ws.read_page_meta(&page).unwrap();
     assert_eq!(meta["properties"], json!({"status": "doing", "owner": "sam"}));
-    assert_eq!(meta["title"], "Renamed task");
+    assert_eq!(meta["name"], "Renamed task");
 }
 
 #[test]
@@ -323,7 +323,7 @@ fn renaming_the_workspace_reaches_every_device_and_the_newest_name_wins() {
     for device in [&a, &b] {
         assert_eq!(device.ws.name().as_deref(), Some("Notes B"));
         assert!(device.ws.page_exists(&page));
-        assert_eq!(device.ws.read_page_meta(&page).unwrap()["title"], "Agenda");
+        assert_eq!(device.ws.read_page_meta(&page).unwrap()["name"], "Agenda");
     }
     assert!(a.ws.set_name("   ").is_err());
     assert_eq!(a.ws.name().as_deref(), Some("Notes B"));
@@ -564,7 +564,7 @@ fn column_changes_on_different_devices_merge() {
     settle(&[&a, &b]);
     let schema = a.ws.read_schema(&db).unwrap();
     let names: Vec<&str> = schema.columns.iter().map(|c| c.name.as_str()).collect();
-    assert_eq!(names[..2], ["Title", "Status"]);
+    assert_eq!(names[..3], ["Name", "Title", "Status"]);
     assert_eq!(schema.column("status").unwrap().kind, ColumnType::Select);
     assert!(schema.column(&due).is_some() && schema.column(&owner).is_some());
 }
@@ -613,7 +613,7 @@ fn hand_edited_invalid_json_does_not_break_sync() {
     b.sync();
     settle(&[&a, &b]);
     // The valid version wins, even though a's edit was published first.
-    assert_eq!(a.ws.read_page_meta(&page).unwrap()["title"], "New title");
+    assert_eq!(a.ws.read_page_meta(&page).unwrap()["name"], "New title");
     let copy = format!("pages/{page}/meta.conflict-a-");
     let broken = a
         .files()
@@ -747,7 +747,7 @@ fn files_are_plain_and_readable_without_the_app() {
     assert_eq!(
         meta,
         format!(
-            "{{\n  \"id\": \"{page}\",\n  \"parent\": null,\n  \"properties\": {{\n    \"tags\": [\n      \"x\"\n    ]\n  }},\n  \"title\": \"Readme\"\n}}\n"
+            "{{\n  \"id\": \"{page}\",\n  \"name\": \"Readme\",\n  \"parent\": null,\n  \"properties\": {{\n    \"tags\": [\n      \"x\"\n    ]\n  }}\n}}\n"
         )
     );
     assert_eq!(a.file(&format!("pages/{page}/page.md")).unwrap(), "# Hello\n");
@@ -801,7 +801,7 @@ fn two_devices_moving_the_same_front_matter_converge_without_conflicts() {
     settle(&[&a, &b]);
     assert_converged(&[&a, &b]);
     let meta = a.ws.read_page_meta(&page).unwrap();
-    assert_eq!(meta["title"], json!("From a tool"));
+    assert_eq!(meta["name"], json!("From a tool"));
     assert_eq!(meta["properties"], json!({"tags": ["x"]}));
     assert_eq!(a.ws.read_body(&page).unwrap(), "Text\n");
 }

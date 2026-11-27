@@ -2,12 +2,13 @@
 // view's card dialog. Each column type gets its own control.
 import type { ReactNode } from "react";
 import { useRef, useState } from "react";
-import { Calendar, CircleChevronDown, ExternalLink, Hash, Link, SquareCheck, Type } from "lucide-react";
+import { Calendar, CaseSensitive, CircleChevronDown, ExternalLink, Hash, Link, SquareCheck, Type } from "lucide-react";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import type { CellValue, Column, ColumnType } from "./api.ts";
 import { cellText, fits, optionTone, parseCell } from "./databases.ts";
 
 export const TYPE_ICONS: Record<ColumnType, (size: number) => ReactNode> = {
+  title: (s) => <CaseSensitive size={s} aria-hidden />,
   text: (s) => <Type size={s} aria-hidden />,
   number: (s) => <Hash size={s} aria-hidden />,
   select: (s) => <CircleChevronDown size={s} aria-hidden />,
@@ -152,7 +153,7 @@ function TextCell({
             e.currentTarget.blur();
           }
         }}
-        spellCheck={column.type === "text"}
+        spellCheck={column.type === "text" || column.type === "title"}
       />
       {link && draft === null && (
         <button

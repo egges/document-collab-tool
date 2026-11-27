@@ -2,7 +2,7 @@
 //!
 //! ```text
 //! workspace.json                      workspace settings: {"format", "name", "kept_in"}
-//! pages/<page-id>/meta.json           title, parent, properties (+ their types), display, database, row
+//! pages/<page-id>/meta.json           name, parent, properties (+ their types), display, database, row
 //! pages/<page-id>/page.md             page body
 //! pages/<page-id>/assets/...          attachments
 //! databases/<db-id>/schema.json       name, columns

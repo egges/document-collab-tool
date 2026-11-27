@@ -45,10 +45,12 @@ export function TableView({
     [database.rows, sortColumn, sort],
   );
 
-  // A new row: put the cursor in its first cell once it's shown.
+  // A new row: put the cursor in its name once it's shown, wherever that column is.
   useEffect(() => {
     if (!focusRow) return;
-    const input = table.current?.querySelector<HTMLElement>(`tr[data-row="${focusRow}"] .db-cell-input`);
+    const tr = table.current?.querySelector(`tr[data-row="${focusRow}"]`);
+    const input =
+      tr?.querySelector<HTMLElement>(".type-title .db-cell-input") ?? tr?.querySelector<HTMLElement>(".db-cell-input");
     if (input) {
       input.focus();
       setFocusRow(null);
@@ -225,8 +227,6 @@ function ColumnHeader({
             onChange={(change) => actions.updateColumn(column.id, change)}
             onClose={close}
             onDelete={() => actions.deleteColumn(column.id)}
-            canDelete={columns.length > 1}
-            cannotDelete="A database keeps at least one column"
           >
             <MenuItem icon={<ArrowUp size={14} />} label="Sort ascending" onClick={() => (onSort("asc"), close())} />
             <MenuItem icon={<ArrowDown size={14} />} label="Sort descending" onClick={() => (onSort("desc"), close())} />

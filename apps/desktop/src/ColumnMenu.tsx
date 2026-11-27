@@ -1,7 +1,8 @@
 // A column's menu: rename it, change its type, edit a select's choices, and
 // delete it, with room for more items (sorting and moving, in the table).
 // The table's column headers and a page's properties use it; on a page a
-// column is called a property.
+// column is called a property. A database's title column ("Name") can only
+// be renamed and moved, as in Notion.
 import { type ReactNode, useState } from "react";
 import { Trash2, X } from "lucide-react";
 import type { Column, ColumnChange } from "./api.ts";
@@ -14,8 +15,6 @@ export function ColumnMenu({
   onChange,
   onClose,
   onDelete,
-  canDelete = true,
-  cannotDelete,
   children,
 }: {
   column: Column;
@@ -24,17 +23,15 @@ export function ColumnMenu({
   onChange: (change: ColumnChange) => void;
   onClose: () => void;
   onDelete: () => void;
-  canDelete?: boolean;
-  /** Why it can't be deleted. */
-  cannotDelete?: string;
   /** Items between the types and "Delete". */
   children?: ReactNode;
 }) {
+  const title = column.type === "title";
   return (
     <>
       <ColumnName column={column} label={`${what[0].toUpperCase()}${what.slice(1)} name`} onRename={(name) => onChange({ name })} onDone={onClose} />
-      <div className="db-menu-title">Type</div>
-      {COLUMN_TYPES.map(({ type, label }) => (
+      {!title && <div className="db-menu-title">Type</div>}
+      {!title && COLUMN_TYPES.map(({ type, label }) => (
         <button
           key={type}
           role="menuitemradio"
@@ -49,18 +46,18 @@ export function ColumnMenu({
       {column.type === "select" && <Choices options={column.options} onChange={(options) => onChange({ options })} />}
       <div className="menu-separator" role="separator" />
       {children}
-      {children && <div className="menu-separator" role="separator" />}
-      <MenuItem
-        icon={<Trash2 size={14} />}
-        label={`Delete ${what}`}
-        danger
-        disabled={!canDelete}
-        title={canDelete ? undefined : cannotDelete}
-        onClick={() => {
-          onClose();
-          onDelete();
-        }}
-      />
+      {children && !title && <div className="menu-separator" role="separator" />}
+      {!title && (
+        <MenuItem
+          icon={<Trash2 size={14} />}
+          label={`Delete ${what}`}
+          danger
+          onClick={() => {
+            onClose();
+            onDelete();
+          }}
+        />
+      )}
     </>
   );
 }

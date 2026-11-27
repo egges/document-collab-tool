@@ -375,7 +375,8 @@ export const api = {
 };
 
 /** What a database column holds; see docsync::database. */
-export type ColumnType = "text" | "number" | "checkbox" | "select" | "date" | "url";
+/** "title" is a database's title column: one per database, whose cell is the row page's title. */
+export type ColumnType = "title" | "text" | "number" | "checkbox" | "select" | "date" | "url";
 
 /** A cell's stored value: a string (text, url, select, "YYYY-MM-DD" date), number or boolean. */
 export type CellValue = string | number | boolean;

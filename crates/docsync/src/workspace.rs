@@ -135,7 +135,7 @@ impl Workspace {
         properties: Map<String, Value>,
         body: &str,
     ) -> Result<()> {
-        let meta = json!({ "id": id, "title": title, "parent": parent, "properties": properties });
+        let meta = json!({ "id": id, PAGE_NAME: title, "parent": parent, "properties": properties });
         self.write_json(&self.page_dir(id).join(PAGE_META), &meta)?;
         self.write_file(&self.page_dir(id).join(PAGE_BODY), body.as_bytes())
     }
@@ -153,9 +153,12 @@ impl Workspace {
         self.read_json(&self.page_dir(id).join(PAGE_META))
     }
 
+    /// Rename a page: its meta.json's `name` (a `title` from a hand edit
+    /// goes).
     pub fn set_title(&self, id: &str, title: &str) -> Result<()> {
         self.update_json(&self.page_dir(id).join(PAGE_META), |meta| {
-            meta.insert("title".into(), title.into());
+            meta.insert(PAGE_NAME.into(), title.into());
+            meta.remove(OLD_PAGE_NAME);
         })
     }
 
@@ -263,7 +266,8 @@ impl Workspace {
     }
 
     /// Move YAML front matter at the top of the page's body into its
-    /// meta.json: `title` becomes the title, every other field a property.
+    /// meta.json: `title` (or `name`) becomes the page's name, every other
+    /// field a property.
     /// Front matter was written after meta.json (by another tool or an AI
     /// agent), so its values replace the ones there. Returns whether the
     /// page changed. Doesn't commit.
@@ -288,7 +292,8 @@ impl Workspace {
         };
         self.update_json(&self.page_dir(id).join(PAGE_META), |meta| {
             if let Some(title) = front.title {
-                meta.insert("title".into(), title.into());
+                meta.insert(PAGE_NAME.into(), title.into());
+                meta.remove(OLD_PAGE_NAME);
             }
             let props = meta.entry("properties").or_insert_with(|| json!({}));
             if !props.is_object() {
@@ -327,7 +332,8 @@ impl Workspace {
         if let Some(database) = database {
             field["id"] = database.into();
         }
-        let meta = json!({ "id": id, "title": title, "parent": parent, "properties": {}, "database": field });
+        let meta =
+            json!({ "id": id, PAGE_NAME: title, "parent": parent, "properties": {}, "database": field });
         self.write_json(&self.page_dir(&id).join(PAGE_META), &meta)?;
         self.write_file(&self.page_dir(&id).join(PAGE_BODY), b"")?;
         Ok(id)
@@ -389,7 +395,8 @@ impl Workspace {
     // ---- databases -----------------------------------------------------
     // The format is in [`crate::database`].
 
-    /// A database with text columns whose ids are `columns`.
+    /// A database with a title column called "Name" (id [`TITLE_COLUMN`]),
+    /// then text columns whose ids are `columns`.
     pub fn create_database(&self, name: &str, columns: &[&str]) -> Result<String> {
         let id = new_id();
         self.create_database_with_id(&id, name, columns)?;
@@ -397,19 +404,22 @@ impl Workspace {
     }
 
     pub fn create_database_with_id(&self, id: &str, name: &str, columns: &[&str]) -> Result<()> {
-        let columns: Map<String, Value> = columns
-            .iter()
-            .enumerate()
-            .map(|(i, col)| {
-                let column = Column {
-                    id: col.to_string(),
-                    name: col.to_string(),
-                    kind: ColumnType::Text,
-                    position: Some(i as f64),
-                    options: Vec::new(),
-                };
-                (column.id.clone(), column.to_json())
-            })
+        let title = Column {
+            id: TITLE_COLUMN.into(),
+            name: "Name".into(),
+            kind: ColumnType::Title,
+            position: Some(0.0),
+            options: Vec::new(),
+        };
+        let columns: Map<String, Value> = std::iter::once(title)
+            .chain(columns.iter().enumerate().map(|(i, col)| Column {
+                id: col.to_string(),
+                name: col.to_string(),
+                kind: ColumnType::Text,
+                position: Some(i as f64 + 1.0),
+                options: Vec::new(),
+            }))
+            .map(|column| (column.id.clone(), column.to_json()))
             .collect();
         let schema = json!({ "id": id, "name": name, "columns": columns });
         self.write_json(&self.database_dir(id).join(DATABASE_SCHEMA), &schema)
@@ -438,8 +448,12 @@ impl Workspace {
         })
     }
 
-    /// Add a column after the others; returns its id.
+    /// Add a column after the others; returns its id. Not a title column:
+    /// a database has one, from when it's made.
     pub fn add_column(&self, db: &str, name: &str, kind: ColumnType) -> Result<String> {
+        if kind == ColumnType::Title {
+            return Err(self.schema_error(db, "a database has one title column".into()));
+        }
         let id = new_id();
         let schema = self.read_schema(db)?;
         let column = Column {
@@ -457,17 +471,20 @@ impl Workspace {
 
     /// Change a column's name, type, position or options. Cells keep their
     /// values when the type changes; readers treat a value of the wrong type
-    /// as text until it is edited.
+    /// as text until it is edited. The title column keeps its type, and no
+    /// other column gets it.
     pub fn update_column(&self, db: &str, column: &str, change: &ColumnChange) -> Result<()> {
-        let path = self.database_dir(db).join(DATABASE_SCHEMA);
-        let mut current =
-            self.read_schema(db)?
-                .column(column)
-                .cloned()
-                .ok_or_else(|| Error::InvalidData {
-                    path: path.display().to_string(),
-                    message: format!("no column {column}"),
-                })?;
+        let mut current = self
+            .read_schema(db)?
+            .column(column)
+            .cloned()
+            .ok_or_else(|| self.schema_error(db, format!("no column {column}")))?;
+        if let Some(kind) = change.kind
+            && kind != current.kind
+            && (kind == ColumnType::Title || current.kind == ColumnType::Title)
+        {
+            return Err(self.schema_error(db, "the title column keeps its type".into()));
+        }
         change.apply(&mut current);
         self.edit_columns(db, |columns| {
             columns.insert(column.to_string(), current.to_json());
@@ -476,8 +493,15 @@ impl Workspace {
 
     /// Remove a column from the schema. Its cells stay in the rows, so the
     /// rows aren't all rewritten (and can't conflict with edits elsewhere);
-    /// readers ignore cells of unknown columns.
+    /// readers ignore cells of unknown columns. The title column stays.
     pub fn remove_column(&self, db: &str, column: &str) -> Result<()> {
+        if self
+            .read_schema(db)?
+            .title_column()
+            .is_some_and(|c| c.id == column)
+        {
+            return Err(self.schema_error(db, "the title column can't be deleted".into()));
+        }
         self.edit_columns(db, |columns| {
             columns.remove(column);
         })
@@ -498,21 +522,26 @@ impl Workspace {
 
     /// Add a row after the others, as a page of its own. Its position is
     /// the time it was made, so rows added on different devices meanwhile
-    /// end up in the order they were added.
+    /// end up in the order they were added. A cell of the title column is
+    /// the page's title.
     pub fn add_row(&self, db: &str, cells: Map<String, Value>) -> Result<String> {
         let id = new_id();
         self.add_row_with_id(db, &id, cells)?;
         Ok(id)
     }
 
-    pub fn add_row_with_id(&self, db: &str, row: &str, cells: Map<String, Value>) -> Result<()> {
+    pub fn add_row_with_id(&self, db: &str, row: &str, mut cells: Map<String, Value>) -> Result<()> {
+        let title = match self.title_column_id(db) {
+            Some(column) => cells.remove(&column),
+            None => None,
+        };
         let millis = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .map(|d| d.as_millis() as f64)
             .unwrap_or_default();
         let meta = json!({
             "id": row,
-            "title": "",
+            PAGE_NAME: title.as_ref().and_then(Value::as_str).unwrap_or_default(),
             "parent": null,
             "properties": cells,
             ROW_FIELD: { "database": db, "position": millis },
@@ -535,13 +564,14 @@ impl Workspace {
     /// `db`. A meta.json that doesn't parse (a hand edit) is left out rather
     /// than hiding the whole database.
     pub fn read_rows(&self, db: &str) -> Result<Vec<Row>> {
+        let title = self.title_column_id(db);
         let mut rows = Vec::new();
         for id in self.list_pages()? {
             let Ok(meta) = self.read_page_meta(&id) else {
                 continue;
             };
             if row_database(&meta) == Some(db) {
-                rows.push(Row::from_meta(&id, &meta));
+                rows.push(Row::from_meta(&id, &meta, title.as_deref()));
             }
         }
         sort_rows(&mut rows);
@@ -557,17 +587,140 @@ impl Workspace {
                 message: format!("not a row of database {db}"),
             });
         }
-        Ok(Row::from_meta(row, &meta))
+        Ok(Row::from_meta(row, &meta, self.title_column_id(db).as_deref()))
     }
 
-    /// Set a row's cell: the property of its page, keyed by column id.
-    pub fn set_cell(&self, _db: &str, row: &str, column: &str, value: Value) -> Result<()> {
+    /// Set a row's cell: the property of its page, keyed by column id, or
+    /// its page's title for the title column.
+    pub fn set_cell(&self, db: &str, row: &str, column: &str, value: Value) -> Result<()> {
+        if self.title_column_id(db).as_deref() == Some(column) {
+            return self.set_title(row, value.as_str().unwrap_or_default());
+        }
         self.set_page_property(row, column, value)
     }
 
-    /// Empty a cell: its key is removed.
-    pub fn clear_cell(&self, _db: &str, row: &str, column: &str) -> Result<()> {
+    /// Empty a cell: its key is removed, or the title emptied.
+    pub fn clear_cell(&self, db: &str, row: &str, column: &str) -> Result<()> {
+        if self.title_column_id(db).as_deref() == Some(column) {
+            return self.set_title(row, "");
+        }
         self.clear_page_property(row, column)
+    }
+
+    /// The id of a database's title column, if it has one.
+    fn title_column_id(&self, db: &str) -> Option<String> {
+        let schema = self.read_schema(db).ok()?;
+        schema.title_column().map(|c| c.id.clone())
+    }
+
+    fn schema_error(&self, db: &str, message: String) -> Error {
+        Error::InvalidData {
+            path: self.database_dir(db).join(DATABASE_SCHEMA).display().to_string(),
+            message,
+        }
+    }
+
+    /// Rename every page's `title` field to `name` ([`PAGE_NAME`], workspace
+    /// format 3). A page with both keeps its `name`. Returns how many pages
+    /// changed. Safe to run again, and on two devices at once.
+    pub fn rename_title_fields(&self) -> Result<usize> {
+        let mut changed = 0;
+        for id in self.list_pages()? {
+            let Ok(meta) = self.read_page_meta(&id) else {
+                continue;
+            };
+            if meta.get(OLD_PAGE_NAME).is_none() {
+                continue;
+            }
+            self.update_json(&self.page_dir(&id).join(PAGE_META), |meta| {
+                if let Some(title) = meta.remove(OLD_PAGE_NAME)
+                    && !meta.get(PAGE_NAME).is_some_and(Value::is_string)
+                {
+                    meta.insert(PAGE_NAME.into(), title);
+                }
+            })?;
+            changed += 1;
+        }
+        Ok(changed)
+    }
+
+    /// Give every database a title column, as databases made before there
+    /// was one don't have (workspace format 3): its first text column
+    /// becomes the title column, or a new one called "Name" (id
+    /// [`TITLE_COLUMN`]) comes first. Then a row's cell of the title column
+    /// becomes its page's title, replacing it. Returns how many files
+    /// changed. Safe to run again, and on two devices at once: both make
+    /// the same change.
+    pub fn give_databases_titles(&self) -> Result<usize> {
+        let mut changed = 0;
+        let mut titles: std::collections::HashMap<String, String> = Default::default();
+        for db in self.list_databases()? {
+            let Ok(schema) = self.read_schema(&db) else {
+                continue;
+            };
+            let column = match schema.title_column() {
+                Some(c) => c.clone(),
+                None => {
+                    let column = match schema.columns.iter().find(|c| c.kind == ColumnType::Text) {
+                        Some(text) => Column {
+                            kind: ColumnType::Title,
+                            ..text.clone()
+                        },
+                        None => {
+                            let first = schema
+                                .columns
+                                .iter()
+                                .filter_map(|c| c.position)
+                                .fold(0.0, f64::min);
+                            let mut id = TITLE_COLUMN.to_string();
+                            for n in 2.. {
+                                if schema.column(&id).is_none() {
+                                    break;
+                                }
+                                id = format!("{TITLE_COLUMN}-{n}");
+                            }
+                            Column {
+                                id,
+                                name: "Name".into(),
+                                kind: ColumnType::Title,
+                                position: Some(first - 1.0),
+                                options: Vec::new(),
+                            }
+                        }
+                    };
+                    self.edit_columns(&db, |columns| {
+                        columns.insert(column.id.clone(), column.to_json());
+                    })?;
+                    changed += 1;
+                    column
+                }
+            };
+            titles.insert(db, column.id);
+        }
+        // One pass over the pages, rather than one per database.
+        for row in self.list_pages()? {
+            let Ok(meta) = self.read_page_meta(&row) else {
+                continue;
+            };
+            let Some(column) = row_database(&meta).and_then(|db| titles.get(db)) else {
+                continue;
+            };
+            let Some(cell) = meta["properties"].get(column) else {
+                continue;
+            };
+            let title = match cell {
+                Value::String(s) => s.clone(),
+                Value::Null => String::new(),
+                other => other.to_string(),
+            };
+            self.update_json(&self.page_dir(&row).join(PAGE_META), |meta| {
+                meta.insert(PAGE_NAME.into(), title.into());
+                meta.remove(OLD_PAGE_NAME);
+                object_field(meta, "properties").remove(column);
+            })?;
+            changed += 1;
+        }
+        Ok(changed)
     }
 
     /// Delete a row: its page, with its text and attachments.
@@ -600,7 +753,7 @@ impl Workspace {
                 };
                 let mut meta = json!({
                     "id": row,
-                    "title": "",
+                    PAGE_NAME: "",
                     "parent": null,
                     "properties": old["cells"].as_object().cloned().unwrap_or_default(),
                     ROW_FIELD: { "database": db },
@@ -685,6 +838,28 @@ impl Workspace {
     }
 }
 
+/// The field of a page's meta.json that holds its name (its title).
+pub const PAGE_NAME: &str = "name";
+
+/// What [`PAGE_NAME`] was called before workspace format 3. Still read, for
+/// pages written by hand or by an agent, and renamed when the workspace is
+/// opened or synced ([`Workspace::rename_title_fields`]).
+pub const OLD_PAGE_NAME: &str = "title";
+
+/// A page's name from its meta.json: `name`, else `title`, else empty.
+pub fn page_name(meta: &Value) -> &str {
+    meta[PAGE_NAME]
+        .as_str()
+        .or_else(|| meta[OLD_PAGE_NAME].as_str())
+        .unwrap_or_default()
+}
+
+/// The id of the title column of a database made with
+/// [`Workspace::create_database`], or given one by
+/// [`Workspace::give_databases_titles`]. Other databases' title columns
+/// have other ids.
+pub const TITLE_COLUMN: &str = "title";
+
 /// The field of a row's meta.json that makes it a row:
 /// `{"database": "<db-id>", "position": <sort key>}`.
 pub const ROW_FIELD: &str = "row";
@@ -702,6 +877,10 @@ const PROPERTY_SCHEMA: &str = "property_schema";
 pub fn page_properties_from(meta: &Value) -> (Vec<Column>, Map<String, Value>) {
     let values = meta["properties"].as_object().cloned().unwrap_or_default();
     let mut columns = crate::database::columns_from_json(&meta[PROPERTY_SCHEMA]);
+    // A page's title is its own; a title property (a hand edit) is text.
+    for column in columns.iter_mut().filter(|c| c.kind == ColumnType::Title) {
+        column.kind = ColumnType::Text;
+    }
     for key in values.keys() {
         if !columns.iter().any(|c| &c.id == key) {
             columns.push(Column {
