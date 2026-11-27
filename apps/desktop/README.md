@@ -167,7 +167,9 @@ The tag sets the version. For now it builds for Apple Silicon Macs only.
   with a self-made certificate (`scripts/make-signing-cert.sh`, secrets
   `APPLE_CERTIFICATE`, `APPLE_CERTIFICATE_PASSWORD` and
   `APPLE_SIGNING_IDENTITY`). It doesn't get past Gatekeeper, so the first
-  install needs "Open Anyway" in System Settings › Privacy & Security, but
+  install from the `.dmg` needs "Open Anyway" in System Settings › Privacy &
+  Security (the install command, `scripts/install.sh`, downloads with curl,
+  which macOS doesn't flag, so it skips that), but
   it gives every release the same signature, so macOS keeps letting the
   updated app read its keychain items (the GitHub sign-in). Keep the
   certificate: a new one asks for keychain access again.

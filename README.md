@@ -12,7 +12,16 @@ databases are plain files in a git repository you own.
 
 ## Install
 
-macOS on Apple Silicon only, for now.
+macOS on Apple Silicon only, for now. Paste this in Terminal:
+
+```sh
+curl -fsSL https://raw.githubusercontent.com/egges/document-collab-tool/main/scripts/install.sh | sh
+```
+
+It downloads the latest release, puts Pagemesh in Applications and opens
+it. Run it again any time to reinstall.
+
+Or install it by hand:
 
 1. Download the `.dmg` from the
    [latest release](https://github.com/egges/document-collab-tool/releases/latest).
