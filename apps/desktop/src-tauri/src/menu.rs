@@ -4,7 +4,9 @@
 //! Cargo binary's when the app runs unbundled with `tauri dev`. The About
 //! panel also shows the app icon, which an unbundled app doesn't have.
 
-use tauri::menu::{AboutMetadata, Menu, PredefinedMenuItem, Submenu};
+use tauri::menu::Menu;
+#[cfg(target_os = "macos")]
+use tauri::menu::{AboutMetadata, PredefinedMenuItem, Submenu};
 use tauri::{AppHandle, Runtime};
 
 pub fn build<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
