@@ -2,73 +2,138 @@
 // friendly. Colours come from app.css (the `.art-*` classes), so they follow
 // light and dark mode.
 import { useId } from "react";
+import { BLADE, HUB, SLOTS, SPARKLES, SPINNER, WORDMARK, WORDMARK_ORIGIN } from "./logoShapes.ts";
 
-/** The Sawmill mark: three linked pages. The same drawing as assets/icon.svg. */
-export function Logo({ size = 32 }: { size?: number }) {
-  const id = useId();
+/** The ring, hub and slots, in `color`. */
+function BladeDetails({ color }: { color: string }) {
   return (
-    <svg className="logo" width={size} height={size} viewBox="0 0 64 64" aria-hidden>
-      <defs>
-        <linearGradient id={id} x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stopColor="#7c6cf6" />
-          <stop offset="1" stopColor="#5b4bd8" />
-        </linearGradient>
-      </defs>
-      <rect width="64" height="64" rx="15" fill={`url(#${id})`} />
-      <g stroke="#ffffff" strokeOpacity="0.55" strokeWidth="3" strokeLinecap="round">
-        <path d="M20 23 L44 27 L30 44 Z" fill="none" strokeLinejoin="round" />
+    <g fill="none" stroke={color} strokeLinecap="round" strokeLinejoin="round">
+      <circle cx={HUB.cx} cy={HUB.cy} r={HUB.ring} strokeWidth="8" />
+      <circle cx={HUB.cx} cy={HUB.cy} r={HUB.hub} fill={color} stroke="none" />
+      {SLOTS.map((d) => (
+        <path key={d} d={d} strokeWidth="11" />
+      ))}
+    </g>
+  );
+}
+
+/**
+ * The mark's shapes, in the 412 × 414 box of brand/logo. Both versions are
+ * drawn and app.css shows the one for the theme: on light, the details and
+ * sparkles are Ink; on dark, the details are cut out of the blade and the
+ * sparkles are Paper.
+ */
+function Mark({ sparkleClass }: { sparkleClass?: string }) {
+  const cut = useId();
+  return (
+    <>
+      <g className="logo-on-light">
+        <path d={BLADE} fill="#fca311" />
+        <BladeDetails color="#14213d" />
+        {SPARKLES.map((d) => (
+          <path key={d} d={d} fill="#14213d" className={sparkleClass} />
+        ))}
       </g>
-      <rect x="11" y="12" width="18" height="22" rx="4.5" fill="#ffffff" />
-      <rect x="35" y="16" width="18" height="22" rx="4.5" fill="#ffffff" />
-      <rect x="21" y="33" width="18" height="22" rx="4.5" fill="#ffd47e" />
-      <g stroke="#7c6cf6" strokeWidth="2.4" strokeLinecap="round">
-        <path d="M15.5 19 H24.5 M15.5 24 H21.5" />
-        <path d="M39.5 23 H48.5 M39.5 28 H45.5" />
+      <g className="logo-on-dark">
+        <mask id={cut} maskUnits="userSpaceOnUse" x="0" y="0" width="412" height="414">
+          <rect width="412" height="414" fill="#fff" />
+          <BladeDetails color="#000" />
+        </mask>
+        <path d={BLADE} fill="#fca311" mask={`url(#${cut})`} />
+        {SPARKLES.map((d) => (
+          <path key={d} d={d} fill="#f7f7f2" className={sparkleClass} />
+        ))}
       </g>
-      <path d="M25.5 40 H34.5 M25.5 45 H31.5" stroke="#b7791f" strokeWidth="2.4" strokeLinecap="round" />
+    </>
+  );
+}
+
+/** The Sawmill mark: a saw blade with two sparkles. The same drawing as brand/logo/sawmill-mark-*.svg. */
+export function Logo({ size = 32 }: { size?: number }) {
+  return (
+    <svg className="logo" width={size} height={size} viewBox="0 0 412 414" aria-hidden>
+      <Mark />
     </svg>
   );
 }
 
-/** "Sawmill" with its mark, for the welcome screen. */
-export function Wordmark() {
+/** The full logo, mark and "sawmill", for the welcome screen. */
+export function Wordmark({ height = 32 }: { height?: number }) {
   return (
-    <div className="wordmark">
-      <Logo size={28} />
-      <span>Sawmill</span>
-    </div>
+    <svg className="wordmark" height={height} viewBox="0 0 1605 414" role="img" aria-label="Sawmill">
+      <Mark />
+      <path
+        className="wordmark-text"
+        transform={`translate(${WORDMARK_ORIGIN.x},${WORDMARK_ORIGIN.y})`}
+        d={WORDMARK}
+      />
+    </svg>
   );
 }
 
-/** A few pages floating together, with sparkles: for empty states. */
+/**
+ * The spinning saw: Sawmill's sign that something is in progress
+ * (brand/README.md). Amber, or the text's colour with `inherit`; app.css
+ * turns it, slowly for people who asked for less motion.
+ */
+export function SawSpinner({ size = 16, inherit = false }: { size?: number; inherit?: boolean }) {
+  const cut = useId();
+  return (
+    <svg
+      className={"saw-spinner" + (inherit ? " saw-spinner-inherit" : "")}
+      width={size}
+      height={size}
+      viewBox="0 0 400 400"
+      aria-hidden
+    >
+      <mask id={cut} maskUnits="userSpaceOnUse" x="0" y="0" width="400" height="400">
+        <rect width="400" height="400" fill="#fff" />
+        <circle cx="200" cy="200" r={SPINNER.hub} fill="#000" />
+        <g fill="none" stroke="#000" strokeWidth={SPINNER.slotWidth} strokeLinecap="round" strokeLinejoin="round">
+          {SPINNER.slots.map((d) => (
+            <path key={d} d={d} />
+          ))}
+        </g>
+      </mask>
+      <path d={SPINNER.blade} fill="currentColor" mask={`url(#${cut})`} />
+    </svg>
+  );
+}
+
+/**
+ * For empty states: what a sawmill does. A rough page goes into the blade
+ * and a finished one, checked off, comes out. The sparkles twinkle.
+ */
 export function PagesArt({ size = 168 }: { size?: number }) {
   return (
     <svg className="art" width={size} height={(size * 120) / 168} viewBox="0 0 168 120" aria-hidden>
-      <ellipse className="art-blob" cx="84" cy="64" rx="70" ry="50" />
-      <path className="art-link" d="M56 46 C 76 30, 98 34, 112 50 M62 86 C 80 96, 104 92, 114 78" />
-      <g transform="rotate(-8 56 60)">
-        <rect className="art-page" x="34" y="32" width="46" height="58" rx="8" />
-        <path className="art-line" d="M43 47 H70 M43 56 H66 M43 65 H70 M43 74 H58" />
+      <ellipse className="art-blob" cx="84" cy="64" rx="74" ry="48" />
+      <path className="art-link" d="M40 96 H128" />
+      <g transform="rotate(-9 32 70)">
+        <rect className="art-page art-page-rough" x="12" y="46" width="38" height="48" rx="6" />
+        <path className="art-line" d="M20 59 H42 M20 67 H38 M20 75 H42" />
       </g>
-      <g transform="rotate(7 114 62)">
-        <rect className="art-page art-page-warm" x="92" y="34" width="46" height="58" rx="8" />
-        <path className="art-line art-line-warm" d="M101 49 H128 M101 58 H122 M101 67 H128" />
-        <circle className="art-check" cx="128" cy="82" r="7" />
-        <path className="art-check-mark" d="M124.8 82 l2.2 2.2 l4 -4.4" />
+      <svg x="50" y="24" width="68" height="68" viewBox="0 0 412 414">
+        <Mark sparkleClass="art-spark" />
+      </svg>
+      <g transform="rotate(6 136 70)">
+        <rect className="art-page art-page-done" x="116" y="46" width="38" height="48" rx="6" />
+        <path className="art-line" d="M124 59 H146 M124 67 H142" />
+        <circle className="art-check" cx="144" cy="84" r="6.5" />
+        <path className="art-check-mark" d="M141 84 l2 2 l3.8 -4.2" />
       </g>
-      <path className="art-spark" d="M88 12 l2.2 5.8 l5.8 2.2 l-5.8 2.2 l-2.2 5.8 l-2.2 -5.8 l-5.8 -2.2 l5.8 -2.2 Z" />
-      <path className="art-spark art-spark-small" d="M150 34 l1.4 3.6 l3.6 1.4 l-3.6 1.4 l-1.4 3.6 l-1.4 -3.6 l-3.6 -1.4 l3.6 -1.4 Z" />
-      <circle className="art-dot" cx="22" cy="40" r="3" />
-      <circle className="art-dot" cx="148" cy="100" r="2.5" />
     </svg>
   );
 }
 
-/** A hue from 0 to 359 for `name`, the same on every device. */
-export function hueOf(name: string): number {
+/** How many soft colours workspace avatars choose from (app.css, `.workspace-avatar.tone-*`). */
+const AVATAR_TONES = 5;
+
+/** One of the avatar colours for `name`, the same on every device. */
+export function toneOf(name: string): number {
   let hash = 0;
   for (const ch of name.trim().toLowerCase()) hash = (hash * 31 + ch.codePointAt(0)!) >>> 0;
-  return hash % 360;
+  return hash % AVATAR_TONES;
 }
 
 /** The first letter of the workspace's name on a soft colour of its own. */
@@ -76,9 +141,9 @@ export function WorkspaceAvatar({ name, size = 20 }: { name: string; size?: numb
   const letter = [...name.trim()][0]?.toUpperCase() ?? "?";
   return (
     <span
-      className="workspace-avatar"
+      className={`workspace-avatar tone-${toneOf(name)}`}
       aria-hidden
-      style={{ width: size, height: size, fontSize: size * 0.55, "--hue": hueOf(name) } as React.CSSProperties}
+      style={{ width: size, height: size, fontSize: size * 0.55 }}
     >
       {letter}
     </span>

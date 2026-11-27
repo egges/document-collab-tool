@@ -9,6 +9,7 @@ mod devlog;
 mod git;
 mod github;
 mod locations;
+mod menu;
 mod page_properties;
 mod person;
 mod search;
@@ -32,6 +33,7 @@ pub fn run() {
         builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     }
     builder
+        .menu(menu::build)
         .manage(commands::AppState::default())
         .manage(updater::UpdateState::default())
         .setup(move |app| {

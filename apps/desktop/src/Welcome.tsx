@@ -16,7 +16,7 @@ import {
   errorText,
 } from "./api.ts";
 import { GitHubSignIn, useGitHubAccount } from "./GitHubSignIn.tsx";
-import { Wordmark } from "./Graphics.tsx";
+import { SawSpinner, Wordmark } from "./Graphics.tsx";
 import { pickFolder } from "./menu.ts";
 import { folderOfRemote, isFolderRemote } from "./remotes.ts";
 
@@ -186,7 +186,11 @@ export function Welcome({
           )}
         </div>
         {body}
-        {busy && <p className="muted">Working…</p>}
+        {busy && (
+          <p className="muted">
+            <SawSpinner /> Working…
+          </p>
+        )}
         {error && (
           <p className="error" role="alert">
             {error}

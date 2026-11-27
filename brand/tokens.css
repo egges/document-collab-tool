@@ -1,9 +1,9 @@
 /*
  * Sawmill brand colours and fonts as CSS variables.
  *
- * This file is the reference copy of the palette in README.md. Nothing in
- * the app imports it yet; README.md says how the colours map onto the
- * variables the app uses today.
+ * This file is the reference copy of the palette in README.md. The app does
+ * not import it: apps/desktop/src/app.css sets its own variables from these
+ * values, and README.md ("Colours in the app") says which is which.
  */
 
 :root {
