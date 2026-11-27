@@ -5,6 +5,29 @@
 A free, open-source workspace for humans and AI agents. Your pages and
 databases are plain files in a git repository you own.
 
+> **Work in progress.** Pagemesh is early and changes quickly. It is usable,
+> but expect rough edges, missing features and breaking changes, and keep
+> your workspaces synced to a git remote so nothing lives only on one
+> machine.
+
+## Install
+
+macOS on Apple Silicon only, for now.
+
+1. Download the `.dmg` from the
+   [latest release](https://github.com/egges/document-collab-tool/releases/latest).
+2. Open it and drag **Pagemesh** to Applications.
+3. Open Pagemesh. The first time, macOS blocks it, because the app isn't
+   notarized by Apple yet. Go to **System Settings › Privacy & Security**,
+   scroll down to the message about Pagemesh and click **Open Anyway**.
+   This is needed only once.
+
+After that, Pagemesh updates itself: it downloads new versions in the
+background, and a "Restart to update" button appears at the bottom of the
+sidebar when one is ready.
+
+If something goes wrong, the log is in Settings › About › Log file.
+
 ## Status
 
 The first building block is in place: **`docsync`**, the sync engine
