@@ -1,5 +1,5 @@
 [package]
-name = "desktop"
+name = "sawmill"
 version = "0.1.0"
 edition = "2024"
 # Tauri 2 needs 1.90; docsync itself still supports 1.89.

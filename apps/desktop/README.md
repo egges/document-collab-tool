@@ -128,9 +128,9 @@ in step with them.
 ## Development and release builds
 
 They are two apps that never share data. `npm run tauri dev` (and a plain
-`tauri build`) makes **Sawmill Dev**, `dev.sawmill.app.dev`, with an orange
-icon (`src-tauri/icons-dev`, drawn from `assets/icon-dev.svg`). Release
-builds add `src-tauri/tauri.release.conf.json`, which makes **Sawmill**,
+`tauri build`) makes **Sawmill Dev**, `dev.sawmill.app.dev`, with a light
+icon: the saw on Paper instead of Ink (`src-tauri/icons-dev`, drawn from
+`assets/icon-dev.svg`). Release builds add `src-tauri/tauri.release.conf.json`, which makes **Sawmill**,
 `dev.sawmill.app`. The identifier sets the app's settings and data folders,
 its log folder and its keychain service, so a development build never opens
 or changes the workspaces of the installed app. Both can sync the same

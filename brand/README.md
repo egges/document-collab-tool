@@ -3,9 +3,8 @@
 Sawmill's brand. This folder holds its logo, colours, fonts and the spinning saw that shows
 work in progress.
 
-**Status: name applied, design not yet.** The app, its identifier and the
-documentation are called Sawmill, but nothing in the app uses these files
-yet. [Using it in the app](#using-it-in-the-app) lists what is left. The name was checked against US trademarks
+**Status: applied.** The app, its icons, colours and logo follow this guide;
+[In the app](#in-the-app) says where. The name was checked against US trademarks
 and existing products; the EU, Benelux and UK registers still need a check by
 hand at [TMview](https://www.tmdn.org/tmview/).
 
@@ -227,24 +226,27 @@ Open `spinner/demo.html` in a browser to see it move.
 The three slots are what make the turning visible. A plain toothed circle
 looks almost still when it rotates, so do not simplify them away.
 
-## Using it in the app
+## In the app
 
-The name is done: the app, its identifier (`dev.sawmill.app`) and the
-documentation say Sawmill. The rest is still to do:
+| What | Where |
+|---|---|
+| App icon | `assets/icon.svg`, a copy of `logo/sawmill-app-icon.svg`, rendered to `apps/desktop/src-tauri/icons` |
+| Development build's icon | `assets/icon-dev.svg`: the same icon on Paper instead of Ink, rendered to `src-tauri/icons-dev`, so the two apps are easy to tell apart in the Dock |
+| Favicon | `apps/desktop/public/favicon.svg`: the light mark, with Paper sparkles when the system is dark |
+| Empty-state drawing | `PagesArt` in `Graphics.tsx` |
+| Mark and logo | `Logo` and `Wordmark` in `apps/desktop/src/Graphics.tsx`, drawn from the shapes in `src/logoShapes.ts`. Both draw the light and the dark version and `app.css` shows the one for the theme |
+| Spinning saw | `SawSpinner` in `Graphics.tsx`: the small blade, turned by `app.css` |
+| Colours | The variables at the top of `apps/desktop/src/app.css` |
+| Fonts | Inter, which the app already ships. The wordmark is outlined, so Fraunces is not shipped |
 
-- **App icon.** `assets/icon.svg` is still the old three-linked-pages
-  icon, and the top-level README shows it. `logo/sawmill-app-icon.svg`
-  would replace it. The
-  development build has its own orange icon, drawn from
-  `assets/icon-dev.svg`, and needs a variant of its own.
-- **Logo in the app.** `Logo` in `apps/desktop/src/Graphics.tsx` draws the
-  old three-linked-pages logo and would draw the mark instead.
-- **Colours.** `apps/desktop/src/app.css` sets the app's colours as
-  variables. The table below is a starting point.
-- **Spinner.** The two blades become a component that uses the rules in
-  `spinner/spinner.css`.
-- **Fonts.** Nothing to do: the app is already in Inter, and the wordmark is
-  an image.
+To render the icons again after changing an SVG, from `apps/desktop`:
+
+```sh
+npx tauri icon ../../assets/icon.svg -o /tmp/icons      # or icon-dev.svg
+cp /tmp/icons/{32x32,128x128,128x128@2x,icon}.png /tmp/icons/icon.{icns,ico} src-tauri/icons/   # or icons-dev/
+```
+
+### Colours in the app
 
 | App variable | Light | Dark |
 |---|---|---|
@@ -258,15 +260,20 @@ documentation say Sawmill. The rest is still to do:
 | `--accent` | Ink `#14213D` | Amber `#FCA311` |
 | `--accent-text` | White `#FFFFFF` | Ink `#14213D` |
 | `--accent-soft` | Amber 100 `#FFF2D9` | `#2A3350` |
+| `--link` | Info `#255F9C` | Amber `#FCA311` |
+| `--brand` | Amber `#FCA311` | Amber `#FCA311` |
 | `--ok`, `--green` | Success `#1B6B43` | `#5FD39A` |
 | `--danger`, `--error` | Danger `#B42F25` | `#FF8A7A` |
 | `--blue` | Info `#255F9C` | `#7FB4F0` |
 | `--warm`, `--warn` | Amber 700 `#9A5600` | Amber `#FCA311` |
 
-Two things need a decision before the colours go in:
-
-- **Links.** Where the app uses `--accent` for links, Ink would look the
-  same as the text around it. Those places need Info or Amber 700.
-- **The accent setting.** The app lets a person choose an accent colour, and
-  violet is the default. Either the brand colours become the default and the
-  other choices stay, or the setting goes.
+- **Links** have their own variable, `--link`, because Ink links would look
+  like the text around them. Pages' links follow it too.
+- **No accent setting.** The app used to let a person pick an accent colour
+  (violet by default). It is gone: the app is always Ink and Amber.
+- **Everything else follows the palette too:** conflicts use the warning
+  colours (Amber 700 on Amber 100), database option colours, workspace
+  avatars, the developer log and code highlighting in pages all draw from
+  the status colours and neutrals above, so no purple or off-brand hue is
+  left. The empty-state drawing (`PagesArt`) shows the idea of the brand: a
+  rough page goes into the blade and a finished page comes out.

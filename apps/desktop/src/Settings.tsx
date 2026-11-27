@@ -3,16 +3,16 @@
 // account, and what this build is.
 import { type ReactNode, useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import { Check, CircleUser, FolderOpen, Info, Keyboard, Minus, Plus, SlidersHorizontal, X } from "lucide-react";
+import { CircleUser, FolderOpen, Info, Keyboard, Minus, Plus, SlidersHorizontal, X } from "lucide-react";
 import { type DevInfo, type WorkspaceInfo, api, devApi, errorText } from "./api.ts";
 import { DeleteWorkspace } from "./DeleteWorkspace.tsx";
 import { showInFolderLabel } from "./fileManager.ts";
 import { FontChoices } from "./PageStyleMenu.tsx";
 import { GitHubSignIn, useGitHubAccount } from "./GitHubSignIn.tsx";
-import { Logo, WorkspaceAvatar } from "./Graphics.tsx";
+import { WorkspaceAvatar, Wordmark } from "./Graphics.tsx";
 import { pickFolder } from "./menu.ts";
 import { pageFont } from "./pageFont.ts";
-import { ACCENTS, accent, devLog, spellcheck } from "./preferences.ts";
+import { devLog, spellcheck } from "./preferences.ts";
 import { keysLabel, SHORTCUTS } from "./shortcuts.ts";
 import { Switch } from "./Switch.tsx";
 import { THEMES, type Theme, theme } from "./theme.ts";
@@ -154,7 +154,6 @@ function DeviceName({ workspace, onWorkspaceChange }: Pick<SettingsProps, "works
 
 function Preferences(props: Pick<SettingsProps, "workspace" | "onWorkspaceChange">) {
   const chosenTheme = theme.use();
-  const chosenAccent = accent.use();
   const font = pageFont.use();
   const level = useZoom();
   const spelling = spellcheck.use();
@@ -174,23 +173,6 @@ function Preferences(props: Pick<SettingsProps, "workspace" | "onWorkspaceChange
             >
               <ThemePreview theme={t.id} />
               <span>{t.label}</span>
-            </button>
-          ))}
-        </div>
-      </Row>
-      <Row label="Accent colour" hint="For buttons, selections and links.">
-        <div className="accent-choices" role="radiogroup" aria-label="Accent colour">
-          {ACCENTS.map((a) => (
-            <button
-              key={a.id}
-              role="radio"
-              aria-checked={a.id === chosenAccent}
-              aria-label={a.label}
-              title={a.label}
-              className={`accent-choice accent-${a.id}` + (a.id === chosenAccent ? " selected" : "")}
-              onClick={() => accent.set(a.id)}
-            >
-              {a.id === chosenAccent && <Check size={13} strokeWidth={3} aria-hidden />}
             </button>
           ))}
         </div>
@@ -481,13 +463,12 @@ function About({ onShowShortcuts }: { onShowShortcuts: () => void }) {
   return (
     <>
       <div className="about-head">
-        <Logo size={56} />
-        <div>
-          <h2>Sawmill</h2>
-          <div className="muted">
-            Version {info?.version ?? "…"}
-            {info?.debugBuild ? " (debug build)" : ""}
-          </div>
+        <h2>
+          <Wordmark height={56} />
+        </h2>
+        <div className="muted">
+          Version {info?.version ?? "…"}
+          {info?.debugBuild ? " (debug build)" : ""}
         </div>
       </div>
       <p className="settings-intro">

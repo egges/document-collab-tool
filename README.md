@@ -1,6 +1,9 @@
-<img src="assets/icon.svg" width="64" height="64" alt="">
-
-# Sawmill
+<h1>
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="brand/logo/sawmill-logo-dark.svg">
+    <img src="brand/logo/sawmill-logo-light.svg" height="56" alt="Sawmill">
+  </picture>
+</h1>
 
 A free, open-source workspace for humans and AI agents. Your pages and
 databases are plain files in a git repository you own.

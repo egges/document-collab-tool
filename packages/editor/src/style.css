@@ -3,34 +3,35 @@
  * .page-editor; override the custom properties to theme it.
  */
 .page-editor {
-  --page-text: #1f2328;
-  --page-muted: #59636e;
-  --page-border: #d1d9e0;
-  --page-code-bg: #f6f8fa;
-  --page-accent: #0969da;
+  --page-text: #14213d;
+  --page-muted: #5f6b85;
+  --page-border: #e4e4dd;
+  --page-code-bg: #f7f7f2;
+  --page-accent: #14213d;
+  --page-link: #255f9c;
   --page-menu-bg: #ffffff;
-  --page-menu-hover: #eef1f4;
-  --page-menu-shadow: 0 1px 3px rgb(0 0 0 / 0.12), 0 6px 20px rgb(0 0 0 / 0.12);
+  --page-menu-hover: #eeeee7;
+  --page-menu-shadow: 0 1px 3px rgb(20 33 61 / 0.12), 0 6px 20px rgb(20 33 61 / 0.12);
   /* Conflict blocks: where two devices edited the same text. */
-  --page-conflict: #8250df;
-  --page-conflict-bg: #f6f0ff;
+  --page-conflict: #9a5600;
+  --page-conflict-bg: #fff2d9;
   --page-font: system-ui, -apple-system, "Segoe UI", sans-serif;
   --page-font-code: ui-monospace, SFMono-Regular, Menlo, monospace;
   /* For the editor's menus and labels; the text itself uses --page-font. */
   --page-font-ui: system-ui, -apple-system, "Segoe UI", sans-serif;
 
-  /* Syntax highlighting (GitHub's palette). */
-  --page-hl-keyword: #cf222e;
-  --page-hl-string: #0a3069;
-  --page-hl-comment: #6e7781;
-  --page-hl-number: #0550ae;
-  --page-hl-function: #8250df;
-  --page-hl-type: #953800;
-  --page-hl-tag: #116329;
-  --page-hl-added: #116329;
-  --page-hl-added-bg: #dafbe1;
-  --page-hl-deleted: #82071e;
-  --page-hl-deleted-bg: #ffebe9;
+  /* Syntax highlighting, in Sawmill's palette (brand/README.md). */
+  --page-hl-keyword: #b42f25;
+  --page-hl-string: #1b6b43;
+  --page-hl-comment: #5f6b85;
+  --page-hl-number: #255f9c;
+  --page-hl-function: #9a5600;
+  --page-hl-type: #3b4865;
+  --page-hl-tag: #1b6b43;
+  --page-hl-added: #1b6b43;
+  --page-hl-added-bg: #e0f2e7;
+  --page-hl-deleted: #b42f25;
+  --page-hl-deleted-bg: #fbe6e3;
 
   position: relative;
   color: var(--page-text);
@@ -41,51 +42,53 @@
  * data-theme on <html>; then only with data-theme="dark".
  */
 :root[data-theme="dark"] .page-editor {
-  --page-text: #e6edf3;
-  --page-muted: #9198a1;
-  --page-border: #3d444d;
-  --page-code-bg: #151b23;
-  --page-accent: #4493f8;
-  --page-menu-bg: #1c2129;
-  --page-menu-hover: #2a313c;
+  --page-text: #f1f1ea;
+  --page-muted: #9aa3b8;
+  --page-border: #2e3b5a;
+  --page-code-bg: #14213d;
+  --page-accent: #fca311;
+  --page-link: #fca311;
+  --page-menu-bg: #14213d;
+  --page-menu-hover: #1d2b4a;
   --page-menu-shadow: 0 1px 3px rgb(0 0 0 / 0.5), 0 6px 20px rgb(0 0 0 / 0.4);
-  --page-conflict: #ab7df8;
-  --page-conflict-bg: #2a2140;
-  --page-hl-keyword: #ff7b72;
-  --page-hl-string: #a5d6ff;
-  --page-hl-comment: #8b949e;
-  --page-hl-number: #79c0ff;
-  --page-hl-function: #d2a8ff;
-  --page-hl-type: #ffa657;
-  --page-hl-tag: #7ee787;
-  --page-hl-added: #aff5b4;
-  --page-hl-added-bg: #033a16;
-  --page-hl-deleted: #ffdcd7;
-  --page-hl-deleted-bg: #67060c;
+  --page-conflict: #fca311;
+  --page-conflict-bg: #3a2b14;
+  --page-hl-keyword: #ff8a7a;
+  --page-hl-string: #5fd39a;
+  --page-hl-comment: #9aa3b8;
+  --page-hl-number: #7fb4f0;
+  --page-hl-function: #fca311;
+  --page-hl-type: #c3c8d4;
+  --page-hl-tag: #5fd39a;
+  --page-hl-added: #5fd39a;
+  --page-hl-added-bg: #16352b;
+  --page-hl-deleted: #ff8a7a;
+  --page-hl-deleted-bg: #3a1e1f;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme]) .page-editor {
-    --page-text: #e6edf3;
-    --page-muted: #9198a1;
-    --page-border: #3d444d;
-    --page-code-bg: #151b23;
-    --page-accent: #4493f8;
-    --page-menu-bg: #1c2129;
-    --page-menu-hover: #2a313c;
+    --page-text: #f1f1ea;
+    --page-muted: #9aa3b8;
+    --page-border: #2e3b5a;
+    --page-code-bg: #14213d;
+    --page-accent: #fca311;
+    --page-link: #fca311;
+    --page-menu-bg: #14213d;
+    --page-menu-hover: #1d2b4a;
     --page-menu-shadow: 0 1px 3px rgb(0 0 0 / 0.5), 0 6px 20px rgb(0 0 0 / 0.4);
-    --page-conflict: #ab7df8;
-    --page-conflict-bg: #2a2140;
-    --page-hl-keyword: #ff7b72;
-    --page-hl-string: #a5d6ff;
-    --page-hl-comment: #8b949e;
-    --page-hl-number: #79c0ff;
-    --page-hl-function: #d2a8ff;
-    --page-hl-type: #ffa657;
-    --page-hl-tag: #7ee787;
-    --page-hl-added: #aff5b4;
-    --page-hl-added-bg: #033a16;
-    --page-hl-deleted: #ffdcd7;
-    --page-hl-deleted-bg: #67060c;
+    --page-conflict: #fca311;
+    --page-conflict-bg: #3a2b14;
+    --page-hl-keyword: #ff8a7a;
+    --page-hl-string: #5fd39a;
+    --page-hl-comment: #9aa3b8;
+    --page-hl-number: #7fb4f0;
+    --page-hl-function: #fca311;
+    --page-hl-type: #c3c8d4;
+    --page-hl-tag: #5fd39a;
+    --page-hl-added: #5fd39a;
+    --page-hl-added-bg: #16352b;
+    --page-hl-deleted: #ff8a7a;
+    --page-hl-deleted-bg: #3a1e1f;
   }
 }
 
@@ -121,7 +124,7 @@
 .page-editor .ProseMirror h1 { font-size: 1.9em; }
 .page-editor .ProseMirror h2 { font-size: 1.45em; }
 .page-editor .ProseMirror h3 { font-size: 1.2em; }
-.page-editor .ProseMirror a { color: var(--page-accent); cursor: pointer; }
+.page-editor .ProseMirror a { color: var(--page-link); cursor: pointer; }
 .page-editor .ProseMirror code {
   font: 0.9em var(--page-font-code);
   background: var(--page-code-bg);

@@ -1,31 +1,40 @@
 :root {
-  --bg: #ffffff;
-  --sidebar-bg: #f7f6f3;
-  --text: #26262b;
-  --muted: #6f6e77;
-  --border: #e6e4df;
-  --hover: #eeece7;
-  --selected: #ebe9fb;
-  --accent: #5b4bd8;
-  --accent-hover: #4c3dc4;
-  --accent-soft: #efedfd;
+  /*
+   * Sawmill's palette (brand/README.md): Ink text and buttons on White
+   * and Paper, with Amber for the selected item and agent activity.
+   */
+  --bg: #ffffff; /* White */
+  --sidebar-bg: #f7f7f2; /* Paper */
+  --text: #14213d; /* Ink */
+  --muted: #5f6b85; /* Slate 500 */
+  --border: #e4e4dd; /* Mist 200 */
+  --hover: #eeeee7; /* Mist 100 */
+  --selected: #fff2d9; /* Amber 100 */
+  --accent: #14213d; /* Ink */
+  --accent-hover: #25324f; /* Ink 700 */
+  --accent-soft: #fff2d9; /* Amber 100 */
   --accent-text: #ffffff;
+  /* Links: Ink would look like the text around them. */
+  --link: #255f9c; /* Info */
+  /* Amber itself, for highlights only: too faint to be text on light. */
+  --brand: #fca311;
   /* Friendly extra colours, for icon badges and drawings. */
-  --warm: #c46a06;
-  --warm-soft: #fdf0d9;
-  --green: #15803d;
-  --green-soft: #e1f5e7;
-  --blue: #2563eb;
-  --blue-soft: #e4ecfd;
-  --ok: #1a7f37;
-  --warn: #9a6700;
-  --danger: #cf222e;
-  --warn-bg: #fff8c5;
-  --error: #cf222e;
-  --error-bg: #ffebe9;
-  --conflict: #8250df;
-  --conflict-bg: #f6f0ff;
-  --shadow-soft: 0 1px 2px rgb(30 25 60 / 0.06), 0 4px 14px rgb(30 25 60 / 0.06);
+  --warm: #9a5600; /* Amber 700 */
+  --warm-soft: #fff2d9;
+  --green: #1b6b43;
+  --green-soft: #e0f2e7;
+  --blue: #255f9c;
+  --blue-soft: #e3edf8;
+  --ok: #1b6b43;
+  --warn: #9a5600;
+  --danger: #b42f25;
+  --warn-bg: #fff2d9;
+  --error: #b42f25;
+  --error-bg: #fbe6e3;
+  /* Conflicts are a warning: Amber 700 on Amber 100. */
+  --conflict: #9a5600;
+  --conflict-bg: #fff2d9;
+  --shadow-soft: 0 1px 2px rgb(20 33 61 / 0.06), 0 4px 14px rgb(20 33 61 / 0.06);
 
   /*
    * The fonts ship with the app (main.tsx). The app itself is in Inter;
@@ -55,89 +64,34 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --bg: #1a1a1d;
-  --sidebar-bg: #212125;
-  --text: #ececf1;
-  --muted: #9a99a3;
-  --border: #34343a;
-  --hover: #2c2c31;
-  --selected: #312d52;
-  --accent: #9d92ff;
-  --accent-hover: #b3aaff;
-  --accent-soft: #2b2748;
-  --accent-text: #15131f;
-  --warm: #f0a849;
+  --bg: #0c1426; /* Ink 900 */
+  --sidebar-bg: #14213d; /* Ink */
+  --text: #f1f1ea;
+  --muted: #9aa3b8;
+  --border: #2e3b5a;
+  --hover: #1d2b4a;
+  --selected: #2a3350;
+  --accent: #fca311; /* Amber */
+  --accent-hover: #fdb43e;
+  --accent-soft: #2a3350;
+  --accent-text: #14213d; /* Ink: text on Amber is never white */
+  --link: #fca311;
+  --brand: #fca311;
+  --warm: #fca311;
   --warm-soft: #3a2b14;
-  --green: #4ade80;
-  --green-soft: #173021;
-  --blue: #7aa7ff;
-  --blue-soft: #1c2740;
-  --ok: #3fb950;
-  --warn: #d29922;
-  --danger: #da3633;
-  --warn-bg: #3b2e0a;
-  --error: #f85149;
-  --error-bg: #3c1618;
-  --conflict: #ab7df8;
-  --conflict-bg: #2a2140;
+  --green: #5fd39a;
+  --green-soft: #16352b;
+  --blue: #7fb4f0;
+  --blue-soft: #17294a;
+  --ok: #5fd39a;
+  --warn: #fca311;
+  --danger: #ff8a7a;
+  --warn-bg: #3a2b14;
+  --error: #ff8a7a;
+  --error-bg: #3a1e1f;
+  --conflict: #fca311;
+  --conflict-bg: #3a2b14;
   --shadow-soft: 0 1px 2px rgb(0 0 0 / 0.3), 0 4px 14px rgb(0 0 0 / 0.25);
-}
-
-/* Accent colours (Settings › Preferences); violet is the default above. */
-:root[data-accent="blue"] {
-  --accent: #2563eb;
-  --accent-hover: #1d4fd8;
-  --accent-soft: #e6eefe;
-  --selected: #e2eafc;
-}
-
-:root[data-theme="dark"][data-accent="blue"] {
-  --accent: #6ea8ff;
-  --accent-hover: #8db9ff;
-  --accent-soft: #1c2a45;
-  --selected: #1f2f4f;
-}
-
-:root[data-accent="green"] {
-  --accent: #15803d;
-  --accent-hover: #116a32;
-  --accent-soft: #e3f5e8;
-  --selected: #dcf1e3;
-}
-
-:root[data-theme="dark"][data-accent="green"] {
-  --accent: #4ade80;
-  --accent-hover: #6ee7a0;
-  --accent-soft: #16301f;
-  --selected: #1b3a26;
-}
-
-:root[data-accent="orange"] {
-  --accent: #c2570c;
-  --accent-hover: #a8490a;
-  --accent-soft: #fdeedf;
-  --selected: #fbe6d3;
-}
-
-:root[data-theme="dark"][data-accent="orange"] {
-  --accent: #fb923c;
-  --accent-hover: #fdab66;
-  --accent-soft: #3a2412;
-  --selected: #432a16;
-}
-
-:root[data-accent="pink"] {
-  --accent: #c0267a;
-  --accent-hover: #a51f68;
-  --accent-soft: #fbe6f1;
-  --selected: #f8ddeb;
-}
-
-:root[data-theme="dark"][data-accent="pink"] {
-  --accent: #f472b6;
-  --accent-hover: #f792c7;
-  --accent-soft: #3a1a2c;
-  --selected: #432035;
 }
 
 /*
@@ -150,6 +104,7 @@
   --page-font-ui: var(--font);
   --page-font-code: var(--font-code);
   --page-accent: var(--accent);
+  --page-link: var(--link);
   --page-muted: var(--muted);
   --page-border: var(--border);
   --page-code-bg: var(--sidebar-bg);
@@ -656,19 +611,26 @@ label.kept-in-row {
 }
 
 .wordmark {
-  display: flex;
-  align-items: center;
-  gap: 10px;
+  display: block;
   margin-bottom: 28px;
-  font-size: 17px;
-  font-weight: 650;
-  letter-spacing: -0.01em;
 }
 
 .logo {
   flex: none;
-  border-radius: 24%;
-  box-shadow: 0 2px 8px rgb(91 75 216 / 0.3);
+}
+
+/* The logo files' two versions (Graphics.tsx): one for each theme. */
+:root:not([data-theme="dark"]) .logo-on-dark,
+:root[data-theme="dark"] .logo-on-light {
+  display: none;
+}
+
+.wordmark-text {
+  fill: #14213d; /* Ink */
+}
+
+:root[data-theme="dark"] .wordmark-text {
+  fill: #f7f7f2; /* Paper */
 }
 
 .card {
@@ -696,7 +658,7 @@ label.kept-in-row {
   font-size: 11px;
   font-weight: 600;
   vertical-align: 2px;
-  color: var(--accent, #2f6feb);
+  color: var(--accent);
   border: 1px solid currentColor;
 }
 
@@ -963,15 +925,20 @@ button.workspace-name {
   border-radius: 6px;
   font-weight: 700;
   line-height: 1;
-  color: hsl(var(--hue) 55% 32%);
-  background: hsl(var(--hue) 75% 90%);
 }
 
-:root[data-theme="dark"] .workspace-avatar {
-  color: hsl(var(--hue) 80% 82%);
-  background: hsl(var(--hue) 35% 26%);
-}
+/* Each workspace gets one of Sawmill's soft colours (toneOf in Graphics.tsx). */
+.workspace-avatar.tone-0 { color: #9a5600; background: #fff2d9; }
+.workspace-avatar.tone-1 { color: #14213d; background: #e3e6ee; }
+.workspace-avatar.tone-2 { color: #255f9c; background: #e3edf8; }
+.workspace-avatar.tone-3 { color: #1b6b43; background: #e0f2e7; }
+.workspace-avatar.tone-4 { color: #b42f25; background: #fbe6e3; }
 
+:root[data-theme="dark"] .workspace-avatar.tone-0 { color: #fca311; background: #3a2b14; }
+:root[data-theme="dark"] .workspace-avatar.tone-1 { color: #f1f1ea; background: #2e3b5a; }
+:root[data-theme="dark"] .workspace-avatar.tone-2 { color: #7fb4f0; background: #17294a; }
+:root[data-theme="dark"] .workspace-avatar.tone-3 { color: #5fd39a; background: #16352b; }
+:root[data-theme="dark"] .workspace-avatar.tone-4 { color: #ff8a7a; background: #3a1e1f; }
 
 .menu-item .workspace-avatar {
   margin-left: -2px;
@@ -1494,6 +1461,32 @@ button.workspace-name[aria-expanded="true"] {
   margin: 0 0 14px;
 }
 
+/* ---- the spinning saw (Graphics.tsx, brand/spinner) ----------------------- */
+
+.saw-spinner {
+  display: inline-block;
+  flex: none;
+  vertical-align: -0.15em;
+  color: var(--brand);
+  animation: saw-spin 1.4s linear infinite;
+}
+
+.saw-spinner-inherit {
+  color: inherit;
+}
+
+@keyframes saw-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .saw-spinner {
+    animation-duration: 8s;
+  }
+}
+
 /* ---- drawings (Graphics.tsx) ---------------------------------------------- */
 
 .art-blob {
@@ -1502,30 +1495,28 @@ button.workspace-name[aria-expanded="true"] {
 
 .art-page {
   fill: var(--bg);
-  stroke: var(--accent);
+  stroke: var(--text);
   stroke-width: 2;
 }
 
-.art-page-warm {
-  fill: var(--warm-soft);
-  stroke: var(--warm);
+/* The raw material: a page still in draft. */
+.art-page-rough {
+  stroke: var(--muted);
+  stroke-dasharray: 4 4;
 }
 
 .art-line {
-  stroke: var(--accent);
-  stroke-opacity: 0.45;
+  stroke: var(--muted);
+  stroke-opacity: 0.6;
   stroke-width: 3;
   stroke-linecap: round;
 }
 
-.art-line-warm {
-  stroke: var(--warm);
-}
-
+/* The bench the work moves along. */
 .art-link {
   fill: none;
-  stroke: var(--accent);
-  stroke-opacity: 0.5;
+  stroke: var(--muted);
+  stroke-opacity: 0.4;
   stroke-width: 2;
   stroke-dasharray: 2 5;
   stroke-linecap: round;
@@ -1543,19 +1534,6 @@ button.workspace-name[aria-expanded="true"] {
   stroke-linejoin: round;
 }
 
-.art-spark {
-  fill: var(--warm);
-}
-
-.art-spark-small {
-  fill: var(--accent);
-}
-
-.art-dot {
-  fill: var(--accent);
-  opacity: 0.35;
-}
-
 @media (prefers-reduced-motion: no-preference) {
   .art {
     animation: art-float 6s ease-in-out infinite;
@@ -1565,7 +1543,7 @@ button.workspace-name[aria-expanded="true"] {
     transform-origin: center;
     animation: art-twinkle 3s ease-in-out infinite;
   }
-  .art-spark-small {
+  .art-spark + .art-spark {
     animation-delay: 1.4s;
   }
 }
@@ -1749,17 +1727,17 @@ button.workspace-name[aria-expanded="true"] {
 /* ---- developer panel (debug builds only) ----------------------------------- */
 
 .dev-panel {
-  --src-app: #6e40c9;
-  --src-sync: #0969da;
-  --src-git: #57606a;
-  --src-save: #1a7f37;
-  --src-watch: #bc4c00;
-  --src-ui: #bf3989;
-  --hl-time: #8c959f;
-  --hl-good: #1a7f37;
-  --hl-merge: #8250df;
-  --row-warn: rgb(212 167 44 / 0.12);
-  --row-error: rgb(207 34 46 / 0.1);
+  --src-app: #9a5600;
+  --src-sync: #255f9c;
+  --src-git: #5f6b85;
+  --src-save: #1b6b43;
+  --src-watch: #d98200;
+  --src-ui: #b42f25;
+  --hl-time: #8f98ad;
+  --hl-good: #1b6b43;
+  --hl-merge: #9a5600;
+  --row-warn: rgb(252 163 17 / 0.12);
+  --row-error: rgb(180 47 37 / 0.1);
   position: fixed;
   left: 0;
   right: 0;
@@ -1774,17 +1752,17 @@ button.workspace-name[aria-expanded="true"] {
 }
 
 :root[data-theme="dark"] .dev-panel {
-  --src-app: #a371f7;
-  --src-sync: #58a6ff;
-  --src-git: #8b949e;
-  --src-save: #3fb950;
-  --src-watch: #f0883e;
-  --src-ui: #f778ba;
-  --hl-time: #6e7681;
-  --hl-good: #3fb950;
-  --hl-merge: #bc8cff;
-  --row-warn: rgb(210 153 34 / 0.12);
-  --row-error: rgb(248 81 73 / 0.12);
+  --src-app: #fca311;
+  --src-sync: #7fb4f0;
+  --src-git: #9aa3b8;
+  --src-save: #5fd39a;
+  --src-watch: #fdb43e;
+  --src-ui: #ff8a7a;
+  --hl-time: #5f6b85;
+  --hl-good: #5fd39a;
+  --hl-merge: #fca311;
+  --row-warn: rgb(252 163 17 / 0.12);
+  --row-error: rgb(255 138 122 / 0.12);
 }
 
 
@@ -1992,39 +1970,43 @@ button.workspace-name[aria-expanded="true"] {
 
 /* ---- developer panel: databases ------------------------------------------- */
 
+:root {
+  /* Database option colours (pills, board lanes), from Sawmill's palette: Mist, Danger, Amber, Success, Info, Slate. */
+  --tone-1: #eeeee7;
+  --tone-1-text: #3b4865;
+  --tone-2: #fbe6e3;
+  --tone-2-text: #b42f25;
+  --tone-3: #fff2d9;
+  --tone-3-text: #9a5600;
+  --tone-4: #e0f2e7;
+  --tone-4-text: #1b6b43;
+  --tone-5: #e3edf8;
+  --tone-5-text: #255f9c;
+  --tone-6: #e3e6ee;
+  --tone-6-text: #14213d;
+}
+
+:root[data-theme="dark"] {
+  --tone-1: #25324f;
+  --tone-1-text: #c3c8d4;
+  --tone-2: #3a1e1f;
+  --tone-2-text: #ff8a7a;
+  --tone-3: #3a2b14;
+  --tone-3-text: #fca311;
+  --tone-4: #16352b;
+  --tone-4-text: #5fd39a;
+  --tone-5: #17294a;
+  --tone-5-text: #7fb4f0;
+  --tone-6: #2e3b5a;
+  --tone-6-text: #f1f1ea;
+}
+
 .db-panel {
-  --tone-1: #e8e6e1;
-  --tone-1-text: #4d4b46;
-  --tone-2: #fde2cc;
-  --tone-2-text: #8a3e0a;
-  --tone-3: #fbf0bd;
-  --tone-3-text: #6f5400;
-  --tone-4: #d7f0dd;
-  --tone-4-text: #17652f;
-  --tone-5: #dbe7fd;
-  --tone-5-text: #1d4ab8;
-  --tone-6: #ece2fb;
-  --tone-6-text: #6233b5;
   flex: 1;
   min-height: 0;
   display: grid;
   grid-template-columns: 200px 1fr;
   font-size: 13px;
-}
-
-:root[data-theme="dark"] .db-panel {
-  --tone-1: #36363c;
-  --tone-1-text: #d3d2d9;
-  --tone-2: #4a2c17;
-  --tone-2-text: #f6b98a;
-  --tone-3: #453b12;
-  --tone-3-text: #ecd37a;
-  --tone-4: #1d3a26;
-  --tone-4-text: #86dea0;
-  --tone-5: #1f2f50;
-  --tone-5-text: #9dbdff;
-  --tone-6: #33264f;
-  --tone-6-text: #c9aefa;
 }
 
 .db-list {
@@ -2322,9 +2304,9 @@ button.workspace-name[aria-expanded="true"] {
 }
 
 .db-cell.type-url .db-cell-input {
-  color: var(--accent);
+  color: var(--link);
   text-decoration: underline;
-  text-decoration-color: color-mix(in srgb, var(--accent) 40%, transparent);
+  text-decoration-color: color-mix(in srgb, var(--link) 40%, transparent);
   padding-right: 28px;
 }
 
@@ -3451,8 +3433,8 @@ button.workspace-name[aria-expanded="true"] {
 
 .theme-preview {
   --p-bg: #ffffff;
-  --p-side: #f1efea;
-  --p-ink: #d9d6ee;
+  --p-side: #f7f7f2;
+  --p-ink: #c3c8d4;
   --p-title: var(--accent);
   display: flex;
   width: 100%;
@@ -3464,23 +3446,23 @@ button.workspace-name[aria-expanded="true"] {
 }
 
 .theme-preview-dark {
-  --p-bg: #1a1a1d;
-  --p-side: #26262b;
-  --p-ink: #3d3a55;
+  --p-bg: #0c1426;
+  --p-side: #14213d;
+  --p-ink: #2e3b5a;
   --p-title: var(--accent);
 }
 
 /* System: light on the left, dark on the right. */
 .theme-preview-system {
-  background: linear-gradient(135deg, #ffffff 50%, #1a1a1d 50%);
+  background: linear-gradient(135deg, #ffffff 50%, #0c1426 50%);
 }
 
 .theme-preview-system .theme-preview-sidebar {
-  background: #f1efea;
+  background: #f7f7f2;
 }
 
 .theme-preview-system .theme-preview-page > span {
-  background: #8f8aa8;
+  background: #8f98ad;
   opacity: 0.6;
 }
 
@@ -3563,13 +3545,16 @@ button.workspace-name[aria-expanded="true"] {
 }
 
 .about-head {
-  display: flex;
-  align-items: center;
-  gap: 16px;
   margin-bottom: 16px;
 }
 
+/* The full logo stands in for the heading. */
 .about-head h2 {
+  margin: 0 0 6px;
+  line-height: 0;
+}
+
+.about-head .wordmark {
   margin: 0;
 }
 
@@ -3677,42 +3662,6 @@ button.workspace-name[aria-expanded="true"] {
   text-transform: none;
   letter-spacing: 0;
 }
-
-/* ---- accent colours (Settings) ---------------------------------------------- */
-
-.accent-choices {
-  display: flex;
-  gap: 8px;
-}
-
-.accent-choice {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  border: 0;
-  border-radius: 50%;
-  background: var(--swatch);
-  color: #ffffff;
-  cursor: pointer;
-  transition: transform 0.12s;
-}
-
-.accent-choice:hover {
-  transform: scale(1.1);
-}
-
-.accent-choice.selected {
-  box-shadow: 0 0 0 2px var(--bg), 0 0 0 4px var(--swatch);
-}
-
-.accent-violet { --swatch: #5b4bd8; }
-.accent-blue { --swatch: #2563eb; }
-.accent-green { --swatch: #15803d; }
-.accent-orange { --swatch: #c2570c; }
-.accent-pink { --swatch: #c0267a; }
 
 /* ---- sync popup (SyncStatusBar.tsx) ---------------------------------------- */
 
