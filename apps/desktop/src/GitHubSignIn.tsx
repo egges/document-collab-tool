@@ -28,7 +28,7 @@ export function useGitHubAccount(): [GitHubUser | null | undefined, (user: GitHu
  * Signing in with GitHub, for new and returning users alike. Through the
  * browser when the build can: GitHub's sign-in page, which comes straight
  * back for someone who has signed in before, then its install page if
- * Pagemesh isn't installed yet. Otherwise with the device flow: show a
+ * Sawmill isn't installed yet. Otherwise with the device flow: show a
  * code, open github.com/login/device, and wait for approval there.
  */
 export function GitHubSignIn({ onDone, onClose }: { onDone: (user: GitHubUser) => void; onClose: () => void }) {
@@ -124,11 +124,11 @@ export function GitHubSignIn({ onDone, onClose }: { onDone: (user: GitHubUser) =
           <>
             <p>
               {installing
-                ? "Signed in. Now choose which repositories Pagemesh may use, and click Install."
-                : "Continue in your browser. If you've used Pagemesh before, it comes straight back here."}
+                ? "Signed in. Now choose which repositories Sawmill may use, and click Install."
+                : "Continue in your browser. If you've used Sawmill before, it comes straight back here."}
             </p>
             <p className="muted small">
-              Pagemesh can only reach the repositories you choose, and your notes go straight from this device to
+              Sawmill can only reach the repositories you choose, and your notes go straight from this device to
               GitHub.
             </p>
             <div className="row end">
@@ -141,7 +141,7 @@ export function GitHubSignIn({ onDone, onClose }: { onDone: (user: GitHubUser) =
           <p className="muted">Asking GitHub for a code…</p>
         ) : (
           <>
-            <p>Enter this code on GitHub to let Pagemesh sync your workspaces:</p>
+            <p>Enter this code on GitHub to let Sawmill sync your workspaces:</p>
             <div className="sign-in-code">
               <code aria-label="Sign-in code">{code.userCode}</code>
               <button
@@ -162,7 +162,7 @@ export function GitHubSignIn({ onDone, onClose }: { onDone: (user: GitHubUser) =
               </button>
             </div>
             <p className="muted small">
-              Waiting for you to approve it… Pagemesh can only reach the repositories you choose when you install it,
+              Waiting for you to approve it… Sawmill can only reach the repositories you choose when you install it,
               and your notes go straight from this device to GitHub.
             </p>
           </>

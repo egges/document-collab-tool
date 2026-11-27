@@ -61,8 +61,8 @@ In React, `<PageEditorView>` is the editor with its menus:
   scrolls to the first (`src/conflicts.ts`).
 
 ```tsx
-import { PageEditorView } from "@pagemesh/editor/react";
-import "@pagemesh/editor/style.css";
+import { PageEditorView } from "@sawmill/editor/react";
+import "@sawmill/editor/style.css";
 
 <PageEditorView
   markdown={pageMd}                          // changing it loads the new version
@@ -75,8 +75,8 @@ Saving goes through the editor object from `onReady`, the same as without
 React:
 
 ```ts
-import { createPageEditor, SaveRefusedError } from "@pagemesh/editor";
-import "@pagemesh/editor/style.css";
+import { createPageEditor, SaveRefusedError } from "@sawmill/editor";
+import "@sawmill/editor/style.css";
 
 const editor = await createPageEditor({
   root: element,

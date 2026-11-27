@@ -16,7 +16,7 @@ name: Release
 #   APPLE_CERTIFICATE, APPLE_CERTIFICATE_PASSWORD, APPLE_SIGNING_IDENTITY
 #       The code-signing certificate (apps/desktop/scripts/make-signing-cert.sh):
 #       the .p12 in base64, its password, and its name.
-#   PAGEMESH_GITHUB_CLIENT_SECRET
+#   SAWMILL_GITHUB_CLIENT_SECRET
 #       For signing in with GitHub through the browser (see build.rs).
 on:
   push:
@@ -92,13 +92,13 @@ jobs:
           TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
-          PAGEMESH_GITHUB_CLIENT_SECRET: ${{ secrets.PAGEMESH_GITHUB_CLIENT_SECRET }}
+          SAWMILL_GITHUB_CLIENT_SECRET: ${{ secrets.SAWMILL_GITHUB_CLIENT_SECRET }}
         with:
           projectPath: apps/desktop
           tauriScript: npx tauri
           args: --target aarch64-apple-darwin --bundles app,dmg --config src-tauri/release.json
           tagName: ${{ github.ref_name }}
-          releaseName: Pagemesh ${{ github.ref_name }}
+          releaseName: Sawmill ${{ github.ref_name }}
           releaseBody: |
             Install by pasting this in Terminal (Apple Silicon Macs):
 
@@ -106,7 +106,7 @@ jobs:
             curl -fsSL https://raw.githubusercontent.com/egges/sawmill/main/scripts/install.sh | sh
             ```
 
-            Or open the .dmg and drag Pagemesh to Applications. The first time, macOS blocks it because it isn't notarized by Apple yet: open System Settings › Privacy & Security and click "Open Anyway".
+            Or open the .dmg and drag Sawmill to Applications. The first time, macOS blocks it because it isn't notarized by Apple yet: open System Settings › Privacy & Security and click "Open Anyway".
 
             Installed apps update themselves.
           releaseDraft: false

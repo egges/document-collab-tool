@@ -1,11 +1,11 @@
 <img src="assets/icon.svg" width="64" height="64" alt="">
 
-# Pagemesh
+# Sawmill
 
 A free, open-source workspace for humans and AI agents. Your pages and
 databases are plain files in a git repository you own.
 
-> **Work in progress.** Pagemesh is early and changes quickly. It is usable,
+> **Work in progress.** Sawmill is early and changes quickly. It is usable,
 > but expect rough edges, missing features and breaking changes, and keep
 > your workspaces synced to a git remote so nothing lives only on one
 > machine.
@@ -18,20 +18,20 @@ macOS on Apple Silicon only, for now. Paste this in Terminal:
 curl -fsSL https://raw.githubusercontent.com/egges/sawmill/main/scripts/install.sh | sh
 ```
 
-It downloads the latest release, puts Pagemesh in Applications and opens
+It downloads the latest release, puts Sawmill in Applications and opens
 it. Run it again any time to reinstall.
 
 Or install it by hand:
 
 1. Download the `.dmg` from the
    [latest release](https://github.com/egges/sawmill/releases/latest).
-2. Open it and drag **Pagemesh** to Applications.
-3. Open Pagemesh. The first time, macOS blocks it, because the app isn't
+2. Open it and drag **Sawmill** to Applications.
+3. Open Sawmill. The first time, macOS blocks it, because the app isn't
    notarized by Apple yet. Go to **System Settings › Privacy & Security**,
-   scroll down to the message about Pagemesh and click **Open Anyway**.
+   scroll down to the message about Sawmill and click **Open Anyway**.
    This is needed only once.
 
-After that, Pagemesh updates itself: it downloads new versions in the
+After that, Sawmill updates itself: it downloads new versions in the
 background, and a "Restart to update" button appears at the bottom of the
 sidebar when one is ready.
 

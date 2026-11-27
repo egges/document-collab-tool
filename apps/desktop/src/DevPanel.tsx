@@ -108,7 +108,7 @@ function line(e: LogEntry): string {
 /** Everything someone debugging needs, as plain text. */
 export function report(info: DevInfo | null, entries: LogEntry[]): string {
   const header = [
-    `Pagemesh ${info?.version ?? "?"}${info?.debugBuild ? " (debug build)" : ""} on ${info?.os ?? "?"}`,
+    `Sawmill ${info?.version ?? "?"}${info?.debugBuild ? " (debug build)" : ""} on ${info?.os ?? "?"}`,
     `Git: ${info?.git ?? "not found"}`,
     info?.workspace
       ? `Workspace: ${info.workspace.path} · device "${info.workspace.device}" · remote ${info.workspace.remote ?? "none"}`

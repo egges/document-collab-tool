@@ -6,9 +6,9 @@
 //! safe to share.
 //!
 //! Every entry also goes to a log file in the app's log folder
-//! (`~/Library/Logs/<identifier>/pagemesh.log` on macOS), which Settings ›
+//! (`~/Library/Logs/<identifier>/sawmill.log` on macOS), which Settings ›
 //! About shows, so problems can be traced after a restart or a crash. At
-//! [`MAX_FILE_BYTES`] it moves to `pagemesh.1.log`, replacing the previous
+//! [`MAX_FILE_BYTES`] it moves to `sawmill.1.log`, replacing the previous
 //! one.
 
 use std::collections::VecDeque;
@@ -243,7 +243,7 @@ mod tests {
     #[test]
     fn log_file_lines_and_rotation() {
         let dir = tempfile::tempdir().unwrap();
-        let path = dir.path().join("logs").join("pagemesh.log");
+        let path = dir.path().join("logs").join("sawmill.log");
         let mut file = LogFile::open(&path).unwrap();
         let entry = Entry {
             id: 0,
@@ -260,6 +260,6 @@ mod tests {
         file.size = MAX_FILE_BYTES;
         file.write("next\n");
         assert_eq!(fs::read_to_string(&path).unwrap(), "next\n");
-        assert!(dir.path().join("logs").join("pagemesh.1.log").exists());
+        assert!(dir.path().join("logs").join("sawmill.1.log").exists());
     }
 }

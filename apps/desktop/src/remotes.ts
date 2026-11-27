@@ -64,7 +64,7 @@ export function accessAdvice(remote: string | null, login: string | null): Acces
   }
   return {
     label: "Can't sync",
-    text: `GitHub didn't let @${login} into this workspace's repository. The account may not have access, Pagemesh may not be allowed into it on GitHub, or the repository may have been deleted or renamed. Changes are saved on this device.`,
+    text: `GitHub didn't let @${login} into this workspace's repository. The account may not have access, Sawmill may not be allowed into it on GitHub, or the repository may have been deleted or renamed. Changes are saved on this device.`,
     action: "signIn",
   };
 }

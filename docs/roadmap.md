@@ -208,14 +208,14 @@ Done first, so an installed version can hold real work while development
 goes on. It protects that work from development builds.
 
 - [x] **Separate development and release builds.** The release uses the
-      identifier `dev.pagemesh.app` (decided 2026-11-26, replacing
-      `dev.documentcollabtool.desktop`). It sets the data folder and the
-      keychain service, so it stays even if the product name changes.
-      Development builds get their own identifier (`dev.pagemesh.app.dev`),
+      identifier `dev.sawmill.app` (renamed 2026-11-27 with the product).
+      It sets the data folder and the keychain service, so changing it
+      means joining workspaces and signing in again.
+      Development builds get their own identifier (`dev.sawmill.app.dev`),
       name and icon, so they never open or change the workspaces of the
       installed app.
 - [x] **Workspace format version.** A format version in `workspace.json`.
-      An app that finds a newer version than it knows says "Update Pagemesh
+      An app that finds a newer version than it knows says "Update Sawmill
       to open this workspace" instead of reading or syncing it, and every
       format change comes with a migration. Needed because the installed
       app and development builds sync the same workspaces.

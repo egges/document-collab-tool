@@ -1,9 +1,9 @@
-// Pagemesh's mark, and the small drawings and badges that make the app feel
+// Sawmill's mark, and the small drawings and badges that make the app feel
 // friendly. Colours come from app.css (the `.art-*` classes), so they follow
 // light and dark mode.
 import { useId } from "react";
 
-/** The Pagemesh mark: three linked pages. The same drawing as assets/icon.svg. */
+/** The Sawmill mark: three linked pages. The same drawing as assets/icon.svg. */
 export function Logo({ size = 32 }: { size?: number }) {
   const id = useId();
   return (
@@ -30,12 +30,12 @@ export function Logo({ size = 32 }: { size?: number }) {
   );
 }
 
-/** "Pagemesh" with its mark, for the welcome screen. */
+/** "Sawmill" with its mark, for the welcome screen. */
 export function Wordmark() {
   return (
     <div className="wordmark">
       <Logo size={28} />
-      <span>Pagemesh</span>
+      <span>Sawmill</span>
     </div>
   );
 }

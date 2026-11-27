@@ -107,7 +107,7 @@ access per repository, so a space is also a list of who may see it.
 - **Everyone has a private space,** synced only between their own devices,
   for personal notes and personal agents.
 - **On GitHub the company is an organization,** and its spaces are the
-  organization's repositories that carry the `pagemesh-workspace` topic.
+  organization's repositories that carry the `sawmill-workspace` topic.
   The app lists the ones a person can open; the rest are invisible to them.
   A free organization allows unlimited private repositories and
   collaborators.

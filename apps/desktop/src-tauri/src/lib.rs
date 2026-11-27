@@ -36,7 +36,7 @@ pub fn run() {
         .manage(updater::UpdateState::default())
         .setup(move |app| {
             if let Ok(dir) = app.path().app_log_dir()
-                && let Err(e) = devlog::set_file(&dir.join("pagemesh.log"))
+                && let Err(e) = devlog::set_file(&dir.join("sawmill.log"))
             {
                 eprintln!("Can't write the log file in {}: {e}", dir.display());
             }

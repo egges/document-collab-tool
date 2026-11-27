@@ -33,7 +33,7 @@ const VIEW_TYPES: { type: ViewType; label: string; icon: (size: number) => React
 const viewIcon = (type: ViewType, size: number) => VIEW_TYPES.find((t) => t.type === type)!.icon(size);
 
 /** The tab open on this device, per page. */
-const ACTIVE_VIEW_KEY = (page: string) => `pagemesh.view.${page}`;
+const ACTIVE_VIEW_KEY = (page: string) => `sawmill.view.${page}`;
 
 function readActiveView(page: string): string | null {
   try {

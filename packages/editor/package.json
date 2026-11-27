@@ -1,5 +1,5 @@
 {
-  "name": "@pagemesh/editor",
+  "name": "@sawmill/editor",
   "version": "0.1.0",
   "private": true,
   "description": "Page editor: Milkdown configured to round-trip our Markdown pages.",

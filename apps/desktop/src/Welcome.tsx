@@ -141,7 +141,7 @@ export function Welcome({
     case "start":
       body = (
         <StartStep
-          title={onCancel ? "Add a workspace" : "Welcome to Pagemesh"}
+          title={onCancel ? "Add a workspace" : "Welcome to Sawmill"}
           // Adding is only about adding: the switcher lists the others.
           showKnown={!onCancel}
           known={known}
@@ -393,7 +393,7 @@ function KeptIn({
       </div>
       {folder ? (
         <p className="kept-in-note muted small">
-          Pagemesh adds a “{name}.docsync” folder there.{" "}
+          Sawmill adds a “{name}.docsync” folder there.{" "}
           {place && !place.cloud && "That only reaches devices that can open this folder too, like a network drive. "}
           <button type="button" className="link" disabled={busy} onClick={() => setFolder(null)}>
             Keep it on this computer instead
@@ -691,7 +691,7 @@ function GitHubPanel({ name, known, busy, run, intent }: StepProps & { intent: I
         <p className="muted">
           {intent === "join"
             ? "Sign in to see your workspaces on GitHub."
-            : `A private repository on your GitHub account. Pagemesh only gets the repositories you choose.`}
+            : `A private repository on your GitHub account. Sawmill only gets the repositories you choose.`}
         </p>
         <div className="row">
           <button className="button primary" disabled={busy} onClick={() => setSigningIn(true)}>
@@ -732,7 +732,7 @@ function GitHubPanel({ name, known, busy, run, intent }: StepProps & { intent: I
       <>
         {account}
         <p className="muted">
-          Next, install Pagemesh on your GitHub account and choose which repositories it may use. Come back here when
+          Next, install Sawmill on your GitHub account and choose which repositories it may use. Come back here when
           you're done.
         </p>
         <div className="row">
@@ -746,7 +746,7 @@ function GitHubPanel({ name, known, busy, run, intent }: StepProps & { intent: I
 
   const chooseRepos = access && !access.allRepositories && (
     <p className="muted small">
-      Don't see a workspace? Pagemesh only sees the repositories you chose.{" "}
+      Don't see a workspace? Sawmill only sees the repositories you chose.{" "}
       <button type="button" className="link" onClick={() => void openUrl(access.manageUrl)}>
         Choose repositories…
       </button>
@@ -819,7 +819,7 @@ function GitHubPanel({ name, known, busy, run, intent }: StepProps & { intent: I
 
 async function oneMoreStep(fullName: string, manageUrl: string) {
   await message(
-    `Created ${fullName}. Pagemesh can only reach the repositories you chose: add this one on GitHub and it starts syncing.`,
+    `Created ${fullName}. Sawmill can only reach the repositories you chose: add this one on GitHub and it starts syncing.`,
     { title: "One more step on GitHub", kind: "info" },
   );
   await openUrl(manageUrl);
