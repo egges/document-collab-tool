@@ -63,9 +63,9 @@ export function lanes(rows: Row[], column: Column): Lane[] {
   return [...(empty.rows.length ? [empty] : []), ...byValue.values()];
 }
 
-/** The column whose cell is a card's title: the first text column, else the first. */
+/** The column whose cell is a card's title: the title column, which every database has. */
 export function titleColumn(columns: Column[]): Column | null {
-  return columns.find((c) => c.type === "text") ?? columns[0] ?? null;
+  return columns.find((c) => c.type === "title") ?? null;
 }
 
 /** What a card shows besides its title: the other columns that have a value, in order. */

@@ -4,7 +4,7 @@
 //!
 //! ```text
 //! pages/<page>/meta.json
-//!   {"id", "title", "parent", ...,
+//!   {"id", "name", "parent", ...,
 //!    "database": {"id": "<db>", "views": {"<view>": {"name", "type", "position",
 //!                                                   "sort"?: {"column", "direction"},
 //!                                                   "groupBy"?: "<column>"}}}}

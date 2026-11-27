@@ -23,10 +23,7 @@ fn devices_sync_through_a_cloud_folder() {
     assert!(laptop.sync().pushed);
 
     let desktop = net.device("desktop");
-    assert_eq!(
-        desktop.ws.read_page_meta("a").unwrap()["title"],
-        "From the laptop"
-    );
+    assert_eq!(desktop.ws.read_page_meta("a").unwrap()["name"], "From the laptop");
     desktop
         .ws
         .create_page_with_id("b", "From the desktop", None)

@@ -37,7 +37,7 @@ pub fn list_pages(ws: &Workspace) -> docsync::Result<Vec<PageSummary>> {
         }
         let database = DatabasePage::from_meta(&meta);
         pages.push(PageSummary {
-            title: meta["title"].as_str().unwrap_or_default().to_string(),
+            title: docsync::workspace::page_name(&meta).to_string(),
             parent: meta["parent"].as_str().map(str::to_string),
             kind: if database.is_some() { "database" } else { "page" },
             database: database.and_then(|d| d.database),
@@ -50,19 +50,9 @@ pub fn list_pages(ws: &Workspace) -> docsync::Result<Vec<PageSummary>> {
             shown_on.entry(db.clone()).or_insert_with(|| page.id.clone());
         }
     }
-    let mut title_columns: HashMap<String, Option<String>> = HashMap::new();
     for (id, db, meta) in rows {
-        let title_column = title_columns.entry(db.clone()).or_insert_with(|| {
-            ws.read_schema(&db)
-                .ok()
-                .and_then(|s| s.title_column().map(|c| c.id.clone()))
-        });
         pages.push(PageSummary {
-            title: title_column
-                .as_ref()
-                .and_then(|c| meta["properties"][c].as_str())
-                .unwrap_or_default()
-                .to_string(),
+            title: docsync::workspace::page_name(&meta).to_string(),
             parent: shown_on.get(&db).cloned(),
             kind: "row",
             database: Some(db),
@@ -239,9 +229,9 @@ mod tests {
     fn rows_are_listed_under_the_page_that_shows_their_database() {
         let dir = tempfile::tempdir().unwrap();
         let ws = Workspace::new(dir.path());
-        let db = ws.create_database("Tasks", &["name"]).unwrap();
+        let db = ws.create_database("Tasks", &[]).unwrap();
         let mut cells = serde_json::Map::new();
-        cells.insert("name".into(), "Plan".into());
+        cells.insert(docsync::workspace::TITLE_COLUMN.into(), "Plan".into());
         let row = ws.add_row(&db, cells).unwrap();
         let shown = ws.create_database_page("Tasks", None, Some(&db)).unwrap();
         let pages = list_pages(&ws).unwrap();

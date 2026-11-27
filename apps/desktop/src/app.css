@@ -2298,6 +2298,11 @@ button.workspace-name[aria-expanded="true"] {
   background: var(--bg);
 }
 
+/* A row's name reads as its title, as in Notion. */
+.db-cell.type-title .db-cell-input {
+  font-weight: 500;
+}
+
 .db-cell.type-number .db-cell-input {
   text-align: right;
   font-variant-numeric: tabular-nums;

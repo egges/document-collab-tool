@@ -13,7 +13,7 @@ its own.
 
 ```text
 workspace.json                      workspace settings: {"format", "name"}
-pages/<page-id>/meta.json           {"id", "title", "parent", "properties": {...}, "display": {...}, "row"?: {...}}
+pages/<page-id>/meta.json           {"id", "name", "parent", "properties": {...}, "display": {...}, "row"?: {...}}
 pages/<page-id>/page.md             page body (Markdown)
 pages/<page-id>/assets/...          attachments
 databases/<db-id>/schema.json       {"id", "name", "columns": {"<col-id>": {"name", "type", "position", "options"}}}
@@ -34,12 +34,16 @@ The format is designed so most concurrent edits never conflict:
 Everything stays readable and editable without the app.
 
 **The format has a version:** the `"format"` field of `workspace.json`
-(`docsync::WORKSPACE_FORMAT`, now 2; a workspace without the field is
+(`docsync::WORKSPACE_FORMAT`, now 3; a workspace without the field is
 format 1). Format 2 made database rows pages of their own; format 1 kept
-them in `databases/<db-id>/rows/`. The engine moves a workspace's files to
-the current format when it opens, joins or syncs it, and moves rows in the
-old layout that arrive from a device not yet updated
-(`Workspace::move_rows_into_pages`). A change that older versions of the app would misread raises it
+them in `databases/<db-id>/rows/`. Format 3 renamed a page's `title` field
+to `name` and gave every database a title column, whose cell is the row
+page's `name`. The engine moves a
+workspace's files to the current format when it opens, joins or syncs it,
+and moves rows in the old layout that arrive from a device not yet updated
+(`Workspace::move_rows_into_pages`, `Workspace::rename_title_fields`,
+`Workspace::give_databases_titles`). A page that still says `title` (a
+hand edit, an agent) reads as its name until then. A change that older versions of the app would misread raises it
 and comes with a migration. A version that finds a newer format than it
 knows changes nothing: it won't open the workspace, join it, or take in
 changes from a device that has moved it on (`Error::NewerFormat`), and the
@@ -63,7 +67,10 @@ Every database row is a page, as in Notion: a page like any other in
 `pages/`, with its text, attachments and display options, whose `row` field
 says which database it's in: `{"database": "<db-id>", "position": <n>}`.
 Its cells are its `properties`, keyed by column id, with the database's
-columns as their types; its title is its first text column. Rows don't
+columns as their types. Its name is its page's `name`, like any page's,
+shown in the database's title column (type `"title"`, called "Name" when
+it's made): one per database, which can be renamed and moved but not
+deleted or retyped, as in Notion. Rows don't
 show in the page tree. A row is its own entity for sync, but a database and
 its rows are restored together: deleting a database (which deletes its
 rows) on one device while one of its rows is edited or added on another
@@ -82,7 +89,8 @@ cleanly (`docsync::database_page`).
 Metadata lives in `meta.json`, never in YAML front matter at the top of
 `page.md`, since the editor can't show it. Front matter written by another
 tool or an AI agent moves into `meta.json` when the page is opened
-(`Workspace::lift_front_matter`): `title` becomes the title and every other
+(`Workspace::lift_front_matter`): `title` (or else `name`) becomes the
+page's name and every other
 field a property, replacing what was there, since the front matter is newer.
 Two devices doing this at once make the same change, which merges cleanly.
 Importing Markdown files and folders does the same for each file

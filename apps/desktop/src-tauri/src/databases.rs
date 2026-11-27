@@ -126,8 +126,37 @@ pub(crate) fn name_of(name: &str, what: &str) -> CmdResult<String> {
     Ok(name.to_string())
 }
 
+/// A type a column can be given. Not "title": a database has one title
+/// column, from when it's made.
 pub(crate) fn column_type(name: &str) -> CmdResult<ColumnType> {
-    ColumnType::parse(name).ok_or_else(|| format!("“{name}” isn't a column type."))
+    ColumnType::parse(name)
+        .filter(|t| *t != ColumnType::Title)
+        .ok_or_else(|| format!("“{name}” isn't a column type."))
+}
+
+/// Refuse what the title column can't do, before docsync would.
+pub(crate) fn check_title_change(
+    ws: &Workspace,
+    db: &str,
+    column: &str,
+    change: Option<&ColumnChange>,
+) -> CmdResult<()> {
+    let schema = ws.read_schema(db).map_err(text)?;
+    if schema.title_column().is_some_and(|c| c.id == column) {
+        match change {
+            None => {
+                return Err(format!(
+                    "“{}” can't be deleted: every row has a name.",
+                    schema.title_column().unwrap().name
+                ));
+            }
+            Some(change) if change.kind.is_some_and(|k| k != ColumnType::Title) => {
+                return Err("The name column's type can't be changed.".into());
+            }
+            _ => {}
+        }
+    }
+    Ok(())
 }
 
 /// Trimmed, without empty or repeated choices, in the order given.
@@ -142,12 +171,11 @@ pub(crate) fn clean_options(options: Vec<String>) -> Vec<String> {
     clean
 }
 
-/// A new database, with one text column called "Name".
+/// A new database, with its title column, called "Name".
 pub(crate) fn create(ws: &Workspace, name: &str) -> CmdResult<String> {
     let name = name_of(name, "database")?;
     let id = docsync::workspace::new_id();
     ws.create_database_with_id(&id, &name, &[]).map_err(text)?;
-    ws.add_column(&id, "Name", ColumnType::Text).map_err(text)?;
     Ok(id)
 }
 
@@ -281,9 +309,9 @@ pub async fn update_column(
     };
     let (engine, edited) = state.engine()?;
     blocking("update_column", move || {
-        Workspace::new(engine.root())
-            .update_column(&db, &column, &change)
-            .map_err(text)?;
+        let ws = Workspace::new(engine.root());
+        check_title_change(&ws, &db, &column, Some(&change))?;
+        ws.update_column(&db, &column, &change).map_err(text)?;
         devlog::debug("app", format!("Database {db}: changed column {column}"));
         edited();
         Ok(())
@@ -295,9 +323,9 @@ pub async fn update_column(
 pub async fn delete_column(state: State<'_, AppState>, db: String, column: String) -> CmdResult<()> {
     let (engine, edited) = state.engine()?;
     blocking("delete_column", move || {
-        Workspace::new(engine.root())
-            .remove_column(&db, &column)
-            .map_err(text)?;
+        let ws = Workspace::new(engine.root());
+        check_title_change(&ws, &db, &column, None)?;
+        ws.remove_column(&db, &column).map_err(text)?;
         devlog::info("app", format!("Database {db}: removed column {column}"));
         edited();
         Ok(())
@@ -365,7 +393,7 @@ mod tests {
     }
 
     #[test]
-    fn a_new_database_has_a_name_column_and_no_rows() {
+    fn a_new_database_has_a_name_column_that_stays_and_no_rows() {
         let (_dir, ws) = workspace();
         let id = create(&ws, "  Tasks ").unwrap();
         let db = read(&ws, &id).unwrap();
@@ -373,9 +401,23 @@ mod tests {
         assert_eq!(db.columns.len(), 1);
         assert_eq!(
             (db.columns[0].name.as_str(), db.columns[0].kind),
-            ("Name", "text")
+            ("Name", "title")
         );
         assert!(db.rows.is_empty());
+        let title = &db.columns[0].id;
+        assert!(check_title_change(&ws, &id, title, None).is_err());
+        let retype = ColumnChange {
+            kind: Some(ColumnType::Text),
+            ..Default::default()
+        };
+        assert!(check_title_change(&ws, &id, title, Some(&retype)).is_err());
+        let rename = ColumnChange {
+            name: Some("Task".into()),
+            position: Some(3.0),
+            ..Default::default()
+        };
+        assert!(check_title_change(&ws, &id, title, Some(&rename)).is_ok());
+        assert!(column_type("title").is_err());
         assert!(create(&ws, " ").is_err());
         assert_eq!(list(&ws).unwrap()[0].columns, 1);
     }

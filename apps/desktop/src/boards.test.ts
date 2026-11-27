@@ -64,9 +64,9 @@ test("checkbox lanes are not checked, then checked", () => {
 });
 
 test("cards show their title and the other fields that have a value", () => {
-  const columns = [col("n", { type: "number" }), col("name"), status, col("done", { type: "checkbox" })];
+  const columns = [col("n", { type: "number" }), col("notes"), col("name", { type: "title" }), status, col("done", { type: "checkbox" })];
   expect(titleColumn(columns)?.id).toBe("name");
-  expect(titleColumn([col("n", { type: "number" })])?.id).toBe("n");
+  expect(titleColumn([col("n", { type: "number" })])).toBeNull();
   const fields = cardFields(row("r", { n: 0, name: "Write", status: "Todo", done: false }), columns, ["name", "status"]);
   expect(fields.map((f) => f.column.id)).toEqual(["n"]);
 });

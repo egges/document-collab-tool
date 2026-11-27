@@ -24,7 +24,11 @@ pub const OTHER_CHANGES_LABEL: &str = "Changed elsewhere";
 /// - 2: database rows are pages (`pages/<row>/`), no longer files in their
 ///   database's folder. Workspaces are moved when opened, joined or synced
 ///   ([`crate::Workspace::move_rows_into_pages`]).
-pub const WORKSPACE_FORMAT: u32 = 2;
+/// - 3: a page's name is its meta.json's `name`, no longer `title`
+///   ([`crate::Workspace::rename_title_fields`]), and every database has a
+///   title column, whose cell is the row page's `name` rather than a
+///   property ([`crate::Workspace::give_databases_titles`]).
+pub const WORKSPACE_FORMAT: u32 = 3;
 
 /// Where device refs live in a folder remote.
 pub const DEVICE_REFS: &str = "refs/heads/devices/";
@@ -314,6 +318,8 @@ impl SyncEngine {
         // Also after the format is raised: a device still on the old format
         // may have added rows in the old layout before it saw the new one.
         let mut changed = workspace.move_rows_into_pages()? > 0;
+        changed |= workspace.rename_title_fields()? > 0;
+        changed |= workspace.give_databases_titles()? > 0;
         if workspace.format() < WORKSPACE_FORMAT {
             workspace.set_format(WORKSPACE_FORMAT)?;
             changed = true;

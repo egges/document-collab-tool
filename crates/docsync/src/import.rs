@@ -680,7 +680,7 @@ mod tests {
         fn page(&self, title: &str) -> (String, serde_json::Value, String) {
             for id in self.ws.list_pages().unwrap() {
                 let meta = self.ws.read_page_meta(&id).unwrap();
-                if meta["title"] == title {
+                if meta["name"] == title {
                     let body = self.ws.read_body(&id).unwrap();
                     return (id, meta, body);
                 }

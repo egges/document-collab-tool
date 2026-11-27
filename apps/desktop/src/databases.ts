@@ -2,6 +2,7 @@
 // from React so it can be tested. The stored format is in docsync::database.
 import type { CellValue, Column, ColumnType, Row } from "./api.ts";
 
+/** The types a column can be given; the title column's is its own. */
 export const COLUMN_TYPES: { type: ColumnType; label: string }[] = [
   { type: "text", label: "Text" },
   { type: "number", label: "Number" },
@@ -11,7 +12,8 @@ export const COLUMN_TYPES: { type: ColumnType; label: string }[] = [
   { type: "url", label: "URL" },
 ];
 
-export const typeLabel = (type: ColumnType) => COLUMN_TYPES.find((t) => t.type === type)?.label ?? type;
+export const typeLabel = (type: ColumnType) =>
+  type === "title" ? "Name" : (COLUMN_TYPES.find((t) => t.type === type)?.label ?? type);
 
 /** Whether `value` is stored the way a column of `type` stores it. */
 export function fits(type: ColumnType, value: unknown): value is CellValue {
@@ -55,6 +57,7 @@ export function parseCell(type: ColumnType, text: string): { value: CellValue | 
     case "date":
       return fits("date", trimmed) ? { value: trimmed } : { error: `“${trimmed}” isn't a date (YYYY-MM-DD).` };
     case "text":
+    case "title":
       // Text keeps its spaces; only an all-blank cell is empty.
       return { value: text };
     default:

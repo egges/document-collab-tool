@@ -1178,7 +1178,7 @@ fn read_page_from(ws: &Workspace, id: &str) -> CmdResult<Page> {
     let (title, meta, properties, row) = match page_properties::kind(ws, id)? {
         Kind::Page => {
             let meta = ws.read_page_meta(id).unwrap_or_default();
-            let title = meta["title"].as_str().unwrap_or_default().to_string();
+            let title = docsync::workspace::page_name(&meta).to_string();
             let properties = page_properties::page_properties(&meta);
             (title, meta, properties, None)
         }

@@ -159,15 +159,15 @@ that those two jobs need (marked **First**).
 - [x] **Rows as pages, and properties on every page.** Every row of a
       database is a page, as in Notion: open it from the table (the button
       by its row number) or by clicking its card on a board. Its title is
-      the first text column, its other columns show as properties under the
+      the title column, its other columns show as properties under the
       title, and it has text like any page (`rows/<row>.md` next to its row
       file). Any page can have typed properties too ("Add a property" under
       the title; `property_schema` in its `meta.json`). On a row, a property
       is the database's column, so adding or deleting one does it for every
       row (deleting asks first). Rows don't show in the sidebar; they're
       found by search and sit under their database page in the breadcrumb.
-      Rows are now pages like any other (next item); the title and
-      images follow below.
+      Rows are now pages like any other (next item), with a fixed title
+      column (the item after); images follow below.
 - [x] **Rows are pages like any other.** A row is stored as a page,
       `pages/<row>/` with `meta.json`, `page.md` and `assets/`, whose `row`
       field names its database; its cells are its properties. So text,
@@ -176,11 +176,12 @@ that those two jobs need (marked **First**).
       together when the database is deleted on one device while a row is
       edited or added on another. Workspace format 2: workspaces are moved
       over when opened or synced ([sync-design.md](sync-design.md#on-disk-format)).
-- [ ] **A fixed title.** Every database has one title column, always
-      first, that can be renamed but not moved, deleted or retyped, as in
-      Notion's "Name" (which Notion does let you move). It's the row page's
-      `title`, like any page's, not a cell. Existing databases get their
-      first text column promoted, or an empty title.
+- [x] **A fixed title.** Every database has one title column, called
+      "Name" when it's made, that can be renamed and moved but not deleted
+      or retyped, as in Notion. It's the row page's `name`, like any
+      page's, not a cell: meta.json's `title` field is now `name` for
+      every page. Existing databases got their first text column
+      promoted, or a new "Name" column first (workspace format 3).
 - [ ] **Images in the editor.** Show images in a page's text, and add
       them by pasting or dropping, kept in the page's `assets/`. Rows are
       pages, so this covers them too. The importer already copies images

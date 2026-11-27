@@ -169,6 +169,8 @@ fn assert_moved(a: &common::Device) {
     let row = a.ws.read_row("d1", "r1").unwrap();
     assert_eq!(row.position, Some(5.0));
     assert_eq!(row.cells["name"], "Write");
+    // Format 3: the first text column became the title column.
+    assert_eq!(a.ws.read_page_meta("r1").unwrap()["name"], "Write");
     assert_eq!(a.ws.read_body("r1").unwrap(), "Notes\n");
     assert_eq!(a.ws.read_page_meta("r1").unwrap()["display"]["width"], "full");
     let head = a.engine.head().unwrap().unwrap();
@@ -236,4 +238,121 @@ fn rows_in_the_old_layout_that_arrive_by_sync_are_moved() {
     b.sync();
     a.sync();
     assert_moved(&a);
+}
+
+#[test]
+fn opening_a_format_2_workspace_gives_its_databases_title_columns() {
+    let net = Net::new();
+    let a = net.device("a");
+    let root = a.root();
+    write_format(root, 2);
+    let write = |path: &str, json: serde_json::Value| {
+        let path = root.join(path);
+        fs::create_dir_all(path.parent().unwrap()).unwrap();
+        fs::write(path, serde_json::to_vec(&json).unwrap()).unwrap();
+    };
+    // Its first text column (not the first column) becomes the title.
+    write(
+        "databases/d1/schema.json",
+        json!({"id": "d1", "name": "Tasks", "columns": {
+            "n": {"name": "Count", "type": "number", "position": 0},
+            "t": {"name": "Task", "type": "text", "position": 1},
+            "u": {"name": "Notes", "type": "text", "position": 2}
+        }}),
+    );
+    write(
+        "pages/r1/meta.json",
+        json!({"id": "r1", "title": "", "parent": null, "properties": {"n": 3, "t": "Write", "u": "x"}, "row": {"database": "d1"}}),
+    );
+    // Without a text column, a "Name" column comes first.
+    write(
+        "databases/d2/schema.json",
+        json!({"id": "d2", "name": "Numbers", "columns": {"n": {"name": "N", "type": "number", "position": 0}}}),
+    );
+    write(
+        "pages/r2/meta.json",
+        json!({"id": "r2", "title": "", "parent": null, "properties": {"n": 1}, "row": {"database": "d2"}}),
+    );
+    // A page's `title` becomes its `name`; one with both keeps its name.
+    write(
+        "pages/p1/meta.json",
+        json!({"id": "p1", "title": "Notes", "parent": null, "properties": {}}),
+    );
+    write(
+        "pages/p2/meta.json",
+        json!({"id": "p2", "title": "Old", "name": "New", "parent": null}),
+    );
+    a.commit();
+    let a = net.reopen(a);
+
+    let p1 = a.ws.read_page_meta("p1").unwrap();
+    assert_eq!((p1["name"].as_str(), p1.get("title")), (Some("Notes"), None));
+    let p2 = a.ws.read_page_meta("p2").unwrap();
+    assert_eq!((p2["name"].as_str(), p2.get("title")), (Some("New"), None));
+    assert_eq!(a.ws.rename_title_fields().unwrap(), 0);
+
+    let d1 = a.ws.read_schema("d1").unwrap();
+    assert_eq!(d1.title_column().unwrap().id, "t");
+    assert_eq!(d1.title_column().unwrap().name, "Task");
+    let meta = a.ws.read_page_meta("r1").unwrap();
+    assert_eq!(meta["name"], "Write");
+    assert!(meta.get("title").is_none());
+    assert_eq!(meta["properties"], json!({"n": 3, "u": "x"}));
+    assert_eq!(a.ws.read_row("d1", "r1").unwrap().cells["t"], "Write");
+
+    let d2 = a.ws.read_schema("d2").unwrap();
+    let title = d2.title_column().unwrap();
+    assert_eq!((title.id.as_str(), title.name.as_str()), ("title", "Name"));
+    assert_eq!(d2.columns[0].id, "title");
+    let head = a.engine.head().unwrap().unwrap();
+    assert_eq!(a.engine.format_at(&head).unwrap(), WORKSPACE_FORMAT);
+    // Nothing left to do.
+    assert_eq!(a.ws.give_databases_titles().unwrap(), 0);
+}
+
+#[test]
+fn the_title_column_can_be_renamed_and_moved_but_not_deleted_or_retyped() {
+    use docsync::database::{ColumnChange, ColumnType};
+    let net = Net::new();
+    let a = net.device("a");
+    let db = a.ws.create_database("Tasks", &["notes"]).unwrap();
+    let schema = a.ws.read_schema(&db).unwrap();
+    assert_eq!(schema.columns[0].kind, ColumnType::Title);
+    let title = schema.columns[0].id.clone();
+
+    let row =
+        a.ws.add_row(
+            &db,
+            json!({&title: "Plan", "notes": "x"}).as_object().unwrap().clone(),
+        )
+        .unwrap();
+    assert_eq!(a.ws.read_page_meta(&row).unwrap()["name"], "Plan");
+    a.ws.set_cell(&db, &row, &title, json!("Plan it")).unwrap();
+    assert_eq!(a.ws.read_page_meta(&row).unwrap()["name"], "Plan it");
+    assert_eq!(a.ws.read_row(&db, &row).unwrap().cells[&title], "Plan it");
+    a.ws.clear_cell(&db, &row, &title).unwrap();
+    assert_eq!(a.ws.read_page_meta(&row).unwrap()["name"], "");
+
+    let rename = ColumnChange {
+        name: Some("Task".into()),
+        position: Some(5.0),
+        ..Default::default()
+    };
+    a.ws.update_column(&db, &title, &rename).unwrap();
+    let schema = a.ws.read_schema(&db).unwrap();
+    assert_eq!(schema.columns[1].name, "Task");
+    let retype = |kind| ColumnChange {
+        kind: Some(kind),
+        ..Default::default()
+    };
+    assert!(
+        a.ws.update_column(&db, &title, &retype(ColumnType::Text))
+            .is_err()
+    );
+    assert!(
+        a.ws.update_column(&db, "notes", &retype(ColumnType::Title))
+            .is_err()
+    );
+    assert!(a.ws.remove_column(&db, &title).is_err());
+    assert!(a.ws.add_column(&db, "Another", ColumnType::Title).is_err());
 }

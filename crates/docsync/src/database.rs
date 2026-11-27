@@ -5,7 +5,7 @@
 //! databases/<db>/schema.json
 //!   {"id", "name", "columns": {"<col>": {"name", "type", "position", "options"?}}}
 //! pages/<row>/meta.json
-//!   {"id", "title", "properties": {"<col>": value}, "row": {"database": "<db>", "position"?}, ...}
+//!   {"id", "name", "properties": {"<col>": value}, "row": {"database": "<db>", "position"?}, ...}
 //! pages/<row>/page.md
 //!   the row's text
 //! ```
@@ -13,8 +13,14 @@
 //! Every row is a page, as in Notion: a page like any other, with its text,
 //! attachments and display options, whose `row` field names its database.
 //! Its properties are its cells, keyed by column id, and their types are the
-//! database's columns. Its title is the cell of the first text column
-//! ([`Schema::title_column`]). Rows don't show in the page tree.
+//! database's columns. Rows don't show in the page tree.
+//!
+//! Every database has one title column (type `"title"`, called "Name" when
+//! it's made, as in Notion), whose cell is the row page's `name`, like any
+//! page's, not a property: [`Schema::title_column`]. It can be renamed and
+//! moved, but not deleted or retyped, and no other column becomes one.
+//! Databases from before it had their first text column promoted
+//! ([`crate::Workspace::give_databases_titles`]).
 //!
 //! A row is its own entity for sync, but a database and its rows are
 //! restored together: a database deleted on one device while one of its rows
@@ -50,16 +56,20 @@ pub enum ColumnType {
     Date,
     /// A string, shown as a link.
     Url,
+    /// The row's title: the `title` of its page, not a property. One per
+    /// database; see [`Schema::title_column`].
+    Title,
 }
 
 impl ColumnType {
-    pub const ALL: [ColumnType; 6] = [
+    pub const ALL: [ColumnType; 7] = [
         ColumnType::Text,
         ColumnType::Number,
         ColumnType::Checkbox,
         ColumnType::Select,
         ColumnType::Date,
         ColumnType::Url,
+        ColumnType::Title,
     ];
 
     pub fn as_str(self) -> &'static str {
@@ -70,6 +80,7 @@ impl ColumnType {
             ColumnType::Select => "select",
             ColumnType::Date => "date",
             ColumnType::Url => "url",
+            ColumnType::Title => "title",
         }
     }
 
@@ -81,7 +92,7 @@ impl ColumnType {
     /// value at all (the key is left out), never `null` or `""`.
     pub fn accepts(self, value: &Value) -> bool {
         match self {
-            ColumnType::Text | ColumnType::Url | ColumnType::Select => {
+            ColumnType::Text | ColumnType::Url | ColumnType::Select | ColumnType::Title => {
                 value.as_str().is_some_and(|s| !s.is_empty())
             }
             ColumnType::Number => value.as_f64().is_some_and(f64::is_finite),
@@ -147,12 +158,21 @@ pub struct Schema {
 
 impl Schema {
     /// Read a schema.json value. `id` is the database's folder name, which
-    /// wins over an `id` field that disagrees.
+    /// wins over an `id` field that disagrees. Of several title columns (a
+    /// hand edit), the first is the title and the others read as text.
     pub fn from_json(id: &str, value: &Value) -> Schema {
+        let mut columns = columns_from_json(&value["columns"]);
+        let mut titled = false;
+        for column in columns.iter_mut().filter(|c| c.kind == ColumnType::Title) {
+            if titled {
+                column.kind = ColumnType::Text;
+            }
+            titled = true;
+        }
         Schema {
             id: id.to_string(),
             name: value["name"].as_str().unwrap_or_default().to_string(),
-            columns: columns_from_json(&value["columns"]),
+            columns,
         }
     }
 
@@ -170,10 +190,11 @@ impl Schema {
         Value::Object(self.columns.iter().map(|c| (c.id.clone(), c.to_json())).collect())
     }
 
-    /// The column a row's title is in, which is its title as a page: the
-    /// first text column.
+    /// The title column, whose cell is the row page's `name`. Every
+    /// database has one, but a hand-edited schema may not until the
+    /// workspace is next opened or synced.
     pub fn title_column(&self) -> Option<&Column> {
-        self.columns.iter().find(|c| c.kind == ColumnType::Text)
+        self.columns.iter().find(|c| c.kind == ColumnType::Title)
     }
 }
 
@@ -239,12 +260,20 @@ pub struct Row {
 
 impl Row {
     /// A row from its page's meta.json: the position in its `row` field,
-    /// the cells in its properties.
-    pub fn from_meta(id: &str, meta: &Value) -> Row {
+    /// the cells in its properties, and its page's name as the cell of
+    /// `title_column` (left out when empty, like any empty cell).
+    pub fn from_meta(id: &str, meta: &Value, title_column: Option<&str>) -> Row {
+        let mut cells = meta["properties"].as_object().cloned().unwrap_or_default();
+        if let Some(column) = title_column {
+            match Some(crate::workspace::page_name(meta)).filter(|t| !t.is_empty()) {
+                Some(title) => cells.insert(column.to_string(), title.into()),
+                None => cells.remove(column),
+            };
+        }
         Row {
             id: id.to_string(),
             position: meta["row"]["position"].as_f64(),
-            cells: meta["properties"].as_object().cloned().unwrap_or_default(),
+            cells,
         }
     }
 }
@@ -343,13 +372,39 @@ mod tests {
     #[test]
     fn rows_sort_by_position_then_id() {
         let mut rows = vec![
-            Row::from_meta("c", &json!({"properties": {}})),
-            Row::from_meta("b", &json!({"row": {"position": 2}, "properties": {"x": 1}})),
-            Row::from_meta("a", &json!({"row": {"position": 5}})),
+            Row::from_meta("c", &json!({"properties": {}}), None),
+            Row::from_meta(
+                "b",
+                &json!({"row": {"position": 2}, "properties": {"x": 1}}),
+                None,
+            ),
+            Row::from_meta("a", &json!({"row": {"position": 5}}), None),
         ];
         sort_rows(&mut rows);
         let ids: Vec<&str> = rows.iter().map(|r| r.id.as_str()).collect();
         assert_eq!(ids, ["b", "a", "c"]);
         assert_eq!(rows[0].cells["x"], 1);
+    }
+
+    #[test]
+    fn the_title_is_the_pages_title_and_there_is_one_title_column() {
+        let schema = Schema::from_json(
+            "db",
+            &json!({"columns": {
+                "a": {"name": "Notes", "type": "text", "position": 0},
+                "t": {"name": "Name", "type": "title", "position": 1},
+                "u": {"name": "Also", "type": "title", "position": 2}
+            }}),
+        );
+        assert_eq!(schema.title_column().unwrap().id, "t");
+        assert_eq!(schema.column("u").unwrap().kind, ColumnType::Text);
+        let row = Row::from_meta(
+            "r",
+            &json!({"name": "Plan", "properties": {"t": "old", "a": "x"}}),
+            Some("t"),
+        );
+        assert_eq!(row.cells["t"], "Plan");
+        let row = Row::from_meta("r", &json!({"name": "", "properties": {"t": "old"}}), Some("t"));
+        assert!(row.cells.is_empty());
     }
 }
