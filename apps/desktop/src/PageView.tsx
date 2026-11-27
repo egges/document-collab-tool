@@ -1,6 +1,6 @@
 import { ask } from "@tauri-apps/plugin-dialog";
-import type { PageEditor, Reader } from "@pagemesh/editor";
-import { PageEditorView } from "@pagemesh/editor/react";
+import type { PageEditor, Reader } from "@sawmill/editor";
+import { PageEditorView } from "@sawmill/editor/react";
 import { type Ref, useEffect, useImperativeHandle, useRef, useState } from "react";
 import { type Conflict, type Page, type PageDisplay, type PageProperties as Properties, api, errorText } from "./api.ts";
 import { ConflictPanel } from "./ConflictPanel.tsx";

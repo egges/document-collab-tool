@@ -1,4 +1,4 @@
-//! Signing in with GitHub, through the "Pagemesh Desktop" GitHub App.
+//! Signing in with GitHub, through the "Sawmill Desktop" GitHub App.
 //!
 //! The app signs in through the browser: GitHub's sign-in page with PKCE,
 //! sending the user back to a listener on 127.0.0.1 (no click at all for
@@ -32,7 +32,7 @@ use crate::workspaces::now_ms;
 /// The GitHub App's public client id. Not a secret.
 pub const CLIENT_ID: &str = "Iv23liDy3OYs0reC0WZu";
 /// From `github.com/apps/<slug>`.
-pub const APP_SLUG: &str = "pagemesh-desktop";
+pub const APP_SLUG: &str = "sawmill-desktop";
 
 const API: &str = "https://api.github.com";
 /// The only host that ever gets the token.
@@ -47,13 +47,13 @@ const RENEW_BEFORE_MS: u64 = 15 * 60 * 1000;
 /// takes any port on 127.0.0.1.
 const CALLBACK_PORT: u16 = 48159;
 /// Marks the repositories the app creates, so they're found again.
-pub const WORKSPACE_TOPIC: &str = "pagemesh-workspace";
+pub const WORKSPACE_TOPIC: &str = "sawmill-workspace";
 
 /// The App's client secret, built in from `github-client-secret` (see
 /// build.rs). It can't be kept secret in a desktop app; PKCE and callbacks
 /// that only go to 127.0.0.1 are what protect a sign-in.
 fn client_secret() -> Option<&'static str> {
-    option_env!("PAGEMESH_GITHUB_CLIENT_SECRET").filter(|s| !s.is_empty())
+    option_env!("SAWMILL_GITHUB_CLIENT_SECRET").filter(|s| !s.is_empty())
 }
 
 /// Whether this build signs in through the browser, or with a code.
@@ -440,7 +440,7 @@ fn agent() -> ureq::Agent {
     ureq::Agent::config_builder()
         .timeout_global(Some(Duration::from_secs(20)))
         .http_status_as_error(false)
-        .user_agent("Pagemesh-Desktop")
+        .user_agent("Sawmill-Desktop")
         .build()
         .into()
 }
@@ -653,7 +653,7 @@ pub fn create_private_repo(workspace: &str) -> Result<Repo, String> {
         let body = json!({
             "name": name,
             "private": true,
-            "description": format!("{} — a Pagemesh workspace", workspace.trim()),
+            "description": format!("{} — a Sawmill workspace", workspace.trim()),
             "has_issues": false,
             "has_projects": false,
             "has_wiki": false,
@@ -677,7 +677,7 @@ pub fn create_private_repo(workspace: &str) -> Result<Repo, String> {
             Err(e) if e.status == 422 && e.message.contains("already exists") => continue,
             Err(e) if e.status == 403 || e.status == 404 => {
                 return Err(format!(
-                    "Pagemesh isn't allowed to create repositories on your account yet. Install it \
+                    "Sawmill isn't allowed to create repositories on your account yet. Install it \
                      on your account at {} and try again. ({e})",
                     install_url()
                 ));
@@ -715,10 +715,10 @@ pub fn delete_repo(full_name: &str) -> Result<(), String> {
             Ok(())
         }
         Err(e) if e.status == 403 => Err(format!(
-            "GitHub didn't let Pagemesh delete {full_name}. Only its owner or an admin can delete it. ({e})"
+            "GitHub didn't let Sawmill delete {full_name}. Only its owner or an admin can delete it. ({e})"
         )),
         Err(e) if e.status == 404 => Err(format!(
-            "{full_name} wasn't found on GitHub, or Pagemesh can't reach it."
+            "{full_name} wasn't found on GitHub, or Sawmill can't reach it."
         )),
         Err(e) => Err(e.to_string()),
     }
@@ -880,7 +880,7 @@ pub fn sign_in_with_browser(
     if !installed_on(&token, &user)? {
         devlog::info(
             "github",
-            "Pagemesh isn't installed on the account yet; opening the install page",
+            "Sawmill isn't installed on the account yet; opening the install page",
         );
         // The install page always returns to the callback URL's fixed port.
         let listener = TcpListener::bind(("127.0.0.1", CALLBACK_PORT))
@@ -1007,14 +1007,14 @@ fn answer(mut stream: TcpStream, state: &str) -> Option<Callback> {
             "200 OK",
             CALLBACK_PAGE.replace(
                 "{message}",
-                "You're signed in. You can close this tab and go back to Pagemesh.",
+                "You're signed in. You can close this tab and go back to Sawmill.",
             ),
         ),
         Some(_) => (
             "200 OK",
             CALLBACK_PAGE.replace(
                 "{message}",
-                "Signing in didn't finish. Go back to Pagemesh to try again.",
+                "Signing in didn't finish. Go back to Sawmill to try again.",
             ),
         ),
         None => (
@@ -1030,7 +1030,7 @@ fn answer(mut stream: TcpStream, state: &str) -> Option<Callback> {
     callback
 }
 
-const CALLBACK_PAGE: &str = "<!doctype html><html><head><meta charset=utf-8><title>Pagemesh</title>\
+const CALLBACK_PAGE: &str = "<!doctype html><html><head><meta charset=utf-8><title>Sawmill</title>\
 <style>body{font:16px -apple-system,system-ui,sans-serif;display:grid;place-items:center;height:90vh;\
 margin:0;color:#222;background:#fafafa}@media(prefers-color-scheme:dark){body{color:#eee;background:#1e1e1e}}\
 </style></head><body><p>{message}</p></body></html>";

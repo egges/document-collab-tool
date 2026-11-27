@@ -36,7 +36,7 @@ export type KeyHandler = (event: KeyboardEvent) => boolean;
  * The page editor with its toolbar (on selection), slash menu, block
  * handle (drag to move, click for the block menu), table handles (insert
  * and delete rows and columns) and the frames around conflict blocks. Styles:
- * import "@pagemesh/editor/style.css".
+ * import "@sawmill/editor/style.css".
  */
 export function PageEditorView({ markdown, onReady, onDirtyChange, onChange, onOpenLink, reader, className }: PageEditorViewProps) {
   const container = useRef<HTMLDivElement>(null);

@@ -1,12 +1,11 @@
 # Sawmill brand guidelines
 
-Sawmill is the new name for the product this repository still calls Pagemesh.
-This folder holds its logo, colours, fonts and the spinning saw that shows
+Sawmill's brand. This folder holds its logo, colours, fonts and the spinning saw that shows
 work in progress.
 
-**Status: designed, not yet applied.** The app has not been renamed and
-nothing in it uses these files yet. [Using it in the app](#using-it-in-the-app)
-lists what a switch would touch. The name was checked against US trademarks
+**Status: name applied, design not yet.** The app, its identifier and the
+documentation are called Sawmill, but nothing in the app uses these files
+yet. [Using it in the app](#using-it-in-the-app) lists what is left. The name was checked against US trademarks
 and existing products; the EU, Benelux and UK registers still need a check by
 hand at [TMview](https://www.tmdn.org/tmview/).
 
@@ -230,16 +229,16 @@ looks almost still when it rotates, so do not simplify them away.
 
 ## Using it in the app
 
-None of this has been done. A switch would touch these places:
+The name is done: the app, its identifier (`dev.sawmill.app`) and the
+documentation say Sawmill. The rest is still to do:
 
-- **Name.** The app, its identifier (`dev.pagemesh.app`) and the
-  documentation still say Pagemesh.
-- **App icon.** `assets/icon.svg` is the Pagemesh icon, and the top-level
-  README shows it. `logo/sawmill-app-icon.svg` would replace it. The
+- **App icon.** `assets/icon.svg` is still the old three-linked-pages
+  icon, and the top-level README shows it. `logo/sawmill-app-icon.svg`
+  would replace it. The
   development build has its own orange icon, drawn from
   `assets/icon-dev.svg`, and needs a variant of its own.
 - **Logo in the app.** `Logo` in `apps/desktop/src/Graphics.tsx` draws the
-  Pagemesh logo and would draw the mark instead.
+  old three-linked-pages logo and would draw the mark instead.
 - **Colours.** `apps/desktop/src/app.css` sets the app's colours as
   variables. The table below is a starting point.
 - **Spinner.** The two blades become a component that uses the rules in

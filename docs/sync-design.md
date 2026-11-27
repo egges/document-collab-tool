@@ -319,7 +319,7 @@ obvious way to sync, and it breaks:
 
 ### Signing in with GitHub
 
-The app signs in through a GitHub App ("Pagemesh Desktop", the working
+The app signs in through a GitHub App ("Sawmill Desktop", the working
 title). The App asks for Contents, Metadata, Administration (to create
 repos) and Pages on repositories only; it can reach only the repositories
 the user installs it on, unlike an OAuth app's `repo` scope. Signing in and
@@ -342,7 +342,7 @@ user, installing picks the repositories.
 - **The client secret.** Exchanging a code needs the App's client secret,
   even with PKCE. It is built in from the gitignored file
   `apps/desktop/src-tauri/github-client-secret` or the
-  `PAGEMESH_GITHUB_CLIENT_SECRET` variable (see `build.rs`), never kept in
+  `SAWMILL_GITHUB_CLIENT_SECRET` variable (see `build.rs`), never kept in
   git. A desktop app can't keep it secret, and that's accepted: PKCE, the
   state check and callbacks that only go to 127.0.0.1 protect a sign-in,
   not the secret. Forks register their own GitHub App. A build without the
@@ -372,7 +372,7 @@ user, installing picks the repositories.
   [Conflict rules](#conflict-rules) for the person's id.
 - **Finding workspaces.** After signing in, onboarding lists the workspaces
   in the repositories the App can reach, to join with one click: those with
-  the `pagemesh-workspace` topic (set on the repos the app creates) and up
+  the `sawmill-workspace` topic (set on the repos the app creates) and up
   to 40 others with a `workspace.json` at the top. Ones this device already
   has are left out.
 - **A repo in one click.** "Start a new workspace" in onboarding, and

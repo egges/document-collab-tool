@@ -10,14 +10,14 @@
 # the keychain again.
 #
 # Usage: scripts/make-signing-cert.sh [output folder, default ~/.tauri]
-# Writes pagemesh-signing.p12 and pagemesh-signing.p12.password there, and
+# Writes sawmill-signing.p12 and sawmill-signing.p12.password there, and
 # prints what to store as GitHub Actions secrets.
 
 set -eu
 
-NAME="Pagemesh Self-Signed"
+NAME="Sawmill Self-Signed"
 OUT="${1:-$HOME/.tauri}"
-P12="$OUT/pagemesh-signing.p12"
+P12="$OUT/sawmill-signing.p12"
 
 if [ -e "$P12" ]; then
   echo "$P12 already exists. Keep using it, or move it away to make a new one." >&2

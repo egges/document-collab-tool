@@ -130,7 +130,7 @@ export function SyncStatusBar({
               <div className="sync-warning">
                 <p>Can't reach the sync folder. Changes are saved on this device and sync once it's back.</p>
                 <p className="small">
-                  If it's on a drive, connect it. If you moved it, show Pagemesh where it is now.
+                  If it's on a drive, connect it. If you moved it, show Sawmill where it is now.
                 </p>
                 <button className="button" onClick={() => void locate(folderName(workspace.remote!))}>
                   Locate…
@@ -171,7 +171,7 @@ export function SyncStatusBar({
               </p>
               {workspace.movedTo.folder ? (
                 <>
-                  <p className="small">If that folder is on this computer, show Pagemesh where.</p>
+                  <p className="small">If that folder is on this computer, show Sawmill where.</p>
                   <button className="button" onClick={() => void locate(workspace.name)}>
                     Locate…
                   </button>
@@ -186,7 +186,7 @@ export function SyncStatusBar({
             <div className="sync-warning">
               <p>
                 This workspace's folder is inside {workspace.insideCloud}, which can damage it: {workspace.insideCloud}{" "}
-                and Pagemesh would both sync the same files.
+                and Sawmill would both sync the same files.
               </p>
               <button
                 className="button primary"

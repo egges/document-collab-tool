@@ -18,7 +18,7 @@ test("a copied report has the app details, then one line per entry", () => {
     ],
   );
   const lines = text.trimEnd().split("\n");
-  expect(lines[0]).toBe("Pagemesh 0.1.0 (debug build) on macos aarch64");
+  expect(lines[0]).toBe("Sawmill 0.1.0 (debug build) on macos aarch64");
   expect(lines[1]).toBe("Git: /opt/homebrew/bin/git 2.56.1");
   expect(lines[2]).toBe('Workspace: /w · device "Laptop" · remote none');
   expect(lines.slice(-2)).toEqual([

@@ -161,7 +161,7 @@ function Preferences(props: Pick<SettingsProps, "workspace" | "onWorkspaceChange
   return (
     <>
       <h2>Preferences</h2>
-      <p className="settings-intro">How Pagemesh looks and works on this device. Your other devices keep their own.</p>
+      <p className="settings-intro">How Sawmill looks and works on this device. Your other devices keep their own.</p>
       <Row label="Theme" hint="System follows your computer's light and dark mode." wide>
         <div className="theme-choices" role="radiogroup" aria-label="Theme">
           {THEMES.map((t) => (
@@ -420,7 +420,7 @@ function Account({
     <>
       <h2>Account</h2>
       <p className="settings-intro">
-        Pagemesh has no account of its own. Signing in with GitHub lets you keep workspaces there, and your edits are
+        Sawmill has no account of its own. Signing in with GitHub lets you keep workspaces there, and your edits are
         signed with your name.
       </p>
       <PersonName workspace={workspace} onWorkspaceChange={onWorkspaceChange} />
@@ -483,7 +483,7 @@ function About({ onShowShortcuts }: { onShowShortcuts: () => void }) {
       <div className="about-head">
         <Logo size={56} />
         <div>
-          <h2>Pagemesh</h2>
+          <h2>Sawmill</h2>
           <div className="muted">
             Version {info?.version ?? "…"}
             {info?.debugBuild ? " (debug build)" : ""}
@@ -496,7 +496,7 @@ function About({ onShowShortcuts }: { onShowShortcuts: () => void }) {
       <Row label="System">
         <span className="settings-value">{info?.os ?? "…"}</span>
       </Row>
-      <Row label="Git" hint="Pagemesh uses Git to keep every version of your pages.">
+      <Row label="Git" hint="Sawmill uses Git to keep every version of your pages.">
         <span className="settings-value">{info ? (info.git ?? "Not found") : "…"}</span>
       </Row>
       <Row

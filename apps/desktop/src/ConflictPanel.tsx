@@ -1,4 +1,4 @@
-import { type Reader, versionTitle } from "@pagemesh/editor";
+import { type Reader, versionTitle } from "@sawmill/editor";
 import type { Conflict } from "./api.ts";
 
 /**
