@@ -15,7 +15,7 @@ databases are plain files in a git repository you own.
 macOS on Apple Silicon only, for now. Paste this in Terminal:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/egges/document-collab-tool/main/scripts/install.sh | sh
+curl -fsSL https://raw.githubusercontent.com/egges/sawmill/main/scripts/install.sh | sh
 ```
 
 It downloads the latest release, puts Pagemesh in Applications and opens
@@ -24,7 +24,7 @@ it. Run it again any time to reinstall.
 Or install it by hand:
 
 1. Download the `.dmg` from the
-   [latest release](https://github.com/egges/document-collab-tool/releases/latest).
+   [latest release](https://github.com/egges/sawmill/releases/latest).
 2. Open it and drag **Pagemesh** to Applications.
 3. Open Pagemesh. The first time, macOS blocks it, because the app isn't
    notarized by Apple yet. Go to **System Settings › Privacy & Security**,

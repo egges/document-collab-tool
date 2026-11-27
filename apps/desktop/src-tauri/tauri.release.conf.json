@@ -9,7 +9,7 @@
   "plugins": {
     "updater": {
       "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEVERTg1QUIzREQ5MzhEMTAKUldRUWpaUGRzMXJvN1ZRVmtnbm1SL0x4MEY2eEllNlFqd0pDWm1Jbzdmd3RnNFQzNUxQVUhpdlAK",
-      "endpoints": ["https://github.com/egges/document-collab-tool/releases/latest/download/latest.json"]
+      "endpoints": ["https://github.com/egges/sawmill/releases/latest/download/latest.json"]
     }
   }
 }

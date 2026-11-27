@@ -103,7 +103,7 @@ jobs:
             Install by pasting this in Terminal (Apple Silicon Macs):
 
             ```sh
-            curl -fsSL https://raw.githubusercontent.com/egges/document-collab-tool/main/scripts/install.sh | sh
+            curl -fsSL https://raw.githubusercontent.com/egges/sawmill/main/scripts/install.sh | sh
             ```
 
             Or open the .dmg and drag Pagemesh to Applications. The first time, macOS blocks it because it isn't notarized by Apple yet: open System Settings › Privacy & Security and click "Open Anyway".
