@@ -436,6 +436,36 @@ fn rows_edited_on_different_devices_merge() {
 }
 
 #[test]
+fn cards_moved_on_different_devices_merge() {
+    let net = Net::new();
+    let a = net.device("a");
+    let db = a.ws.create_database("Tasks", &["name", "status"]).unwrap();
+    let r1 = a.ws.add_row(&db, Default::default()).unwrap();
+    let r2 = a.ws.add_row(&db, Default::default()).unwrap();
+    // Only a row of the database has a place in its views.
+    let page = a.ws.create_page("Notes", None).unwrap();
+    assert!(a.ws.set_row_view_position(&db, &page, "board", 1.0).is_err());
+    a.sync();
+    let b = net.device("b");
+    // One card moved in two views, another in one, and a cell of a moved card edited.
+    a.ws.set_row_view_position(&db, &r1, "board", 5.0).unwrap();
+    b.ws.set_row_view_position(&db, &r1, "other", 7.5).unwrap();
+    b.ws.set_row_view_position(&db, &r2, "board", 4.0).unwrap();
+    b.ws.set_cell(&db, &r1, "status", json!("done")).unwrap();
+    a.sync();
+    assert!(b.sync().conflicts.is_empty());
+    settle(&[&a, &b]);
+    for d in [&a, &b] {
+        let one = d.ws.read_row(&db, &r1).unwrap();
+        assert_eq!(one.view_positions["board"], 5.0);
+        assert_eq!(one.view_positions["other"], 7.5);
+        assert_eq!(one.cells["status"], "done");
+        assert_eq!(d.ws.read_row(&db, &r2).unwrap().view_positions["board"], 4.0);
+    }
+    assert_converged(&[&a, &b]);
+}
+
+#[test]
 fn deleting_a_row_that_was_edited_elsewhere_keeps_the_row() {
     let net = Net::new();
     let a = net.device("a");

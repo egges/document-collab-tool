@@ -590,6 +590,16 @@ impl Workspace {
         Ok(Row::from_meta(row, &meta, self.title_column_id(db).as_deref()))
     }
 
+    /// Put a row at `position` in a view that orders its rows by hand (a
+    /// board whose cards are dragged): `row.positions.<view>` in its
+    /// meta.json. Other views keep their order.
+    pub fn set_row_view_position(&self, db: &str, row: &str, view: &str, position: f64) -> Result<()> {
+        self.read_row(db, row)?;
+        self.update_json(&self.page_dir(row).join(PAGE_META), |meta| {
+            object_field(object_field(meta, ROW_FIELD), "positions").insert(view.into(), json!(position));
+        })
+    }
+
     /// Set a row's cell: the property of its page, keyed by column id, or
     /// its page's title for the title column.
     pub fn set_cell(&self, db: &str, row: &str, column: &str, value: Value) -> Result<()> {
@@ -861,7 +871,7 @@ pub fn page_name(meta: &Value) -> &str {
 pub const TITLE_COLUMN: &str = "title";
 
 /// The field of a row's meta.json that makes it a row:
-/// `{"database": "<db-id>", "position": <sort key>}`.
+/// `{"database": "<db-id>", "position": <sort key>, "positions": {"<view-id>": <sort key>}}`.
 pub const ROW_FIELD: &str = "row";
 
 /// The database a page is a row of, from its meta.json.

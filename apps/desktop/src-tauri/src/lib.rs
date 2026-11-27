@@ -164,6 +164,7 @@ pub fn run() {
             databases::delete_column,
             databases::add_row,
             databases::set_cell,
+            databases::set_row_positions,
             databases::delete_row,
             commands::dev_info,
             commands::dev_log_entries,

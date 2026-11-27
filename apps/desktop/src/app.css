@@ -2600,6 +2600,7 @@ button.workspace-name[aria-expanded="true"] {
 .board[data-dragging] {
   cursor: grabbing;
   user-select: none;
+  -webkit-user-select: none;
 }
 
 .board-lane {
@@ -2658,9 +2659,12 @@ button.workspace-name[aria-expanded="true"] {
   font-size: 13px;
 }
 
+/* A press on a card starts a drag, never a text selection. */
 .board-card {
   cursor: pointer;
   touch-action: none;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .board-card:hover {
@@ -2674,6 +2678,16 @@ button.workspace-name[aria-expanded="true"] {
 
 .board-card.dragging {
   opacity: 0.35;
+}
+
+/* Where a dragged card would land. Its margins take up the gap it adds, so no card moves. */
+.board-drop {
+  flex: none;
+  height: 2px;
+  margin: -4px 0;
+  border-radius: 1px;
+  background: var(--accent);
+  pointer-events: none;
 }
 
 .board-ghost {

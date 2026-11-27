@@ -400,6 +400,10 @@ export interface Column {
 
 export interface Row {
   id: string;
+  /** Sort key for the row order (the order a database's `rows` are in); null sorts last. */
+  position: number | null;
+  /** Sort keys in views ordered by hand (a board's cards), by view id; see boards.ts. */
+  positions: Record<string, number>;
   /**
    * Keyed by column id; an empty cell has no key. May hold cells of removed
    * columns, or a value of another type than its column's after a type change.
@@ -447,6 +451,9 @@ export const dbApi = {
   /** null empties the cell. A select value that isn't a choice yet becomes one. */
   setCell: (db: string, row: string, column: string, value: CellValue | null) =>
     invoke<void>("set_cell", { db, row, column, value }),
+  /** Put rows at positions in a view ordered by hand, by row id. */
+  setRowPositions: (db: string, view: string, positions: Record<string, number>) =>
+    invoke<void>("set_row_positions", { db, view, positions }),
   deleteRow: (db: string, row: string) => invoke<void>("delete_row", { db, row }),
 };
 

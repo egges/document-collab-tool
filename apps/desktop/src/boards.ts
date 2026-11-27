@@ -1,6 +1,6 @@
 // What the board view does with rows, kept apart from React so it can be
-// tested: which columns a board can group by, the lanes, and what a card
-// shows.
+// tested: which columns a board can group by, the lanes, the order of the
+// cards and where a dropped one goes, and what a card shows.
 import type { CellValue, Column, Database, Row, View } from "./api.ts";
 import { cellText, fits, optionTone } from "./databases.ts";
 
@@ -61,6 +61,48 @@ export function lanes(rows: Row[], column: Column): Lane[] {
     byValue.get(value)!.rows.push(row);
   }
   return [...(empty.rows.length ? [empty] : []), ...byValue.values()];
+}
+
+/**
+ * A row's sort key in a view ordered by hand: where it was last dropped in
+ * that view, else its place in the database (the time it was added), so a
+ * card that was never dragged sits where its row does, and a new one comes
+ * last.
+ */
+function orderKey(row: Row, view: string): number {
+  return row.positions[view] ?? row.position ?? Infinity;
+}
+
+/** Rows in a view's own order. `rows` are in the database's order, which settles ties. */
+export function viewOrder(rows: Row[], view: string): Row[] {
+  const key = new Map(rows.map((r) => [r.id, orderKey(r, view)]));
+  return [...rows].sort((a, b) => {
+    const [ka, kb] = [key.get(a.id)!, key.get(b.id)!];
+    return ka < kb ? -1 : ka > kb ? 1 : 0;
+  });
+}
+
+/**
+ * The positions, by row id, that put `row` before the card at `index` of
+ * `cards`: a lane's other cards, in order (`index` past the end: last).
+ * Nearly always one position, halfway between its new neighbours, so a
+ * move changes one number in one file; none when the row sorts there
+ * already. Neighbours that leave no room between them (cards without a
+ * position, or after very many drops in one spot) get the lane numbered
+ * again.
+ */
+export function dropPositions(cards: Row[], index: number, row: Row, view: string): Record<string, number> {
+  const before = cards[index - 1];
+  const after = cards[index];
+  const low = before ? orderKey(before, view) : -Infinity;
+  const high = after ? orderKey(after, view) : Infinity;
+  const fits = (key: number) => Number.isFinite(key) && low < key && key < high;
+  if (fits(orderKey(row, view)) || (!before && !after)) return {};
+  const key = !before ? high - 1 : !after ? low + 1 : (low + high) / 2;
+  if (fits(key)) return { [row.id]: key };
+  const start = cards.map((c) => orderKey(c, view)).find(Number.isFinite) ?? 0;
+  const order = [...cards.slice(0, index), row, ...cards.slice(index)];
+  return Object.fromEntries(order.map((r, i) => [r.id, start + i]));
 }
 
 /** The column whose cell is a card's title: the title column, which every database has. */

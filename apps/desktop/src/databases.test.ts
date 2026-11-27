@@ -2,6 +2,7 @@ import { expect, test } from "vitest";
 import type { Column, Row } from "./api.ts";
 import { cellText, fits, movedPosition, newColumnName, optionTone, parseCell, sortRows } from "./databases.ts";
 
+const row = (id: string, cells: Row["cells"] = {}): Row => ({ id, cells, position: null, positions: {} });
 const col = (id: string, position: number | null, extra: Partial<Column> = {}): Column => ({
   id,
   name: id,
@@ -31,17 +32,13 @@ test("values of another type show as they are", () => {
 });
 
 test("sorting puts empty cells last both ways, numbers by value and choices in their order", () => {
-  const rows: Row[] = [
-    { id: "a", cells: { n: 10, s: "Done" } },
-    { id: "b", cells: {} },
-    { id: "c", cells: { n: 9, s: "Todo" } },
-  ];
+  const rows: Row[] = [row("a", { n: 10, s: "Done" }), row("b"), row("c", { n: 9, s: "Todo" })];
   const n = col("n", 0, { type: "number" });
   expect(sortRows(rows, n, "asc").map((r) => r.id)).toEqual(["c", "a", "b"]);
   expect(sortRows(rows, n, "desc").map((r) => r.id)).toEqual(["a", "c", "b"]);
   const s = col("s", 1, { type: "select", options: ["Todo", "Done"] });
   expect(sortRows(rows, s, "asc").map((r) => r.id)).toEqual(["c", "a", "b"]);
-  const text: Row[] = [{ id: "x", cells: { t: "item 10" } }, { id: "y", cells: { t: "Item 9" } }];
+  const text: Row[] = [row("x", { t: "item 10" }), row("y", { t: "Item 9" })];
   expect(sortRows(text, col("t", 0), "asc").map((r) => r.id)).toEqual(["y", "x"]);
 });
 
