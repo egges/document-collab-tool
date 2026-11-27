@@ -155,8 +155,8 @@ that those two jobs need (marked **First**).
       view, for everyone, as in Notion. A page whose database was deleted
       elsewhere says so and offers to show a new or existing one. Deleting
       a database page deletes its database too, unless another page shows
-      it. Still to come: filters and more view types (list, calendar).
-      Card order is its own item below.
+      it. Still to come: more view types (list, calendar). Card order,
+      filters and more column types are their own items below.
 - [x] **Rows as pages, and properties on every page.** Every row of a
       database is a page, as in Notion: open it from the table (the button
       by its row number) or by clicking its card on a board. Its title is
@@ -208,6 +208,64 @@ that those two jobs need (marked **First**).
       doesn't call it yet.
 - [ ] **Side peek.** Nice to have: open a row beside the table or board
       instead of in full.
+- [ ] **Trash.** Deleting a page (or a database page with its rows) puts
+      it in a Trash at the bottom of the sidebar instead of removing it for
+      good, with "Restore" and "Delete forever". Wanted before agents
+      write to real pages. Git already keeps the deleted files, so the
+      Trash can list deletions from the history and restore a page from
+      the last version before it was deleted, with its subpages and
+      `assets/`, back under its old parent (or at the top level if that's
+      gone too).
+- [ ] **Page history.** A timeline for each page, read from the history:
+      who changed it (person, device, later agent) and when, what changed,
+      and "Restore this version", which is an ordinary edit that syncs and
+      can itself be undone. Rows are pages, so this covers them too.
+      Undo for an applied agent draft builds on it in step 4.
+- [ ] **Filters.** Each view of a database keeps a filter, for everyone,
+      like its sort: conditions on columns ("Status is Needs reply",
+      "Date is before today", "Checkbox is unchecked"), all of which must
+      hold. Kept in the view in the page's `meta.json`. A card dragged on a
+      board into a lane the filter hides disappears, as in Notion.
+- [ ] **More column types.** Multi-select (tags), relation (a link to rows
+      of another database, shown both ways), created time and last
+      edited time. Person comes with People in step 7; formulas and
+      rollups later. Each needs a merge rule in `docsync::database`
+      (multi-select merges as a set) and a cell in `DatabaseCell`.
+- [ ] **Callouts.** A framed block with an icon and a colour, as in
+      Notion, written as a blockquote alert so GitHub and Obsidian show it
+      too:
+      ```markdown
+      > [!NOTE]
+      > Footage for this episode lives on the external drive.
+      ```
+      The five GitHub types (`NOTE`, `TIP`, `IMPORTANT`, `WARNING`,
+      `CAUTION`) each have a fixed icon and colour; any other type
+      (`> [!💡]`) is shown with that emoji. Needs a remark plugin so the
+      marker isn't written back as `\[!NOTE]`, and a Milkdown node. The
+      importer turns Notion's exported callouts (`<aside>` blocks, to be
+      checked against a real export) into callouts.
+- [ ] **Toggles.** A block with a summary line and content folded under
+      it, written as `<details>` so it folds on GitHub too:
+      ```markdown
+      <details>
+      <summary>Agent steps</summary>
+
+      Read 14 emails, drafted 3 replies.
+
+      </details>
+      ```
+      The blank lines keep the content Markdown. Toggle headings use
+      `<summary><h2>…</h2></summary>`. Milkdown keeps raw HTML today but
+      as one opaque chunk, so this needs a node that edits the summary and
+      content in place. Whether a toggle is open is per device, not saved
+      in the page.
+- [ ] **Page icons.** An emoji per page, picked from a menu by the title
+      and shown in the sidebar, the breadcrumb, search and links. Kept as
+      `icon` in the page's `meta.json`, so it syncs.
+- [ ] **Favorites in the sidebar.** "Add to favorites" on a page, and a
+      Favorites section at the top of the sidebar. Favorites are a
+      person's, not the workspace's: kept in this device's settings until
+      People arrive in step 7, then with the person.
 - [x] **Conflict markers in the editor.** A place two devices edited at once
       shows as one framed block: a bar over each version says who wrote it
       ("You" for the reader, otherwise the person's name) and on which
@@ -304,9 +362,9 @@ goes on. It protects that work from development builds.
       marked, the rows added. Apply, ask for changes (the agent continues on
       the same draft) or discard
       ([product-design.md](product-design.md#drafts-and-review)).
-- [ ] **Page history and undo.** A timeline for each page: who or what
-      changed it (person, device or agent) and when, with what changed and
-      "restore this version". Undo for a draft that was applied.
+- [ ] **Undo an applied draft.** Put back every page a draft changed in
+      one step, using page history from step 3, with the agent's changes
+      shown in that history.
 
 ## 5. Agents as files
 
@@ -533,8 +591,8 @@ Not on the path above. Picked up when something needs them or there is room.
 
 ### History
 
-Git already has every version. Page history and undo are in step 4, "What
-changed" in step 7.
+Git already has every version. Trash and page history are in step 3, undo
+for an applied draft in step 4, "What changed" in step 7.
 
 - [ ] **Clearing history.** Start the history again from the current pages:
       one commit with no parents, and a "history was reset" marker that other
