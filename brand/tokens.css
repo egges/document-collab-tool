@@ -1,0 +1,91 @@
+/*
+ * Sawmill brand colours and fonts as CSS variables.
+ *
+ * This file is the reference copy of the palette in README.md. Nothing in
+ * the app imports it yet; README.md says how the colours map onto the
+ * variables the app uses today.
+ */
+
+:root {
+  /* Core */
+  --sawmill-ink: #14213d;
+  --sawmill-amber: #fca311;
+  --sawmill-paper: #f7f7f2;
+  --sawmill-white: #ffffff;
+
+  /* Neutrals, dark to light */
+  --sawmill-ink-900: #0c1426;
+  --sawmill-ink-800: #14213d;
+  --sawmill-ink-700: #25324f;
+  --sawmill-ink-600: #3b4865;
+  --sawmill-slate-500: #5f6b85;
+  --sawmill-slate-400: #8f98ad;
+  --sawmill-slate-300: #c3c8d4;
+  --sawmill-mist-200: #e4e4dd;
+  --sawmill-mist-100: #eeeee7;
+  --sawmill-paper-50: #f7f7f2;
+
+  /* Amber scale */
+  --sawmill-amber-700: #9a5600;
+  --sawmill-amber-600: #d98200;
+  --sawmill-amber-500: #fca311;
+  --sawmill-amber-200: #ffdd9e;
+  --sawmill-amber-100: #fff2d9;
+
+  /* Status */
+  --sawmill-success: #1b6b43;
+  --sawmill-success-soft: #e0f2e7;
+  --sawmill-danger: #b42f25;
+  --sawmill-danger-soft: #fbe6e3;
+  --sawmill-info: #255f9c;
+  --sawmill-info-soft: #e3edf8;
+
+  /* Fonts. The wordmark itself is outlined in the logo files. */
+  --sawmill-font-ui: "Inter Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --sawmill-font-display: "Fraunces Variable", "Fraunces", Georgia, serif;
+}
+
+/* Roles on a light background. */
+:root {
+  --sawmill-bg: var(--sawmill-white);
+  --sawmill-bg-side: var(--sawmill-paper);
+  --sawmill-surface: var(--sawmill-white);
+  --sawmill-text: var(--sawmill-ink);
+  --sawmill-text-secondary: var(--sawmill-ink-600);
+  --sawmill-text-muted: var(--sawmill-slate-500);
+  --sawmill-border: var(--sawmill-mist-200);
+  --sawmill-border-strong: var(--sawmill-slate-300);
+  --sawmill-hover: var(--sawmill-mist-100);
+  --sawmill-selected: var(--sawmill-amber-100);
+  --sawmill-focus-ring: var(--sawmill-amber-200);
+  --sawmill-primary: var(--sawmill-ink);
+  --sawmill-primary-text: var(--sawmill-white);
+  --sawmill-accent: var(--sawmill-amber);
+  --sawmill-accent-text: var(--sawmill-amber-700);
+}
+
+/* Roles on a dark background. */
+:root[data-theme="dark"] {
+  --sawmill-bg: #0c1426;
+  --sawmill-bg-side: #14213d;
+  --sawmill-surface: #1d2b4a;
+  --sawmill-text: #f1f1ea;
+  --sawmill-text-secondary: #c3c8d4;
+  --sawmill-text-muted: #9aa3b8;
+  --sawmill-border: #2e3b5a;
+  --sawmill-border-strong: #47526e;
+  --sawmill-hover: #1d2b4a;
+  --sawmill-selected: #2a3350;
+  --sawmill-focus-ring: #9a5600;
+  --sawmill-primary: var(--sawmill-amber);
+  --sawmill-primary-text: var(--sawmill-ink);
+  --sawmill-accent: var(--sawmill-amber);
+  --sawmill-accent-text: var(--sawmill-amber);
+
+  --sawmill-success: #5fd39a;
+  --sawmill-success-soft: #16352b;
+  --sawmill-danger: #ff8a7a;
+  --sawmill-danger-soft: #3a1e1f;
+  --sawmill-info: #7fb4f0;
+  --sawmill-info-soft: #17294a;
+}

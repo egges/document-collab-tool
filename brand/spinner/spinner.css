@@ -1,0 +1,57 @@
+/*
+ * The spinning saw: Sawmill's "in progress" indicator.
+ *
+ * Use saw-spinner.svg at 32px and larger, saw-spinner-small.svg below that.
+ * Both draw in currentColor, so `color` sets the colour of the blade.
+ * See demo.html for the markup.
+ */
+
+.saw-spinner {
+  display: inline-block;
+  flex: none;
+  color: #fca311; /* Amber */
+  animation: saw-spin 1.4s linear infinite;
+}
+
+/* Inside buttons and muted text the blade takes the text colour. */
+.saw-spinner--inherit {
+  color: inherit;
+}
+
+/* The two sparkles stay in place and twinkle while the blade turns. */
+.saw-sparkle {
+  animation: saw-twinkle 1.6s ease-in-out infinite;
+}
+
+.saw-sparkle + .saw-sparkle {
+  animation-delay: 0.8s;
+}
+
+@keyframes saw-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes saw-twinkle {
+  0%,
+  100% {
+    opacity: 0.25;
+    transform: scale(0.7);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+/* People who ask for less motion get a very slow turn and still sparkles. */
+@media (prefers-reduced-motion: reduce) {
+  .saw-spinner {
+    animation-duration: 8s;
+  }
+
+  .saw-sparkle {
+    animation: none;
+  }
+}
