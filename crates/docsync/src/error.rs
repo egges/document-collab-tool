@@ -34,6 +34,15 @@ pub enum Error {
     #[error("{0}")]
     DifferentWorkspace(String),
 
+    /// The workspace, or changes to it from another device, are in a newer
+    /// format than this version knows (see
+    /// [`crate::WORKSPACE_FORMAT`]). Nothing was changed; a newer
+    /// version of the app can open and sync it.
+    #[error(
+        "this workspace was saved by a newer version of the app (format {found}; this version reads up to {supported}). Update the app to open and sync it"
+    )]
+    NewerFormat { found: u32, supported: u32 },
+
     /// The repository is in a state the engine does not manage
     /// (detached HEAD, wrong branch, missing commits, ...).
     #[error("invalid repository state: {0}")]

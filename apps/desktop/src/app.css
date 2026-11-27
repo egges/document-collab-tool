@@ -1119,6 +1119,10 @@ button.workspace-name[aria-expanded="true"] {
   border-top: 1px solid var(--border);
 }
 
+.sidebar-footer .update-ready {
+  color: var(--accent);
+}
+
 .tree {
   flex: 1;
   overflow-y: auto;

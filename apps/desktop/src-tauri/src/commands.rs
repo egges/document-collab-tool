@@ -1504,6 +1504,16 @@ pub async fn dev_log_clear() -> CmdResult<()> {
     Ok(())
 }
 
+/// Show the log file in Finder (or the system's file manager).
+#[tauri::command]
+pub async fn show_log_file() -> CmdResult<()> {
+    let path = devlog::file_path().ok_or_else(|| "There is no log file.".to_string())?;
+    blocking("show_log_file", move || {
+        tauri_plugin_opener::reveal_item_in_dir(&path).map_err(text)
+    })
+    .await
+}
+
 /// An entry from the window (saves, reloads, errors it showed).
 #[tauri::command]
 pub async fn dev_log_add(level: Level, source: String, message: String) -> CmdResult<()> {

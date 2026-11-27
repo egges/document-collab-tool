@@ -207,25 +207,28 @@ than shipping our own agent.
 Done first, so an installed version can hold real work while development
 goes on. It protects that work from development builds.
 
-- [ ] **Separate development and release builds.** The release uses the
+- [x] **Separate development and release builds.** The release uses the
       identifier `dev.pagemesh.app` (decided 2026-11-26, replacing
       `dev.documentcollabtool.desktop`). It sets the data folder and the
       keychain service, so it stays even if the product name changes.
       Development builds get their own identifier (`dev.pagemesh.app.dev`),
       name and icon, so they never open or change the workspaces of the
       installed app.
-- [ ] **Workspace format version.** A format version in `workspace.json`.
+- [x] **Workspace format version.** A format version in `workspace.json`.
       An app that finds a newer version than it knows says "Update Pagemesh
       to open this workspace" instead of reading or syncing it, and every
       format change comes with a migration. Needed because the installed
       app and development builds sync the same workspaces.
-- [ ] **Releases.** Pushing a tag (`v0.2.0`) makes GitHub Actions build the
-      app and attach it to a GitHub Release (extending `app.yml`).
-- [ ] **Automatic updates.** Tauri's updater plugin, reading GitHub
+- [x] **Releases.** Pushing a tag (`v0.2.0`) makes GitHub Actions build the
+      app and publish it as a GitHub Release (`release.yml`), for Apple
+      Silicon Macs for now. The repository becomes public for this, so the
+      installed app can read the releases
+      ([apps/desktop/README.md](../apps/desktop/README.md#releases)).
+- [x] **Automatic updates.** Tauri's updater plugin, reading GitHub
       Releases, with its own signing key. macOS code signing and
       notarization wait for the internal release in step 7 (there is no
       Apple Developer account yet, as of 2026-11-26).
-- [ ] **A stable signature without Apple.** Until then, macOS builds are
+- [x] **A stable signature without Apple.** Until then, macOS builds are
       signed with a self-made code-signing certificate, kept as a CI
       secret. macOS ties keychain access to the app's signature, and the
       throwaway signature an unsigned build gets changes with every build,
@@ -233,9 +236,9 @@ goes on. It protects that work from development builds.
       the keychain. The first install needs "Open Anyway" in System
       Settings › Privacy & Security once; updates installed by the app
       don't.
-- [ ] **Logs.** A log file reachable from the app's menu, and the full
-      output of each agent run kept in `.docsync/`, so problems found in
-      daily use can be traced.
+- [x] **Logs.** A log file, shown from Settings › About, so problems found
+      in daily use can be traced. Still to come with the Claude Code
+      adapter: the full output of each agent run, kept in `.docsync/`.
 
 ### Agents
 

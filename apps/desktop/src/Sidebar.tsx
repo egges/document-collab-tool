@@ -1,5 +1,16 @@
 import { useMemo, useRef, useState } from "react";
-import { ChevronDown, ChevronRight, FileText, Files, Plus, Search, Settings, Sheet, SquareTerminal } from "lucide-react";
+import {
+  ChevronDown,
+  ChevronRight,
+  CircleArrowUp,
+  FileText,
+  Files,
+  Plus,
+  Search,
+  Settings,
+  Sheet,
+  SquareTerminal,
+} from "lucide-react";
 import type { PageSummary, SyncStatus, WorkspaceInfo } from "./api.ts";
 import { ImportMenu } from "./ImportMenu.tsx";
 import { childrenOf } from "./pageTree.ts";
@@ -33,6 +44,9 @@ interface SidebarProps {
   onResize: (width: number) => void;
   /** Set when the developer panel is available. */
   onOpenDevPanel?: () => void;
+  /** A newer version installed in the background, waiting for a restart. */
+  updateVersion: string | null;
+  onRestartToUpdate: () => void;
 }
 
 export function Sidebar(props: SidebarProps) {
@@ -96,6 +110,16 @@ export function Sidebar(props: SidebarProps) {
               onSwitch={props.onSwitch}
               onOpenSettings={() => props.onOpenSettings("workspace")}
             />
+            {props.updateVersion && (
+              <button
+                className="icon-button update-ready"
+                title={`Restart to update to version ${props.updateVersion}`}
+                aria-label="Restart to update"
+                onClick={props.onRestartToUpdate}
+              >
+                <CircleArrowUp size={15} />
+              </button>
+            )}
             <button
               className="icon-button"
               title={tip("Settings", "openSettings")}

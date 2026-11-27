@@ -475,6 +475,16 @@ export const devApi = {
   entries: () => invoke<LogEntry[]>("dev_log_entries"),
   clear: () => invoke<void>("dev_log_clear"),
   add: (level: LogLevel, source: string, message: string) => invoke<void>("dev_log_add", { level, source, message }),
+  /** Show the log file, which every build writes, in Finder. */
+  showLogFile: () => invoke<void>("show_log_file"),
+};
+
+/** Release builds update themselves in the background: see src-tauri/src/updater.rs. */
+export const updates = {
+  /** The version installed and waiting for a restart, if any. */
+  ready: () => invoke<string | null>("update_ready"),
+  /** Restart into it. Save the open page first. */
+  restart: () => invoke<void>("restart_to_update"),
 };
 
 export const events = {
@@ -490,6 +500,9 @@ export const events = {
   /** The browser sign-in moved on to GitHub's install page. */
   onGitHubSignInStep: (handler: (step: "install") => void): Promise<UnlistenFn> =>
     listen<"install">("github-sign-in-step", (e) => handler(e.payload)),
+  /** A newer version was installed and runs from the next start. */
+  onUpdateReady: (handler: (version: string) => void): Promise<UnlistenFn> =>
+    listen<string>("update-ready", (e) => handler(e.payload)),
   onDevLog: (handler: (entry: LogEntry) => void): Promise<UnlistenFn> =>
     listen<LogEntry>("dev-log", (e) => handler(e.payload)),
 };
