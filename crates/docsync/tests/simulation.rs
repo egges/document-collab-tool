@@ -80,8 +80,21 @@ fn page_key(id: &str) -> String {
 fn db_key(id: &str) -> String {
     format!("databases/{id}")
 }
+/// The oracle's name for a row: rows are pages, but a database's deletion
+/// may remove them.
 fn row_key(db: &str, row: &str) -> String {
     format!("databases/{db}/rows/{row}")
+}
+/// Where a row's cells are.
+fn row_file(row: &str) -> String {
+    format!("pages/{row}/meta.json")
+}
+
+/// Pages that aren't database rows.
+fn plain_pages(ws: &docsync::Workspace) -> Vec<String> {
+    let mut pages = ws.list_pages().unwrap();
+    pages.retain(|p| ws.find_row(p).is_none());
+    pages
 }
 
 fn pick<'a, T>(rng: &mut ChaCha8Rng, items: &'a [T]) -> Option<&'a T> {
@@ -119,7 +132,7 @@ impl Oracle {
 
     fn step(&mut self, net: &Net, d: &Device, rng: &mut ChaCha8Rng) {
         let ws = &d.ws;
-        let pages = ws.list_pages().unwrap();
+        let pages = plain_pages(ws);
         let dbs = ws.list_databases().unwrap();
         let before = d.head();
         let mut wrote: Vec<(String, Option<Field>)> = Vec::new();
@@ -201,8 +214,10 @@ impl Oracle {
                     .entry((row_key(&db, &row), "name".into()))
                     .or_default()
                     .insert(value.to_string());
-                let file = format!("{}.json", row_key(&db, &row));
-                wrote.push((row_key(&db, &row), Field::new(file, &["cells", "name"], &value)));
+                wrote.push((
+                    row_key(&db, &row),
+                    Field::new(row_file(&row), &["properties", "name"], &value),
+                ));
             }
             70..79 => {
                 let db = pick(rng, &dbs).unwrap().clone();
@@ -218,8 +233,10 @@ impl Oracle {
                         .entry((row_key(&db, &row), key.into()))
                         .or_default()
                         .insert(value.to_string());
-                    let file = format!("{}.json", row_key(&db, &row));
-                    wrote.push((row_key(&db, &row), Field::new(file, &["cells", key], &value)));
+                    wrote.push((
+                        row_key(&db, &row),
+                        Field::new(row_file(&row), &["properties", key], &value),
+                    ));
                 } else {
                     ws.delete_row(&db, &row).unwrap();
                     self.deletions.push((row_key(&db, &row), before));
@@ -354,7 +371,7 @@ impl Oracle {
                 );
             }
         };
-        for page in d.ws.list_pages().unwrap() {
+        for page in plain_pages(&d.ws) {
             check_values(
                 page_key(&page),
                 &d.ws.read_page_meta(&page).unwrap()["properties"],
@@ -362,7 +379,8 @@ impl Oracle {
         }
         for db in d.ws.list_databases().unwrap() {
             for row in d.ws.list_rows(&db).unwrap() {
-                check_values(row_key(&db, &row), &d.ws.read_row(&db, &row).unwrap()["cells"]);
+                let cells = Value::Object(d.ws.read_row(&db, &row).unwrap().cells);
+                check_values(row_key(&db, &row), &cells);
             }
         }
     }

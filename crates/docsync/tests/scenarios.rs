@@ -429,7 +429,7 @@ fn rows_edited_on_different_devices_merge() {
     assert!(b.sync().conflicts.is_empty());
     settle(&[&a, &b]);
     assert_eq!(
-        a.ws.read_row(&db, &r1).unwrap()["cells"],
+        serde_json::Value::Object(a.ws.read_row(&db, &r1).unwrap().cells),
         json!({"name": "one (renamed)", "status": "done"})
     );
     assert!(a.ws.row_exists(&db, &r2));
@@ -449,9 +449,11 @@ fn deleting_a_row_that_was_edited_elsewhere_keeps_the_row() {
     b.ws.set_cell(&db, &row, "name", json!("y")).unwrap();
     a.sync();
     let report = b.sync();
-    assert_eq!(report.conflicts[0].resolution, Resolution::KeptEditOverDelete);
+    // A row is a page: it comes back whole, text and all.
+    assert_eq!(report.conflicts[0].resolution, Resolution::RestoredDeleted);
     settle(&[&a, &b]);
-    assert_eq!(a.ws.read_row(&db, &row).unwrap()["cells"]["name"], "y");
+    assert_eq!(a.ws.read_row(&db, &row).unwrap().cells["name"], "y");
+    assert!(a.ws.read_body(&row).is_ok());
 }
 
 #[test]
@@ -476,6 +478,56 @@ fn deleting_a_database_while_a_row_is_added_elsewhere_restores_the_database() {
         "schema must come back with the new row"
     );
     assert!(a.ws.row_exists(&db, &r1) && a.ws.row_exists(&db, &r2));
+    assert_converged(&[&a, &b]);
+}
+
+#[test]
+fn deleting_a_database_while_a_row_is_edited_elsewhere_restores_every_row() {
+    let net = Net::new();
+    let a = net.device("a");
+    let db = a.ws.create_database("Tasks", &["name"]).unwrap();
+    let edited =
+        a.ws.add_row(&db, json!({"name": "x"}).as_object().unwrap().clone())
+            .unwrap();
+    let untouched =
+        a.ws.add_row(&db, json!({"name": "y"}).as_object().unwrap().clone())
+            .unwrap();
+    a.ws.write_body(&untouched, "Its text\n").unwrap();
+    a.sync();
+    let b = net.device("b");
+    a.ws.delete_database(&db).unwrap();
+    b.ws.set_cell(&db, &edited, "name", json!("x2")).unwrap();
+    // Swap the order: the deleting device merges this time.
+    b.sync();
+    a.sync();
+    settle(&[&a, &b]);
+    for d in [&a, &b] {
+        assert!(d.ws.database_exists(&db));
+        assert_eq!(d.ws.read_row(&db, &edited).unwrap().cells["name"], "x2");
+        assert_eq!(d.ws.read_body(&untouched).unwrap(), "Its text\n");
+    }
+    assert_converged(&[&a, &b]);
+}
+
+#[test]
+fn deleting_a_database_while_an_unrelated_page_is_edited_deletes_its_rows() {
+    let net = Net::new();
+    let a = net.device("a");
+    let db = a.ws.create_database("Tasks", &["name"]).unwrap();
+    let row = a.ws.add_row(&db, Default::default()).unwrap();
+    let page = a.ws.create_page("Notes", None).unwrap();
+    a.sync();
+    let b = net.device("b");
+    a.ws.delete_database(&db).unwrap();
+    b.ws.write_body(&page, "Edited\n").unwrap();
+    a.sync();
+    b.sync();
+    settle(&[&a, &b]);
+    for d in [&a, &b] {
+        assert!(!d.ws.database_exists(&db));
+        assert!(!d.ws.page_exists(&row));
+    }
+    assert_converged(&[&a, &b]);
 }
 
 #[test]

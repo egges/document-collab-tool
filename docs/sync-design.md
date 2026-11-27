@@ -13,12 +13,10 @@ its own.
 
 ```text
 workspace.json                      workspace settings: {"format", "name"}
-pages/<page-id>/meta.json           {"id", "title", "parent", "properties": {...}, "display": {...}}
+pages/<page-id>/meta.json           {"id", "title", "parent", "properties": {...}, "display": {...}, "row"?: {...}}
 pages/<page-id>/page.md             page body (Markdown)
 pages/<page-id>/assets/...          attachments
 databases/<db-id>/schema.json       {"id", "name", "columns": {"<col-id>": {"name", "type", "position", "options"}}}
-databases/<db-id>/rows/<row>.json   {"id", "position", "cells": {"<col-id>": value}}
-databases/<db-id>/rows/<row>.md     the row's text: every row is a page too
 .docsync/                           per-device state (search index, caches), git-ignored
 ```
 
@@ -36,8 +34,12 @@ The format is designed so most concurrent edits never conflict:
 Everything stays readable and editable without the app.
 
 **The format has a version:** the `"format"` field of `workspace.json`
-(`docsync::WORKSPACE_FORMAT`, 1 so far; a workspace without the field is
-format 1). A change that older versions of the app would misread raises it
+(`docsync::WORKSPACE_FORMAT`, now 2; a workspace without the field is
+format 1). Format 2 made database rows pages of their own; format 1 kept
+them in `databases/<db-id>/rows/`. The engine moves a workspace's files to
+the current format when it opens, joins or syncs it, and moves rows in the
+old layout that arrive from a device not yet updated
+(`Workspace::move_rows_into_pages`). A change that older versions of the app would misread raises it
 and comes with a migration. A version that finds a newer format than it
 knows changes nothing: it won't open the workspace, join it, or take in
 changes from a device that has moved it on (`Error::NewerFormat`), and the
@@ -57,11 +59,15 @@ has no key. Reading is lenient: an unknown type reads as text, and the first
 format (`"columns": ["name", ...]`) still reads and is rewritten on the next
 column change (`docsync::database`).
 
-Every database row is a page too, as in Notion: its title is its first
-text column, its other cells are its properties, and its text is
-`rows/<row>.md`, next to its row file. Rows stay in their database's folder,
-so the database is still one entity: deleting it on one device while a row
-is written on another restores the whole database. Any page can have typed
+Every database row is a page, as in Notion: a page like any other in
+`pages/`, with its text, attachments and display options, whose `row` field
+says which database it's in: `{"database": "<db-id>", "position": <n>}`.
+Its cells are its `properties`, keyed by column id, with the database's
+columns as their types; its title is its first text column. Rows don't
+show in the page tree. A row is its own entity for sync, but a database and
+its rows are restored together: deleting a database (which deletes its
+rows) on one device while one of its rows is edited or added on another
+brings back the database with every row it had. Any page can have typed
 properties too: `meta.json` keeps their values in `properties` and their
 types in `property_schema`, in the format of a database's `columns`. A
 value without a type (front matter, an agent) reads as a text property
@@ -133,6 +139,7 @@ other device's changes. The crash tests catch exactly that bug.
 | Field removed on one side, changed on the other | The change wins |
 | File edited on one side, deleted on the other | The edit wins |
 | Page or database deleted on one side, anything in it changed on the other | The whole page or database is restored |
+| Database deleted on one side, one of its rows changed or added on the other | The database is restored with all its rows |
 | Attachment changed on both sides | Newest keeps the path, the other is saved as `name.conflict-<device>-<id>.ext` |
 | JSON invalid on one side (hand-edited) | The valid version wins; the broken one is kept as a conflict copy |
 

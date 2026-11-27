@@ -143,3 +143,97 @@ fn a_folder_remote_in_a_newer_format_is_not_merged() {
     assert!(is_newer_format(b.engine.sync()));
     assert_eq!(b.engine.head().unwrap(), before);
 }
+
+/// Write a database with one row the way format 1 kept it.
+fn write_format_1_row(root: &Path) {
+    write_format(root, 1);
+    let db = root.join("databases/d1");
+    fs::create_dir_all(db.join("rows")).unwrap();
+    fs::write(
+        db.join("schema.json"),
+        br#"{"id": "d1", "name": "Tasks", "columns": {"name": {"name": "Name", "type": "text", "position": 0}}}"#,
+    )
+    .unwrap();
+    fs::write(
+        db.join("rows/r1.json"),
+        br#"{"id": "r1", "position": 5, "cells": {"name": "Write"}, "display": {"width": "full"}}"#,
+    )
+    .unwrap();
+    fs::write(db.join("rows/r1.md"), b"Notes\n").unwrap();
+}
+
+fn assert_moved(a: &common::Device) {
+    let root = a.root();
+    assert!(!root.join("databases/d1/rows").exists());
+    assert_eq!(a.ws.find_row("r1").as_deref(), Some("d1"));
+    let row = a.ws.read_row("d1", "r1").unwrap();
+    assert_eq!(row.position, Some(5.0));
+    assert_eq!(row.cells["name"], "Write");
+    assert_eq!(a.ws.read_body("r1").unwrap(), "Notes\n");
+    assert_eq!(a.ws.read_page_meta("r1").unwrap()["display"]["width"], "full");
+    let head = a.engine.head().unwrap().unwrap();
+    assert_eq!(a.engine.format_at(&head).unwrap(), WORKSPACE_FORMAT);
+    let status = common::git_command()
+        .arg("-C")
+        .arg(root)
+        .args(["status", "--porcelain"])
+        .output()
+        .unwrap();
+    assert!(
+        status.stdout.is_empty(),
+        "uncommitted: {}",
+        String::from_utf8_lossy(&status.stdout)
+    );
+}
+
+#[test]
+fn opening_a_format_1_workspace_moves_its_rows_into_pages() {
+    let net = Net::new();
+    let a = net.device("a");
+    write_format_1_row(a.root());
+    a.commit();
+    let a = net.reopen(a);
+    assert_moved(&a);
+}
+
+#[test]
+fn rows_in_the_old_layout_that_arrive_by_sync_are_moved() {
+    let net = Net::new();
+    let a = net.device("a");
+    a.sync();
+    let b = net.device("b");
+    // As if `a` were still an older version of the app: committed and
+    // pushed without the engine, which would move the rows first.
+    write_format_1_row(a.root());
+    let git = |args: &[&str]| {
+        let out = common::git_command()
+            .arg("-C")
+            .arg(a.root())
+            .args(args)
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "git {args:?}: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    };
+    git(&["add", "-A"]);
+    git(&[
+        "-c",
+        "user.name=Old",
+        "-c",
+        "user.email=old@example.com",
+        "commit",
+        "-q",
+        "-m",
+        "Old app",
+    ]);
+    git(&["push", "-q", "origin", "main"]);
+    b.sync();
+    assert_moved(&b);
+    // And the upgrade reaches the other device.
+    b.sync();
+    a.sync();
+    assert_moved(&a);
+}

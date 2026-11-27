@@ -10,6 +10,7 @@
 //! | Same opaque file edited                | Most recent wins, other kept as a copy      |
 //! | File edited on one side, deleted on other | The edit wins                            |
 //! | Page/database deleted, edited elsewhere | The whole entity is restored               |
+//! | Database deleted, a row of it edited or added elsewhere | The database and its rows are restored |
 //!
 //! Nothing here touches the working tree, so a crash at any point leaves the
 //! repository exactly as it was.
@@ -20,7 +21,7 @@ use std::path::Path;
 
 use serde_json::Value;
 
-use crate::git::{BlobRef, CommitInfo, ConflictEntry, GitBackend, Oid, TreeEdit};
+use crate::git::{BlobRef, CommitInfo, ConflictEntry, GitBackend, Oid, TreeEdit, TreeEntry};
 use crate::json_merge::{self, Side};
 use crate::layout::{self, FileKind};
 use crate::text_merge::{VersionLabel, Writer};
@@ -274,7 +275,10 @@ impl Merger<'_> {
     }
 
     /// A page or database deleted on one side but changed on the other is
-    /// restored as a whole, so it never ends up half-present.
+    /// restored as a whole, so it never ends up half-present. A database
+    /// and its rows (pages of their own) go together: a database deleted on
+    /// one side, with its rows, while one of its rows was changed or added
+    /// on the other comes back with every row it had.
     fn restore_deleted_entities(&mut self, base: &Oid, merged_tree: &Oid) -> Result<()> {
         let entities = |paths: Vec<String>| -> BTreeSet<String> {
             paths
@@ -286,39 +290,107 @@ impl Merger<'_> {
         let ours_changed = entities(self.git.changed_paths(self.repo, base, self.ours)?);
         let theirs_changed = entities(self.git.changed_paths(self.repo, base, self.theirs)?);
 
+        // Entity → the side it's restored from.
+        let mut restore: BTreeMap<String, Oid> = BTreeMap::new();
         for entity in ours_changed.intersection(&theirs_changed) {
-            if self.git.list_tree(self.repo, base, Some(entity))?.is_empty() {
+            if self.is_empty(base, entity)? {
                 continue;
             }
-            let ours = self.git.list_tree(self.repo, self.ours, Some(entity))?;
-            let theirs = self.git.list_tree(self.repo, self.theirs, Some(entity))?;
-            let source = match (ours.is_empty(), theirs.is_empty()) {
-                (true, false) => theirs,
-                (false, true) => ours,
+            match (
+                self.is_empty(self.ours, entity)?,
+                self.is_empty(self.theirs, entity)?,
+            ) {
+                (true, false) => restore.insert(entity.clone(), self.theirs.clone()),
+                (false, true) => restore.insert(entity.clone(), self.ours.clone()),
                 _ => continue,
             };
-
-            let keep: BTreeSet<&str> = source.iter().map(|e| e.path.as_str()).collect();
-            self.edits
-                .retain(|path, _| !layout::is_within(path, entity) || keep.contains(path.as_str()));
-            for entry in self.git.list_tree(self.repo, merged_tree, Some(entity))? {
-                if !keep.contains(entry.path.as_str()) {
-                    self.edits.insert(entry.path, None);
+        }
+        for (deleter, deleted, keeper, kept) in [
+            (self.ours, &ours_changed, self.theirs, &theirs_changed),
+            (self.theirs, &theirs_changed, self.ours, &ours_changed),
+        ] {
+            for database in deleted {
+                let Some(db) = database
+                    .strip_prefix(layout::DATABASES_DIR)
+                    .and_then(|rest| rest.strip_prefix('/'))
+                else {
+                    continue;
+                };
+                if self.is_empty(base, database)?
+                    || !self.is_empty(deleter, database)?
+                    || self.is_empty(keeper, database)?
+                {
+                    continue;
+                }
+                let mut touched = false;
+                for page in kept.iter().filter(|e| is_page(e)) {
+                    if self.row_database(keeper, page)?.as_deref() == Some(db) {
+                        touched = true;
+                        break;
+                    }
+                }
+                if !touched {
+                    continue;
+                }
+                restore.insert(database.clone(), keeper.clone());
+                for page in deleted.iter().filter(|e| is_page(e)) {
+                    if self.is_empty(deleter, page)?
+                        && !self.is_empty(keeper, page)?
+                        && self.row_database(base, page)?.as_deref() == Some(db)
+                    {
+                        restore.insert(page.clone(), keeper.clone());
+                    }
                 }
             }
-            for entry in &source {
-                self.set(
-                    &entry.path,
-                    &BlobRef {
-                        mode: entry.mode.clone(),
-                        oid: entry.oid.clone(),
-                    },
-                );
-            }
-            self.conflicts.retain(|c| !layout::is_within(&c.path, entity));
-            self.report(entity, Resolution::RestoredDeleted);
+        }
+
+        for (entity, side) in restore {
+            let source = self.git.list_tree(self.repo, &side, Some(&entity))?;
+            self.restore_entity(&entity, &source, merged_tree)?;
         }
         Ok(())
+    }
+
+    /// Put `entity` back as it is in `source`, replacing whatever the merge
+    /// made of it.
+    fn restore_entity(&mut self, entity: &str, source: &[TreeEntry], merged_tree: &Oid) -> Result<()> {
+        let keep: BTreeSet<&str> = source.iter().map(|e| e.path.as_str()).collect();
+        self.edits
+            .retain(|path, _| !layout::is_within(path, entity) || keep.contains(path.as_str()));
+        for entry in self.git.list_tree(self.repo, merged_tree, Some(entity))? {
+            if !keep.contains(entry.path.as_str()) {
+                self.edits.insert(entry.path, None);
+            }
+        }
+        for entry in source {
+            self.set(
+                &entry.path,
+                &BlobRef {
+                    mode: entry.mode.clone(),
+                    oid: entry.oid.clone(),
+                },
+            );
+        }
+        self.conflicts.retain(|c| !layout::is_within(&c.path, entity));
+        self.report(entity, Resolution::RestoredDeleted);
+        Ok(())
+    }
+
+    /// Whether `entity` has no files in `commit`.
+    fn is_empty(&self, commit: &Oid, entity: &str) -> Result<bool> {
+        Ok(self.git.list_tree(self.repo, commit, Some(entity))?.is_empty())
+    }
+
+    /// The database a page is a row of in `commit`, from its meta.json.
+    fn row_database(&self, commit: &Oid, page: &str) -> Result<Option<String>> {
+        let rev = format!("{commit}:{page}/{}", layout::PAGE_META);
+        let Some(blob) = self.git.resolve(self.repo, &rev)? else {
+            return Ok(None);
+        };
+        let bytes = self.git.read_blob(self.repo, &blob)?;
+        Ok(serde_json::from_slice::<Value>(&bytes)
+            .ok()
+            .and_then(|meta| crate::workspace::row_database(&meta).map(str::to_string)))
     }
 
     /// The side whose current value (as seen through `probe`) was set most
@@ -416,4 +488,11 @@ fn commit_writer(commit: &CommitInfo) -> Writer {
 /// after the person when the device isn't known.
 fn copy_label(writer: &Writer) -> Option<String> {
     writer.device.clone().or_else(|| writer.person.clone())
+}
+
+/// Whether an entity (see [`layout::dir_entity`]) is a page.
+fn is_page(entity: &str) -> bool {
+    entity
+        .strip_prefix(layout::PAGES_DIR)
+        .is_some_and(|rest| rest.starts_with('/'))
 }

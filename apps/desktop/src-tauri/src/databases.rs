@@ -69,6 +69,13 @@ pub(crate) fn columns_info(columns: &[docsync::database::Column]) -> Vec<ColumnI
 
 fn list(ws: &Workspace) -> CmdResult<Vec<DatabaseSummary>> {
     let mut all = Vec::new();
+    // One pass over the pages, rather than one per database.
+    let mut rows: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    for page in ws.list_pages().map_err(text)? {
+        if let Some(db) = ws.find_row(&page) {
+            *rows.entry(db).or_default() += 1;
+        }
+    }
     for id in ws.list_databases().map_err(text)? {
         // A schema that doesn't parse still lists, so it can be opened and deleted.
         let schema = ws
@@ -76,7 +83,7 @@ fn list(ws: &Workspace) -> CmdResult<Vec<DatabaseSummary>> {
             .unwrap_or_else(|_| Schema::from_json(&id, &Value::Null));
         all.push(DatabaseSummary {
             columns: schema.columns.len(),
-            rows: ws.list_rows(&id).map_err(text)?.len(),
+            rows: rows.get(&id).copied().unwrap_or_default(),
             name: schema.name,
             id,
         });
@@ -381,9 +388,9 @@ mod tests {
         let row = ws.add_row(&db, Map::new()).unwrap();
         assert!(write_cell(&ws, &db, &row, &count, Some(json!("three"))).is_err());
         write_cell(&ws, &db, &row, &count, Some(json!(3))).unwrap();
-        assert_eq!(ws.read_row(&db, &row).unwrap()["cells"][&count], 3);
+        assert_eq!(ws.read_row(&db, &row).unwrap().cells[&count], 3);
         write_cell(&ws, &db, &row, &count, None).unwrap();
-        assert_eq!(ws.read_row(&db, &row).unwrap()["cells"], json!({}));
+        assert!(ws.read_row(&db, &row).unwrap().cells.is_empty());
         assert!(write_cell(&ws, &db, &row, "nope", Some(json!(1))).is_err());
         assert!(write_cell(&ws, &db, "gone", &count, Some(json!(1))).is_err());
     }

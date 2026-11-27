@@ -114,30 +114,42 @@ fn does_not_recreate_a_page_that_sync_deleted() {
 }
 
 #[test]
-fn a_database_row_is_a_page_with_a_body_beside_its_row_file() {
+fn a_database_row_is_a_page_of_its_own() {
     let net = Net::new();
     let a = net.device("laptop");
     let db = a.ws.create_database("Tasks", &["name"]).unwrap();
     let row = a.ws.add_row(&db, Default::default()).unwrap();
-    assert!(a.ws.has_body(&row) && !a.ws.page_exists(&row));
+    assert!(a.ws.page_exists(&row));
+    assert_eq!(a.ws.find_row(&row).as_deref(), Some(db.as_str()));
     assert_eq!(a.ws.read_body(&row).unwrap(), "");
 
     let write = a.engine.write_page_body(&row, "", "Notes on the task\n").unwrap();
     assert_eq!(write, PageWrite::Written);
-    let path = a.root().join(format!("databases/{db}/rows/{row}.md"));
+    let path = a.root().join(format!("pages/{row}/page.md"));
     assert_eq!(std::fs::read_to_string(&path).unwrap(), "Notes on the task\n");
-    // Its rows are still only the .json files.
     assert_eq!(a.ws.list_rows(&db).unwrap(), [row.as_str()]);
 
     a.ws.set_page_display(&row, "width", Some("full".into())).unwrap();
-    assert_eq!(a.ws.read_row(&db, &row).unwrap()["display"]["width"], "full");
+    assert_eq!(a.ws.read_page_meta(&row).unwrap()["display"]["width"], "full");
 
     a.ws.delete_row(&db, &row).unwrap();
-    assert!(!path.exists() && !a.ws.has_body(&row));
+    assert!(!path.exists() && !a.ws.page_exists(&row));
     assert_eq!(
         a.engine.write_page_body(&row, "", "x\n").unwrap(),
         PageWrite::PageGone
     );
+}
+
+#[test]
+fn deleting_a_database_deletes_its_rows() {
+    let net = Net::new();
+    let a = net.device("laptop");
+    let db = a.ws.create_database("Tasks", &["name"]).unwrap();
+    let row = a.ws.add_row(&db, Default::default()).unwrap();
+    let page = a.ws.create_page("Unrelated", None).unwrap();
+    a.ws.delete_database(&db).unwrap();
+    assert!(!a.ws.page_exists(&row));
+    assert!(a.ws.page_exists(&page));
 }
 
 #[test]
