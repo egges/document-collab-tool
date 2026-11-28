@@ -19,7 +19,7 @@ import { keymap } from "@milkdown/kit/prose/keymap";
 import { BLOCK_KEYS, blockStatePlugin } from "./blocks.ts";
 import { placeholderPlugin } from "./placeholder.ts";
 import { lists } from "./lists.ts";
-import { toggles } from "./toggles.ts";
+import { openOnly, openToggles, toggles } from "./toggles.ts";
 import { type ImageOptions, imagesPlugin } from "./images.ts";
 import { SaveRefusedError, findLostContent } from "./check.ts";
 import { codeBlocks } from "./code/index.ts";
@@ -41,6 +41,10 @@ export interface PageEditorOptions extends ImageOptions {
   handleKeyDown?: (event: KeyboardEvent) => boolean;
   /** Who is reading, so their own versions in a conflict block say "You". Change it with `setReader`. */
   reader?: Reader;
+  /** The toggles to open (keys from `onTogglesChange`); the others start closed. */
+  openToggles?: string[];
+  /** Called when toggles open or close, with the keys of the open ones, to pass back as `openToggles` next time. */
+  onTogglesChange?: (open: string[]) => void;
 }
 
 export interface PageEditor {
@@ -147,9 +151,15 @@ export async function createPageEditor(options: PageEditorOptions): Promise<Page
   let dirty = false;
   let reader = options.reader ?? NOBODY;
 
+  let open = options.openToggles ?? [];
   const updateDirty = () => {
     if (!baseline) return;
     options.onUpdate?.(view);
+    const nowOpen = openToggles(view.state);
+    if (nowOpen.join("\n") !== open.join("\n")) {
+      open = nowOpen;
+      options.onTogglesChange?.(open);
+    }
     const now = !view.state.doc.eq(baseline);
     if (now !== dirty) {
       dirty = now;
@@ -164,6 +174,7 @@ export async function createPageEditor(options: PageEditorOptions): Promise<Page
   const view = editor.action((ctx) => ctx.get(editorViewCtx));
   const parse = editor.action((ctx) => ctx.get(parserCtx));
   const serialize = editor.action((ctx) => ctx.get(serializerCtx));
+  view.dispatch(openOnly(view.state, open));
   baseline = view.state.doc;
   const commands = createCommands(editor);
 
@@ -217,6 +228,8 @@ export async function createPageEditor(options: PageEditorOptions): Promise<Page
       const doc = parse(body);
       view.updateState(EditorState.create({ doc, plugins: view.state.plugins }));
       baseline = view.state.doc;
+      // The toggles that were open stay open.
+      view.dispatch(openOnly(view.state, open));
       pending = null;
       updateDirty();
     },

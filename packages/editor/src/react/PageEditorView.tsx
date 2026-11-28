@@ -28,6 +28,10 @@ export interface PageEditorViewProps extends ImageOptions {
    * device's name. Their own versions in a conflict block are labelled "You".
    */
   reader?: Reader;
+  /** The toggles open when the page opens (keys from `onTogglesChange`). Read once. */
+  openToggles?: string[];
+  /** Called when toggles open or close, with the keys of the open ones. */
+  onTogglesChange?: (open: string[]) => void;
   className?: string;
 }
 
@@ -40,7 +44,19 @@ export type KeyHandler = (event: KeyboardEvent) => boolean;
  * and delete rows and columns) and the frames around conflict blocks. Styles:
  * import "@sawmill/editor/style.css".
  */
-export function PageEditorView({ markdown, onReady, onDirtyChange, onChange, onOpenLink, reader, className, imageSrc, addImage }: PageEditorViewProps) {
+export function PageEditorView({
+  markdown,
+  onReady,
+  onDirtyChange,
+  onChange,
+  onOpenLink,
+  reader,
+  openToggles,
+  onTogglesChange,
+  className,
+  imageSrc,
+  addImage,
+}: PageEditorViewProps) {
   const container = useRef<HTMLDivElement>(null);
   const root = useRef<HTMLDivElement>(null);
   const [editor, setEditor] = useState<PageEditor | null>(null);
@@ -48,9 +64,9 @@ export function PageEditorView({ markdown, onReady, onDirtyChange, onChange, onO
   const [, rerender] = useReducer((n: number) => n + 1, 0);
 
   // Latest callbacks, so the editor is created once but always calls the current ones.
-  const callbacks = useRef({ onReady, onDirtyChange, onChange, onOpenLink, imageSrc, addImage });
+  const callbacks = useRef({ onReady, onDirtyChange, onChange, onOpenLink, onTogglesChange, imageSrc, addImage });
   useLayoutEffect(() => {
-    callbacks.current = { onReady, onDirtyChange, onChange, onOpenLink, imageSrc, addImage };
+    callbacks.current = { onReady, onDirtyChange, onChange, onOpenLink, onTogglesChange, imageSrc, addImage };
   });
   const [dropImage] = useState(() => (file: File) => (callbacks.current.addImage ?? addImage!)(file));
   // The slash menu takes over arrow keys, Enter and Escape while it's open.
@@ -69,6 +85,8 @@ export function PageEditorView({ markdown, onReady, onDirtyChange, onChange, onO
       },
       handleKeyDown: (event) => keyHandler.current(event),
       reader,
+      openToggles,
+      onTogglesChange: (open) => callbacks.current.onTogglesChange?.(open),
       imageSrc: (src) => (callbacks.current.imageSrc ?? ((s: string) => s))(src),
       // Whether images can be added at all is fixed when the editor is made.
       addImage: addImage && ((file) => (callbacks.current.addImage ?? addImage)(file)),

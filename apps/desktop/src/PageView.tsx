@@ -10,6 +10,7 @@ import { log } from "./devlog.ts";
 import { PageProperties, type PropertyActions } from "./PageProperties.tsx";
 import { PageSaver } from "./pageSaver.ts";
 import { imageUrl } from "./pageAssets.ts";
+import { keepOpenToggles, readOpenToggles } from "./openToggles.ts";
 
 export interface PageViewHandle {
   /** Write unsaved edits (title and body). */
@@ -326,6 +327,8 @@ function LoadedPage({ id, initial, diskVersion, reveal, onOpenLink, onRenamed, o
           setConflictsInPage(editor.conflicts.length);
         }}
         onOpenLink={onOpenLink}
+        openToggles={readOpenToggles(id)}
+        onTogglesChange={(open) => keepOpenToggles(id, open)}
         imageSrc={(src) => imageUrl(id, src)}
         addImage={addImage}
       />

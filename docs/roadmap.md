@@ -268,10 +268,10 @@ that those two jobs need (marked **First**).
       </details>
       ```
       A toggle list's summary is just its text. The blank lines keep the
-      content Markdown. Being open is per device and isn't saved: toggles
-      start closed when a page opens. `>` stays the quote shortcut, as in
-      Markdown (Notion uses it for toggles). Still to do (#56): remembering which
-      toggles are open across reopening a page.
+      content Markdown. Being open is per device and isn't saved in the
+      page: a page opens with the toggles open that were open when it was
+      last left on this device, the others closed (#56). `>` stays the quote
+      shortcut, as in Markdown (Notion uses it for toggles).
 - [ ] **Page icons.** An emoji per page, picked from a menu by the title
       and shown in the sidebar, the breadcrumb, search and links. Kept as
       `icon` in the page's `meta.json`, so it syncs.

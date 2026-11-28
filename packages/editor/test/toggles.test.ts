@@ -191,6 +191,52 @@ describe("open and closed", () => {
   });
 });
 
+describe("remembering which are open", () => {
+  /** Opens `markdown` with `openToggles`, and collects what `onTogglesChange` reports. */
+  async function reopen(markdown: string, openToggles?: string[]) {
+    const reported: string[][] = [];
+    const editor = await createPageEditor({
+      root: document.createElement("div"),
+      markdown,
+      openToggles,
+      onTogglesChange: (keys) => reported.push(keys),
+    });
+    return { editor, reported, last: () => reported.at(-1) };
+  }
+
+  const page = `${toggle("Steps", "A.")}\n${toggle("Steps", "B.")}\n${toggle("Notes", "C.")}`;
+
+  test("the toggles left open open again, even with the same line twice", async () => {
+    const first = await reopen(page);
+    first.editor.view.dispatch(setFolded(first.editor.view.state, toggles(first.editor)[1], false));
+    expect(first.last()).toEqual(["1:Steps"]);
+    expect(first.editor.dirty).toBe(false);
+
+    const again = await reopen(page, first.last());
+    expect(folded(again.editor)).toEqual([true, false, true]);
+    expect(again.editor.dirty).toBe(false);
+    expect(again.reported).toEqual([]);
+  });
+
+  test("they still open after edits elsewhere in the page", async () => {
+    const again = await reopen(`New line.\n\n${toggle("Other", "D.")}\n${page}`, ["0:Notes"]);
+    expect(folded(again.editor)).toEqual([true, true, true, false]);
+  });
+
+  test("keys of toggles that are gone are dropped", async () => {
+    const again = await reopen(page, ["0:Gone", "0:Notes"]);
+    expect(folded(again.editor)).toEqual([true, true, false]);
+    again.editor.view.dispatch(setFolded(again.editor.view.state, toggles(again.editor)[0], false));
+    expect(again.last()).toEqual(["0:Steps", "0:Notes"]);
+  });
+
+  test("they stay open when a newer version of the page is loaded", async () => {
+    const { editor } = await reopen(page, ["0:Notes"]);
+    editor.load(`Synced.\n\n${page}`);
+    expect(folded(editor)).toEqual([true, true, false]);
+  });
+});
+
 describe("making toggle headings", () => {
   test("turning text into a toggle heading, which starts open", async () => {
     const editor = await open("Title\n\nAfter.\n");

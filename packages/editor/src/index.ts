@@ -10,7 +10,7 @@ export { LANGUAGES, detectLanguage, findLanguage } from "./code/index.ts";
 export type { Language } from "./code/index.ts";
 export { BLOCK_KEYS, blockAt, isContainer, blockStartingAt, dropTargets, selectedBlock, setDragging } from "./blocks.ts";
 export { indent, outdent } from "./lists.ts";
-export { EMPTY_TOGGLE_HINT, isFolded, setFolded } from "./toggles.ts";
+export { EMPTY_TOGGLE_HINT, isFolded, openOnly, openToggles, setFolded } from "./toggles.ts";
 export type { Block, DropTarget } from "./blocks.ts";
 export {
   DEFAULT_COLUMN_WIDTH,
