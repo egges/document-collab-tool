@@ -24,11 +24,13 @@ export function configureHouseStyle(ctx: Ctx): void {
  * In a tight list item, the blocks in it follow each other without a blank
  * line. A paragraph or table there would read as more of the block before it
  * (a line, a nested list, a quote), and a rule would turn a line before it
- * into a heading, so those get a blank line.
+ * into a heading, so those get a blank line. HTML (a toggle's `<details>`)
+ * runs until a blank line, and its content is only Markdown after one.
  */
-function separateInItem(_left: { type: string }, right: { type: string }, parent: { type: string }): number | undefined {
+function separateInItem(left: { type: string }, right: { type: string }, parent: { type: string }): number | undefined {
   const continues = right.type === "paragraph" || right.type === "table" || right.type === "thematicBreak";
-  return parent.type === "listItem" && continues ? 1 : undefined;
+  const html = left.type === "html" || right.type === "html";
+  return parent.type === "listItem" && (continues || html) ? 1 : undefined;
 }
 
 const FRONT_MATTER = /^---\r?\n[\s\S]*?\r?\n---\r?\n/;
@@ -62,20 +64,20 @@ const isEmptyParagraph = (node: Node) => node.type.name === "paragraph" && node.
 
 /**
  * Removes empty paragraphs (the blank lines left by pressing Enter twice)
- * from the top level of a page, from quotes and from list items (except an
- * item's own line). Markdown can't store them: Milkdown would write each one
- * as a `<br />` line.
+ * from the top level of a page, from quotes, toggles and list items (except
+ * the own line of an item or toggle). Markdown can't store them: Milkdown
+ * would write each one as a `<br />` line.
  */
 export function withoutEmptyParagraphs(node: Node): Node {
   let changed = false;
   const children: Node[] = [];
-  const isItem = node.type.name === "list_item";
+  const hasLine = node.type.name === "list_item" || node.type.name === "toggle";
   node.forEach((child, _offset, index) => {
-    if (isEmptyParagraph(child) && !(isItem && index === 0)) {
+    if (isEmptyParagraph(child) && !(hasLine && index === 0)) {
       changed = true;
       return;
     }
-    const holdsBlocks = child.type.name === "blockquote" || child.type.name === "list_item";
+    const holdsBlocks = ["blockquote", "list_item", "toggle"].includes(child.type.name);
     const cleaned = holdsBlocks ? withoutEmptyParagraphs(child) : child;
     if (cleaned !== child) changed = true;
     // A quote left with nothing in it goes too.

@@ -41,6 +41,10 @@ export function SelectionToolbar({ editor, container }: {
   useEffect(() => {
     if (!visible) setLinkDraft(null);
   }, [visible]);
+  // The block's own kind is marked in the menu: keep it in view when the menu scrolls.
+  useEffect(() => {
+    if (turnIntoOpen) container.current?.querySelector(".page-toolbar-menu .active")?.scrollIntoView?.({ block: "nearest" });
+  }, [turnIntoOpen]); // eslint-disable-line react-hooks/exhaustive-deps
   useEffect(() => {
     if (linkDraft !== null) linkInput.current?.focus();
   }, [linkDraft !== null]); // eslint-disable-line react-hooks/exhaustive-deps

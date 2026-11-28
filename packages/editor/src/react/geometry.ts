@@ -1,7 +1,8 @@
 // Where blocks are on screen: the block under the pointer, and its element.
 // Shared by the block handle (dragging blocks) and file drops.
 import type { EditorView } from "@milkdown/kit/prose/view";
-import { type Block, type DropTarget, blockAt, dropTargets } from "../blocks.ts";
+import { type Block, type DropTarget, blockAt, dropTargets, isContainer } from "../blocks.ts";
+import { isFolded } from "../toggles.ts";
 
 /** How far left of the text the handle still shows (the gutter it sits in). */
 export const GUTTER = 72;
@@ -12,8 +13,8 @@ export const MARKER = 22;
 export const NEST_STEP = 40;
 
 /**
- * The block at height `y`: the top-level block there or, below a list
- * item's line, the innermost block nested in it there. Goes by height only,
+ * The block at height `y`: the top-level block there or, below the line of
+ * a list item or open toggle, the innermost block nested in it there. Goes by height only,
  * so the gutter (where the handle is) counts as part of the block, and the
  * space between blocks goes to the nearer one.
  */
@@ -24,7 +25,7 @@ export function blockAtY(view: EditorView, y: number): Block | null {
     const child = nearest(view, children, y);
     if (!child) break;
     found = child;
-    if (child.node.type.name !== "list_item" || child.node.childCount < 2) break;
+    if (!isContainer(child.node) || child.node.childCount < 2 || isFolded(view.state, child.pos)) break;
     const line = lineRect(view, child);
     if (!line || y <= line.bottom) break;
     children = childBlocks(view, child.node, child.pos + 1).slice(1);
@@ -32,16 +33,16 @@ export function blockAtY(view: EditorView, y: number): Block | null {
   return found;
 }
 
-/** Where a block's own line is: a list item's first paragraph, or the whole block. */
+/** Where a block's own line is: a list item's first paragraph, a toggle's heading, or the whole block. */
 export function lineRect(view: EditorView, block: Block): DOMRect | null {
-  if (block.node.type.name === "list_item") {
+  if (isContainer(block.node)) {
     const line = view.nodeDOM(block.pos + 1);
     if (line instanceof HTMLElement) return line.getBoundingClientRect();
   }
   return rectOf(view, block);
 }
 
-/** Where text starts at a nesting level: in list item `parent`, or at the top level. */
+/** Where text starts at a nesting level: in container `parent` (a list item or toggle), or at the top level. */
 export function levelLeft(view: EditorView, parent: Block | null): number {
   const line = parent && view.nodeDOM(parent.pos + 1);
   return (line instanceof HTMLElement ? line : view.dom).getBoundingClientRect().left;
@@ -68,7 +69,7 @@ export function dropTargetAt(view: EditorView, x: number, y: number, dragged?: B
   const line = over && lineRect(view, over);
   if (!over || !line) return null;
   const side = y < line.top + line.height / 2 ? "before" : "after";
-  const targets = dropTargets(view.state.doc, over, side, dragged);
+  const targets = dropTargets(view.state.doc, over, side, dragged, (pos) => isFolded(view.state, pos));
   const target = pickTarget(targets, targets.map((t) => levelLeft(view, t.parent)), x);
   // Right where it is already: no line.
   if (target && dragged && (target.pos === dragged.pos || target.pos === dragged.pos + dragged.node.nodeSize)) return null;

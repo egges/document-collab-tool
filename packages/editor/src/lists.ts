@@ -18,7 +18,7 @@ import { type Command, type EditorState, NodeSelection, type Selection, TextSele
 import { findWrapping } from "@milkdown/kit/prose/transform";
 import { SerializerState } from "@milkdown/kit/transformer";
 import { $inputRule, $nodeSchema, $remark, $useKeymap } from "@milkdown/kit/utils";
-import { type Block, blockStartingAt } from "./blocks.ts";
+import { type Block, blockStartingAt, isContainer, lineOwnerAtCursor } from "./blocks.ts";
 
 export type ListType = "bullet" | "ordered";
 
@@ -187,12 +187,15 @@ export function itemAtCursor(state: EditorState): Block | null {
   return { pos: $from.before(-1), node: item };
 }
 
-/** The block Tab and Shift-Tab act on: the selected block, the item whose line the cursor is in, or the text block it's in. */
+/**
+ * The block Tab and Shift-Tab act on: the selected block, the item or toggle
+ * whose line the cursor is in, or the text block it's in.
+ */
 function cursorBlock(state: EditorState): Block | null {
   const { selection } = state;
   if (selection instanceof NodeSelection) return blockStartingAt(state.doc, selection.from);
-  const item = itemAtCursor(state);
-  if (item) return item;
+  const owner = lineOwnerAtCursor(state);
+  if (owner) return owner;
   const { $from } = selection;
   return $from.depth > 0 ? blockStartingAt(state.doc, $from.before()) : null;
 }
@@ -219,13 +222,13 @@ export function itemToText(state: EditorState): Transaction | null {
   return tr.setSelection(TextSelection.create(tr.doc, anchor - 1, head - 1));
 }
 
-/** Tab: the block goes into the list item right before it, as its last nested block. */
+/** Tab: the block goes into the list item or toggle right before it, as its last nested block. */
 export const indent: Command = (state, dispatch) => {
   const block = cursorBlock(state);
   if (!block) return false;
   const $pos = state.doc.resolve(block.pos);
   const before = $pos.nodeBefore;
-  if (!isItem(before)) return isItem(block.node); // an item that can't go further in: still handled
+  if (!isContainer(before)) return isItem(block.node); // an item that can't go further in: still handled
   if (dispatch) {
     const to = block.pos - 1; // the end of the item before
     const tr = state.tr.delete(block.pos, block.pos + block.node.nodeSize).insert(to, block.node);
@@ -235,24 +238,24 @@ export const indent: Command = (state, dispatch) => {
 };
 
 /**
- * Shift-Tab: the block comes out of the list item it's in, to right after
- * it. The blocks after it in that item come along: nested in it when it's an
- * item, so nothing changes order.
+ * Shift-Tab: the block comes out of the list item or toggle it's in, to
+ * right after it. The blocks after it there come along: nested in it when
+ * it's an item or a toggle, so nothing changes order.
  */
 export const outdent: Command = (state, dispatch) => {
   const block = cursorBlock(state);
   if (!block) return false;
   const $pos = state.doc.resolve(block.pos);
   const parent = $pos.parent;
-  if (!isItem(parent)) return isItem(block.node);
+  if (!isContainer(parent)) return isItem(block.node);
   if (dispatch) {
     const following = parent.content.cut(block.pos + block.node.nodeSize - $pos.start());
-    const moved = isItem(block.node)
+    const moved = isContainer(block.node)
       ? [block.node.copy(block.node.content.append(following))]
       : [block.node, ...nodesOf(following)];
     const end = $pos.end();
     const tr = state.tr.delete(block.pos, end);
-    const to = block.pos + 1; // right after the item, which now ends at block.pos
+    const to = block.pos + 1; // right after the container, which now ends at block.pos
     tr.insert(to, moved);
     dispatch(tr.setSelection(movedSelection(state.selection, tr.doc, block.pos, to)).scrollIntoView());
   }

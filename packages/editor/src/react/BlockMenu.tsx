@@ -10,7 +10,7 @@ const MOD = MAC ? "⌘" : "Ctrl+";
 const SHIFT = MAC ? "⇧" : "Shift+";
 
 /** Blocks "Turn into" works on: ones made of text. */
-const TURNABLE = new Set(["paragraph", "heading", "list_item", "blockquote", "code_block"]);
+const TURNABLE = new Set(["paragraph", "heading", "list_item", "toggle", "blockquote", "code_block"]);
 
 interface Action {
   id: string;
@@ -41,6 +41,8 @@ export function BlockMenu({ editor, block, left, top, onClose }: {
   const inside = canTurn ? focusBlock(view.state, block) : null;
   const format = inside ? formatState(view.state.apply(inside)).block : null;
   const turnOptions = BLOCKS.filter((b) => b.turnInto);
+  // The submenu opens on the block's own kind, as Notion's does.
+  const currentOption = Math.max(0, turnOptions.findIndex((b) => b.format === format));
 
   const done = (run: () => void) => () => {
     run();
@@ -48,7 +50,7 @@ export function BlockMenu({ editor, block, left, top, onClose }: {
   };
   const actions: Action[] = [
     ...(canTurn
-      ? [{ id: "turnInto", label: "Turn into", icon: <TurnIntoIcon />, run: () => setTurnInto(0) }]
+      ? [{ id: "turnInto", label: "Turn into", icon: <TurnIntoIcon />, run: () => setTurnInto(currentOption) }]
       : []),
     { id: "duplicate", label: "Duplicate", icon: <DuplicateIcon />, shortcut: `${MOD}D`, run: done(() => commands.duplicateBlock(current())) },
     { id: "copy", label: "Copy", icon: <CopyIcon />, shortcut: `${MOD}C`, run: done(() => copyBlock(editor, current())) },
@@ -74,6 +76,13 @@ export function BlockMenu({ editor, block, left, top, onClose }: {
   useEffect(() => {
     menu.current?.focus();
   }, []);
+
+  // Keep the active row in view: the submenu scrolls when it's taller than the window.
+  useEffect(() => {
+    const submenu = menu.current?.querySelector(".page-block-submenu");
+    const row = submenu?.querySelector(".active") ?? submenu?.querySelector('[aria-checked="true"]');
+    row?.scrollIntoView?.({ block: "nearest" });
+  }, [turnInto]);
 
   // Clicking anywhere else closes it.
   useEffect(() => {
@@ -114,7 +123,7 @@ export function BlockMenu({ editor, block, left, top, onClose }: {
         set(step(at, -1, length, skip));
         break;
       case "ArrowRight":
-        if (!inSub && actions[active]?.id === "turnInto") setTurnInto(0);
+        if (!inSub && actions[active]?.id === "turnInto") setTurnInto(currentOption);
         break;
       case "ArrowLeft":
         if (inSub) setTurnInto(null);

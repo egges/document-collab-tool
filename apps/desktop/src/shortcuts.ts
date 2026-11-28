@@ -48,6 +48,7 @@ export const BLOCK_KEYS: { label: string; keys: string[] }[] = [
   { label: "Move the block up / down", keys: ["mod+shift+arrowup", "mod+shift+arrowdown"] },
   { label: "Delete the selected block", keys: ["backspace"] },
   { label: "Edit the selected block's text", keys: ["enter"] },
+  { label: "Open or close a toggle", keys: ["mod+enter"] },
 ];
 
 export const isMac = typeof navigator !== "undefined" && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);

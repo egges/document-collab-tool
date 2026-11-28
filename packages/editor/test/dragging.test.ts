@@ -127,9 +127,9 @@ describe("dropping a block", () => {
           expect((selection as NodeSelection).node.eq(dragged.node), drop).toBe(true);
           const $moved = after.resolve(selection.from);
           if (target.parent) {
-            expect($moved.parent.type.name, drop).toBe("list_item");
+            expect($moved.parent.type.name, drop).toBe(target.parent.node.type.name);
             expect($moved.index(), drop).toBeGreaterThan(0);
-            // The item's own line tells which item it is: every block's text is unique.
+            // The item's or toggle's own line tells which it is: every block's text is unique.
             expect($moved.parent.firstChild!.eq(target.parent.node.firstChild!), drop).toBe(true);
           } else {
             expect($moved.depth, drop).toBe(0);

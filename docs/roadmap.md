@@ -255,21 +255,23 @@ that those two jobs need (marked **First**).
       marker isn't written back as `\[!NOTE]`, and a Milkdown node. The
       importer turns Notion's exported callouts (`<aside>` blocks, to be
       checked against a real export) into callouts.
-- [ ] **Toggles.** A block with a summary line and content folded under
-      it, written as `<details>` so it folds on GitHub too:
+- [x] **Toggles.** Toggle lists and toggle heading 1–3, as in Notion: a
+      line of text or a heading with an arrow, and blocks folded under it,
+      from the slash menu or "Turn into"; ⌘Enter opens and closes one.
+      Written as `<details>` so it folds on GitHub too:
       ```markdown
       <details>
-      <summary>Agent steps</summary>
+      <summary><h2>Agent steps</h2></summary>
 
       Read 14 emails, drafted 3 replies.
 
       </details>
       ```
-      The blank lines keep the content Markdown. Toggle headings use
-      `<summary><h2>…</h2></summary>`. Milkdown keeps raw HTML today but
-      as one opaque chunk, so this needs a node that edits the summary and
-      content in place. Whether a toggle is open is per device, not saved
-      in the page.
+      A toggle list's summary is just its text. The blank lines keep the
+      content Markdown. Being open is per device and isn't saved: toggles
+      start closed when a page opens. `>` stays the quote shortcut, as in
+      Markdown (Notion uses it for toggles). Still to do: remembering which
+      toggles are open across reopening a page.
 - [ ] **Page icons.** An emoji per page, picked from a menu by the title
       and shown in the sidebar, the breadcrumb, search and links. Kept as
       `icon` in the page's `meta.json`, so it syncs.

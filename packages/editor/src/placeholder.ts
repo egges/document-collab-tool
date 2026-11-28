@@ -19,12 +19,17 @@ export function placeholderAt(state: EditorState, focused: boolean): { pos: numb
   const block = $from.parent;
   if (!block.isTextblock || block.content.size > 0 || block.type.spec.code) return null;
   const pos = $from.before();
-  if (block.type.name === "heading") return { pos, text: `Heading ${block.attrs.level}` };
+  if (block.type.name === "heading") {
+    const inToggle = $from.node(-1).type.name === "toggle" && $from.index(-1) === 0;
+    return { pos, text: `${inToggle ? "Toggle heading" : "Heading"} ${block.attrs.level}` };
+  }
   if (block.type.name !== "paragraph") return null;
   const container = $from.depth > 1 ? $from.node($from.depth - 1) : null;
   switch (container?.type.name) {
     case undefined:
       return { pos, text: WRITE_HINT };
+    case "toggle":
+      return { pos, text: $from.index($from.depth - 1) > 0 ? WRITE_HINT : "Toggle" };
     case "list_item":
       // Blocks nested in an item get the usual hint; the item's own line says what it is.
       if ($from.index($from.depth - 1) > 0) return { pos, text: WRITE_HINT };

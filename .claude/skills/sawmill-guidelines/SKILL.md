@@ -66,6 +66,14 @@ Follow these whenever you work in this repo.
   block before it (paragraph, table) or turn it into a heading (a rule)
   needs a `join` rule of ours.
 
+- Milkdown's `remarkHtmlTransformer` runs before our own remark plugins:
+  by then a block of HTML at the top level, in a list item or a quote is
+  a paragraph holding an `html` node. Match both shapes (`htmlOf` in
+  toggles.ts).
+- State that isn't part of the page (whether a toggle is open) lives in a
+  plugin state shown through decorations, never in node attributes: those
+  would make the page dirty and end up compared on save.
+
 ## Testing the editor
 
 - `test/dragging.test.ts` drops every block at every offered place on

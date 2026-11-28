@@ -33,6 +33,7 @@ import {
 } from "./blocks.ts";
 import { itemAtCursor, itemToText, setListType } from "./lists.ts";
 import { prepareForSave } from "./markdown.ts";
+import { setToggle, toggleAtCursor, toggleToBlocks } from "./toggles.ts";
 import {
   type TableCell,
   type TableEdit,
@@ -51,9 +52,13 @@ export type BlockFormat =
   | "heading1"
   | "heading2"
   | "heading3"
+  | "toggleHeading1"
+  | "toggleHeading2"
+  | "toggleHeading3"
   | "bulletList"
   | "numberedList"
   | "taskList"
+  | "toggle"
   | "quote"
   | "codeBlock"
   | "divider"
@@ -96,13 +101,15 @@ function blockFormatAt(state: EditorState): BlockFormat | null {
   if (block.type.name === "code_block") return "codeBlock";
   if (block.type.name === "heading") {
     const level = block.attrs.level as number;
-    return level <= 3 ? (`heading${level}` as BlockFormat) : null;
+    if (level > 3) return null;
+    return (toggleAtCursor(state) ? `toggleHeading${level}` : `heading${level}`) as BlockFormat;
   }
   // An item's line is the item; a paragraph in a quote is the quote.
   const item = itemAtCursor(state);
   if (item?.node.attrs.checked != null) return "taskList";
   if (item) return item.node.attrs.listType === "ordered" ? "numberedList" : "bulletList";
   if ($from.depth > 1 && $from.node(-1).type.name === "blockquote") return "quote";
+  if (toggleAtCursor(state)) return "toggle";
   return block.type.name === "paragraph" ? "text" : null;
 }
 
@@ -191,12 +198,19 @@ export function createCommands(editor: Editor) {
     },
 
     /**
-     * Turns the block the cursor is in into `format`. A list item turned
-     * into anything else becomes that, in place; a quote's paragraph turned
-     * into text, a heading or code leaves the quote.
+     * Turns the block the cursor is in into `format`. A list item or toggle
+     * turned into anything else becomes that, in place (what's nested in it
+     * staying where it is); a quote's paragraph turned into text, a heading,
+     * a toggle or code leaves the quote.
      */
     setBlock(format: BlockFormat): boolean {
       const v = view();
+      if (format === "toggle" || format === "toggleHeading1" || format === "toggleHeading2" || format === "toggleHeading3") {
+        dispatchIf(v, itemToText(v.state));
+        leaveQuote(v);
+        return dispatchIf(v, setToggle(v.state, format === "toggle" ? 0 : Number(format.slice(-1))));
+      }
+      dispatchIf(v, toggleToBlocks(v.state));
       if (format === "bulletList" || format === "numberedList" || format === "taskList") {
         const listType = format === "bulletList" ? "bullet" : format === "numberedList" ? "ordered" : null;
         return dispatchIf(v, setListType(v.state, listType, format === "taskList"));
