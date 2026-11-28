@@ -80,6 +80,24 @@ test("the slash menu filters, navigates and inserts", async () => {
   expect(editor.save()).toBe("Intro.\n\n## New section\n");
 });
 
+test("/toggle offers the toggle list first, and /h2 the plain heading", async () => {
+  const editor = await mount("Intro.\n\nx\n");
+  const { view } = editor;
+  const end = view.state.doc.content.size - 1;
+  const options = () => [...container.querySelectorAll(".page-slash-menu [role=option] .page-menu-label")].map((o) => o.textContent);
+  await act(() => {
+    view.focus();
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, end)));
+    view.dispatch(view.state.tr.insertText("/h2", end - 1, end));
+  });
+  expect(options()).toEqual(["Heading 2", "Toggle heading 2"]);
+  await act(() => view.dispatch(view.state.tr.insertText("/toggle", view.state.selection.$from.start(), view.state.selection.from)));
+  expect(options()).toEqual(["Toggle list", "Toggle heading 1", "Toggle heading 2", "Toggle heading 3"]);
+  await press(editor, "Enter");
+  await act(() => view.dispatch(view.state.tr.insertText("Steps")));
+  expect(editor.save()).toBe("Intro.\n\n<details>\n<summary>Steps</summary>\n\n</details>\n");
+});
+
 test("Escape closes the slash menu", async () => {
   const editor = await mount("Intro.\n\nx\n");
   const { view } = editor;
