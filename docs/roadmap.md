@@ -183,10 +183,21 @@ that those two jobs need (marked **First**).
       page's, not a cell: meta.json's `title` field is now `name` for
       every page. Existing databases got their first text column
       promoted, or a new "Name" column first (workspace format 3).
-- [ ] **Images in the editor.** Show images in a page's text, and add
-      them by pasting or dropping, kept in the page's `assets/`. Rows are
-      pages, so this covers them too. The importer already copies images
-      into `assets/` (see "Importer" above).
+- [x] **Images in the editor.** Images in a page's text are shown, and
+      pasting or dropping image files saves them in the page's `assets/`
+      (`-2`, `-3`, … when a name is taken) and adds each in its own
+      paragraph as `![](assets/<file>)`; while dragging files over the
+      page, the block drop line shows where they'll go. An image on its own
+      line moves like a block by dragging the image itself. For dropping
+      next to lists to be clean, lists now work as in Notion: each item is
+      a block of its own with no list around it, and how far right the
+      pointer is picks how deep a drop is nested
+      (`packages/editor/src/lists.ts`). The window
+      loads them through a `page-asset:` protocol that only serves files
+      under `pages/` (`apps/desktop/src-tauri/src/page_assets.rs`,
+      `packages/editor/src/images.ts`). Rows are pages, so this covers
+      them too. Not yet: resizing, captions, an "Image" slash command, and
+      removing files no page links to any more.
 - [x] **Card order, as in Notion.** On a board without a sort, drag cards
       up and down within a lane as well as between lanes: a line shows
       where the card will land, the board and the page scroll when the

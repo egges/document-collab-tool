@@ -22,12 +22,20 @@ In React, `<PageEditorView>` is the editor with its menus:
 - **Slash menu**: type `/` on an empty line, filter by typing, pick with the
   arrow keys and Enter (or the mouse), close with Escape.
 - **To-dos**: click the box to tick an item.
+- **Lists**, as in Notion: a list item is a block of its own, with no list
+  around it; items side by side read as a list (`src/lists.ts`). An item
+  holds its line of text and the blocks nested under it. Enter adds the next
+  item (on an empty one: out a level, then back to text), Tab nests the block
+  in the item above and Shift-Tab takes it out, Backspace at the start of an
+  item turns it into text. Typing `- `, `1. ` or `[ ] ` starts an item. In
+  the file they're ordinary Markdown lists.
 - **Blocks**, as in Notion: every top-level element is a block, and so is
-  every list item. Pointing at one shows a handle in the left margin (leave
-  about 48px for it). **+** adds a block below (⌥-click: above) and opens the
-  slash menu. Drag **⋮⋮** to move the block; a line shows where it will land.
-  A list item dragged out of its list becomes a list of its own, and a block
-  dropped into a list becomes an item (a to-do, among to-dos). Click ⋮⋮ for
+  everything nested in a list item. Pointing at one shows a handle in the
+  left margin (leave about 48px for it). **+** adds a block below (⌥-click:
+  above) and opens the slash menu. Drag **⋮⋮** to move the block; a line
+  shows where it will land, and how far right the pointer is picks how deep
+  it's nested (go well into an item's text to nest in it). A block keeps its
+  type wherever it's dropped. Click ⋮⋮ for
   the block menu: turn into, duplicate, copy (as Markdown), move up or down,
   delete. Keys: Esc selects the block the cursor is in, then Backspace
   deletes it and Enter goes back to its text; ⌘D duplicates; ⌘⇧↑ / ⌘⇧↓ move
@@ -145,7 +153,9 @@ page written by an AI agent. For each one the tests check that:
 
 `test/commands.test.ts` checks the Markdown each toolbar and menu command
 saves, `test/blocks.test.ts` the block operations (delete, duplicate, move,
-drop into and out of lists, add, turn into, the keys), and
+drop between and into list items, add, turn into, the keys),
+`test/lists.test.ts` lists (reading and writing them, Enter, Tab, Backspace,
+typing markers) and
 `test/react.test.tsx` checks the React menus: one editor under StrictMode,
 the toolbar formatting a selection, the slash menu's filtering, keyboard
 navigation and Escape, and the block handle's menu, "+" and dragging.

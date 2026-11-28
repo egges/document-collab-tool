@@ -11,14 +11,11 @@ import {
   toggleStrongCommand,
   turnIntoTextCommand,
   wrapInBlockquoteCommand,
-  wrapInBulletListCommand,
   wrapInHeadingCommand,
-  wrapInOrderedListCommand,
 } from "@milkdown/kit/preset/commonmark";
 import { insertTableCommand, toggleStrikethroughCommand } from "@milkdown/kit/preset/gfm";
 import { lift } from "@milkdown/kit/prose/commands";
-import { Fragment, type MarkType, type Node } from "@milkdown/kit/prose/model";
-import { liftListItem } from "@milkdown/kit/prose/schema-list";
+import type { MarkType, Node } from "@milkdown/kit/prose/model";
 import { type EditorState, TextSelection, type Transaction } from "@milkdown/kit/prose/state";
 import type { EditorView } from "@milkdown/kit/prose/view";
 import { callCommand } from "@milkdown/kit/utils";
@@ -34,6 +31,7 @@ import {
   moveBlockTo,
   selectBlock,
 } from "./blocks.ts";
+import { itemAtCursor, itemToText, setListType } from "./lists.ts";
 import { prepareForSave } from "./markdown.ts";
 import {
   type TableCell,
@@ -100,14 +98,11 @@ function blockFormatAt(state: EditorState): BlockFormat | null {
     const level = block.attrs.level as number;
     return level <= 3 ? (`heading${level}` as BlockFormat) : null;
   }
-  // Walk up: a paragraph inside a list item or quote takes its container's type.
-  for (let depth = $from.depth - 1; depth > 0; depth--) {
-    const node = $from.node(depth);
-    if (node.type.name === "list_item" && node.attrs.checked != null) return "taskList";
-    if (node.type.name === "bullet_list") return "bulletList";
-    if (node.type.name === "ordered_list") return "numberedList";
-    if (node.type.name === "blockquote") return "quote";
-  }
+  // An item's line is the item; a paragraph in a quote is the quote.
+  const item = itemAtCursor(state);
+  if (item?.node.attrs.checked != null) return "taskList";
+  if (item) return item.node.attrs.listType === "ordered" ? "numberedList" : "bulletList";
+  if ($from.depth > 1 && $from.node(-1).type.name === "blockquote") return "quote";
   return block.type.name === "paragraph" ? "text" : null;
 }
 
@@ -196,31 +191,27 @@ export function createCommands(editor: Editor) {
     },
 
     /**
-     * Turns the block the cursor is in into `format`. A list item or quote
-     * turned into text, a heading or code leaves the list or quote; a list
-     * item changes list type in place.
+     * Turns the block the cursor is in into `format`. A list item turned
+     * into anything else becomes that, in place; a quote's paragraph turned
+     * into text, a heading or code leaves the quote.
      */
     setBlock(format: BlockFormat): boolean {
       const v = view();
       if (format === "divider") return run(insertHrCommand.key);
       if (format === "table") return run(insertTableCommand.key, { row: 3, col: 3 });
-      const isList = format === "bulletList" || format === "numberedList" || format === "taskList";
-      if (isList && changeListType(v, format)) return true;
-      leaveContainers(v, isList || format === "quote");
+      if (format === "bulletList" || format === "numberedList" || format === "taskList") {
+        const listType = format === "bulletList" ? "bullet" : format === "numberedList" ? "ordered" : null;
+        return dispatchIf(v, setListType(v.state, listType, format === "taskList"));
+      }
+      dispatchIf(v, itemToText(v.state));
+      if (format !== "quote") leaveQuote(v);
       switch (format) {
         case "text":
-          // Leaving a list may already have made it text.
           return run(turnIntoTextCommand.key) || v.state.selection.$from.parent.type.name === "paragraph";
         case "heading1":
         case "heading2":
         case "heading3":
           return run(wrapInHeadingCommand.key, Number(format.slice(-1)));
-        case "bulletList":
-          return run(wrapInBulletListCommand.key);
-        case "numberedList":
-          return run(wrapInOrderedListCommand.key);
-        case "taskList":
-          return run(wrapInBulletListCommand.key) && markTaskItem(view());
         case "quote":
           return run(wrapInBlockquoteCommand.key);
         case "codeBlock":
@@ -344,10 +335,7 @@ export function createCommands(editor: Editor) {
     /** The block as Markdown, as it would be saved (a list item with its list marker). */
     blockMarkdown(block: Block): string {
       const { state } = view();
-      let node = block.node;
-      const $pos = state.doc.resolve(block.pos);
-      if (node.type.name === "list_item" && $pos.depth > 0) node = $pos.parent.copy(Fragment.from(node));
-      const doc = state.schema.topNodeType.create(null, node);
+      const doc = state.schema.topNodeType.create(null, block.node);
       return editor.action((ctx) => ctx.get(serializerCtx)(prepareForSave(doc))).trimEnd();
     },
 
@@ -377,56 +365,16 @@ function dispatchIf(view: EditorView, tr: Transaction | null): boolean {
   return tr !== null;
 }
 
-/**
- * In a list item, turning into another kind of list: switches the list's
- * type (Markdown can't mix bullets and numbers in one list) and makes the
- * item a to-do or not. False when the cursor isn't in a list.
- */
-function changeListType(view: EditorView, format: "bulletList" | "numberedList" | "taskList"): boolean {
-  const { $from } = view.state.selection;
-  const { schema } = view.state;
-  for (let depth = $from.depth; depth > 1; depth--) {
-    const item = $from.node(depth);
-    if (item.type.name !== "list_item") continue;
-    const list = $from.node(depth - 1);
-    const tr = view.state.tr;
-    const checked = format === "taskList" ? (item.attrs.checked ?? false) : null;
-    tr.setNodeMarkup($from.before(depth), undefined, { ...item.attrs, checked });
-    const listType = format === "numberedList" ? schema.nodes.ordered_list : format === "bulletList" ? schema.nodes.bullet_list : list.type;
-    if (listType !== list.type) tr.setNodeMarkup($from.before(depth - 1), listType);
-    view.dispatch(tr);
-    return true;
-  }
-  return false;
-}
-
-/** Takes the cursor's block out of any lists (and quotes, unless `keepQuote`). */
-function leaveContainers(view: EditorView, keepQuote: boolean): void {
-  const inside = (name: string) => {
+/** Takes the cursor's block out of any quotes. */
+function leaveQuote(view: EditorView): void {
+  const inQuote = () => {
     const { $from } = view.state.selection;
-    for (let depth = $from.depth; depth > 0; depth--) if ($from.node(depth).type.name === name) return true;
+    for (let depth = $from.depth; depth > 0; depth--) if ($from.node(depth).type.name === "blockquote") return true;
     return false;
   };
-  const item = view.state.schema.nodes.list_item;
-  for (let i = 0; i < 20 && inside("list_item"); i++) {
-    if (!liftListItem(item)(view.state, view.dispatch)) break;
-  }
-  for (let i = 0; i < 20 && !keepQuote && inside("blockquote"); i++) {
+  for (let i = 0; i < 20 && inQuote(); i++) {
     if (!lift(view.state, view.dispatch)) break;
   }
-}
-
-/** Turns the list item at the cursor into an unchecked task. */
-function markTaskItem(view: EditorView): boolean {
-  const { $from } = view.state.selection;
-  for (let depth = $from.depth; depth > 0; depth--) {
-    const node: Node = $from.node(depth);
-    if (node.type.name === "list_item") {
-      view.dispatch(view.state.tr.setNodeMarkup($from.before(depth), undefined, { ...node.attrs, checked: false }));
-      return true;
-    }
-  }
-  return false;
 }
 
 /** Document range of the first place `text` appears in one text block, ignoring case. */

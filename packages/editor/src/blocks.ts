@@ -1,9 +1,10 @@
 // Blocks, as in Notion: each top-level element of the page is a block, and so
-// is each list item (at any depth). These are the operations on them the
-// block handle, its menu and the keyboard use: find the block at a position,
-// select, delete, duplicate, move (by a step, or to where it was dragged)
-// and add a new one. Free of any UI framework, so it's tested without a browser.
-import { Fragment, type Node, type ResolvedPos } from "@milkdown/kit/prose/model";
+// is each block nested in a list item (lists.ts), list items included. These
+// are the operations on them the block handle, its menu and the keyboard
+// use: find the block at a position, select, delete, duplicate, move (by a
+// step, or to where it was dragged) and add a new one. Free of any UI
+// framework, so it's tested without a browser.
+import type { Node, ResolvedPos } from "@milkdown/kit/prose/model";
 import { type Command, type EditorState, NodeSelection, Plugin, PluginKey, type Selection, TextSelection, type Transaction } from "@milkdown/kit/prose/state";
 import { Decoration, DecorationSet } from "@milkdown/kit/prose/view";
 
@@ -13,19 +14,18 @@ export interface Block {
   node: Node;
 }
 
-const isListItem = (node: Node) => node.type.name === "list_item";
-const isList = (node: Node) => node.type.name === "bullet_list" || node.type.name === "ordered_list";
+const isListItem = (node: Node | null | undefined) => node?.type.name === "list_item";
 
-/** The block `$pos` is in: the innermost list item, or else the top-level element. */
+/**
+ * Whether a child of `parent` at `index` is a block: anything at the top
+ * level, and anything nested in a list item except the item's own line.
+ */
+const holdsBlock = (parent: Node, index: number) => parent.type.name === "doc" || (isListItem(parent) && index > 0);
+
+/** The block `$pos` is in: the innermost one (see `holdsBlock`). */
 function blockAtResolved($pos: ResolvedPos): Block | null {
-  // Right before a list item (or after the last one): that item.
-  if (isList($pos.parent)) {
-    if ($pos.nodeAfter) return { pos: $pos.pos, node: $pos.nodeAfter };
-    if ($pos.nodeBefore) return { pos: $pos.pos - $pos.nodeBefore.nodeSize, node: $pos.nodeBefore };
-  }
   for (let depth = $pos.depth; depth > 0; depth--) {
-    const node = $pos.node(depth);
-    if (isListItem(node) || depth === 1) return { pos: $pos.before(depth), node };
+    if (holdsBlock($pos.node(depth - 1), $pos.index(depth - 1))) return { pos: $pos.before(depth), node: $pos.node(depth) };
   }
   // Between top-level blocks: the one after.
   const after = $pos.nodeAfter;
@@ -41,11 +41,9 @@ export function blockAt(doc: Node, pos: number): Block | null {
 /** The block that starts exactly at `pos`, if any (to check a remembered block still exists). */
 export function blockStartingAt(doc: Node, pos: number): Block | null {
   if (pos < 0 || pos >= doc.content.size) return null;
-  const node = doc.resolve(pos).nodeAfter;
-  if (!node) return null;
   const $pos = doc.resolve(pos);
-  if ($pos.depth === 0 || (isListItem(node) && isList($pos.parent))) return { pos, node };
-  return null;
+  const node = $pos.nodeAfter;
+  return node && holdsBlock($pos.parent, $pos.index()) ? { pos, node } : null;
 }
 
 /** The block the selection is in (or the selected block). */
@@ -63,19 +61,6 @@ export function selectBlock(state: EditorState, block: Block): Transaction {
   return state.tr.setSelection(NodeSelection.create(state.doc, block.pos));
 }
 
-/**
- * The range to remove to take `block` out of the page: a list item that is
- * the only one in its list takes the list with it.
- */
-function removalRange(doc: Node, block: Block): { from: number; to: number } {
-  const $pos = doc.resolve(block.pos);
-  if (isListItem(block.node) && $pos.parent.childCount === 1 && $pos.depth > 0) {
-    // The list, and further up while that is the only thing in a list item too.
-    return removalRange(doc, { pos: $pos.before(), node: $pos.parent });
-  }
-  return { from: block.pos, to: block.pos + block.node.nodeSize };
-}
-
 /** A text cursor near `pos`, or a node selection when there's no text there. */
 function selectionNear(doc: Node, pos: number, bias: -1 | 1 = 1): Selection {
   return TextSelection.findFrom(doc.resolve(Math.min(pos, doc.content.size)), bias, true) ??
@@ -84,7 +69,8 @@ function selectionNear(doc: Node, pos: number, bias: -1 | 1 = 1): Selection {
 }
 
 export function deleteBlock(state: EditorState, block: Block): Transaction {
-  const { from, to } = removalRange(state.doc, block);
+  const from = block.pos;
+  const to = block.pos + block.node.nodeSize;
   const tr = state.tr;
   if (from === 0 && to === state.doc.content.size) {
     // The last block on the page: leave an empty line to type in.
@@ -100,7 +86,9 @@ export function deleteBlock(state: EditorState, block: Block): Transaction {
 /** Inserts a copy of the block after it. The selection moves to the copy. */
 export function duplicateBlock(state: EditorState, block: Block): Transaction {
   const end = block.pos + block.node.nodeSize;
-  const tr = state.tr.insert(end, block.node);
+  // A numbered item's copy counts on from it.
+  const copy = isListItem(block.node) ? block.node.type.create({ ...block.node.attrs, start: null }, block.node.content) : block.node;
+  const tr = state.tr.insert(end, copy);
   return tr.setSelection(shifted(state.selection, tr.doc, block, end)).scrollIntoView();
 }
 
@@ -115,101 +103,32 @@ function shifted(selection: Selection, doc: Node, block: Block, to: number): Sel
 }
 
 /**
- * Moves the block one step up or down among its siblings (⌘⇧↑ / ⌘⇧↓).
- * Null when there's nowhere to go. The selection moves with the block.
+ * Moves the block one step up or down among its siblings (⌘⇧↑ / ⌘⇧↓): the
+ * blocks at the top level, or those nested in the same list item. Null
+ * when there's nowhere to go. The selection moves with the block.
  */
 export function moveBlockStep(state: EditorState, block: Block, direction: -1 | 1): Transaction | null {
   const $pos = state.doc.resolve(block.pos);
-  const index = $pos.index();
-  const parent = $pos.parent;
-  const sibling = index + direction;
-  if (sibling < 0 || sibling >= parent.childCount) {
-    // The first or last item of a list: move the whole list when it's the only item.
-    if (isListItem(block.node) && parent.childCount === 1 && $pos.depth > 0) {
-      return moveBlockStep(state, { pos: $pos.before(), node: parent }, direction);
-    }
-    return null;
-  }
-  const other = parent.child(sibling);
-  const tr = state.tr;
-  let to: number;
-  if (direction < 0) {
-    // Take the block out and put it back before its previous sibling.
-    to = block.pos - other.nodeSize;
-    tr.delete(block.pos, block.pos + block.node.nodeSize).insert(to, block.node);
-  } else {
-    // Put the block back after its next sibling.
-    const end = block.pos + block.node.nodeSize;
-    tr.delete(block.pos, end).insert(block.pos + other.nodeSize, block.node);
-    to = block.pos + other.nodeSize;
-  }
+  const sibling = $pos.index() + direction;
+  if (sibling < 0 || sibling >= $pos.parent.childCount || !holdsBlock($pos.parent, sibling)) return null;
+  const other = $pos.parent.child(sibling);
+  const to = direction < 0 ? block.pos - other.nodeSize : block.pos + other.nodeSize;
+  const tr = state.tr.delete(block.pos, block.pos + block.node.nodeSize).insert(to, block.node);
   return tr.setSelection(shifted(state.selection, tr.doc, block, to)).scrollIntoView();
 }
 
 /**
- * The block as content that can go at `$at`: as it is, or wrapped in a list
- * (a list item going between blocks), or in a list item (a block going into a
- * list), or as its items (a list going into a list). Null if it can't go there.
- */
-function fitAt(block: Block, $at: ResolvedPos, sourceList: Node | null): Fragment | null {
-  const { schema } = $at.doc.type;
-  const parent = $at.parent;
-  const index = $at.index();
-  const candidates: Fragment[] = [Fragment.from(block.node)];
-  if (isListItem(block.node)) {
-    const list = sourceList ?? schema.nodes.bullet_list.create();
-    candidates.push(Fragment.from(list.type.create(list.attrs, block.node)));
-  } else if (isList(block.node)) {
-    candidates.push(block.node.content);
-  } else if (isList(parent)) {
-    // Next to a to-do, a block becomes a to-do too.
-    const neighbour = parent.maybeChild(index) ?? parent.maybeChild(index - 1);
-    const checked = neighbour?.attrs.checked != null ? false : null;
-    // Only blocks that can start an item (a heading can't: Markdown has no such thing).
-    const item = schema.nodes.list_item.create({ ...neighbour?.attrs, checked }, block.node);
-    if (item.type.validContent(item.content)) candidates.push(Fragment.from(item));
-  }
-  return candidates.find((content) => parent.canReplace(index, index, content)) ?? null;
-}
-
-/**
- * Where `block` really lands when dropped at `target`, and as what: at
- * `target` if it fits there (see `fitAt`), or else next to the top-level
- * block around `target`, on the nearer side. Null when that changes nothing.
- */
-function landing(doc: Node, block: Block, target: number): { pos: number; content: Fragment } | null {
-  const { from, to } = removalRange(doc, block);
-  // Dropping a block onto itself, or into itself, changes nothing.
-  if (target >= from && target <= to) return null;
-  const $source = doc.resolve(block.pos);
-  const sourceList = isListItem(block.node) && $source.depth > 0 ? $source.parent : null;
-  const $at = doc.resolve(target);
-  const content = fitAt(block, $at, sourceList);
-  if (content) return { pos: target, content };
-  if ($at.depth === 0) return null;
-  const top = $at.before(1);
-  const end = $at.after(1);
-  const side = target - top < end - target ? top : end;
-  if (side >= from && side <= to) return null;
-  const outside = fitAt(block, doc.resolve(side), sourceList);
-  return outside && { pos: side, content: outside };
-}
-
-/**
- * Moves `block` to document position `target` (a position between blocks,
- * from `dropTarget`), fitting it in as `fitAt` describes. The moved block
- * ends up selected. Null when nothing would change.
+ * Moves `block` to document position `target`, a position between blocks
+ * (from `dropTargets`). The moved block ends up selected. Null when nothing
+ * would change.
  */
 export function moveBlockTo(state: EditorState, block: Block, target: number): Transaction | null {
-  const land = landing(state.doc, block, target);
-  if (!land) return null;
-  const { from, to } = removalRange(state.doc, block);
-  const tr = state.tr.insert(land.pos, land.content);
-  // The moved block starts at the insertion point, or one level in when it was wrapped.
-  const wrapped = land.content.firstChild !== block.node && !isList(block.node);
-  const movedAt = land.pos + (wrapped ? 1 : 0);
+  const from = block.pos;
+  const to = block.pos + block.node.nodeSize;
+  if (target >= from && target <= to) return null;
+  const tr = state.tr.insert(target, block.node);
   tr.delete(tr.mapping.map(from, 1), tr.mapping.map(to, -1));
-  const moved = tr.mapping.slice(1).map(movedAt, 1);
+  const moved = tr.mapping.slice(1).map(target, 1);
   return tr.setSelection(NodeSelection.create(tr.doc, moved));
 }
 
@@ -232,7 +151,7 @@ export function insertBlock(state: EditorState, block: Block, { above = false, t
   }
   const paragraph = schema.nodes.paragraph.create(null, text ? schema.text(text) : null);
   const newNode = isListItem(node)
-    ? schema.nodes.list_item.create({ ...node.attrs, checked: node.attrs.checked != null ? false : null }, paragraph)
+    ? schema.nodes.list_item.create({ ...node.attrs, checked: node.attrs.checked != null ? false : null, start: null }, paragraph)
     : paragraph;
   const at = above ? block.pos : block.pos + node.nodeSize;
   tr.insert(at, newNode);
@@ -274,30 +193,105 @@ export function focusBlock(state: EditorState, block: Block, at: "start" | "end"
 
 // --- Drag and drop --------------------------------------------------------
 
+/**
+ * A place a block can be dropped: between two blocks, at one nesting level.
+ * The line showing it is drawn at the top or bottom of `block`'s line, from
+ * the left of the text at that level.
+ */
 export interface DropTarget {
   /** Document position the block would go to. */
   pos: number;
-  /** The block the line is drawn next to, and on which side. */
+  /** The block under the pointer, and which half of its line. */
   block: Block;
   side: "before" | "after";
+  /** The list item the block would be nested in, or null for the top level. */
+  parent: Block | null;
+}
+
+/** The list item `pos` is directly inside, if any. */
+function parentItem(doc: Node, pos: number): Block | null {
+  const $pos = doc.resolve(pos);
+  return $pos.depth > 0 && isListItem($pos.parent) ? { pos: $pos.before(), node: $pos.parent } : null;
 }
 
 /**
- * Where a dragged block lands when the pointer is over `over` (the block
- * under it, from `blockAt`), in the `side` half of it. Null when the drop
- * wouldn't move anything.
+ * The places after `block` as a whole, from the deepest out: right after
+ * it, and after each list item it's the last block in (the gap below the
+ * last item nested in a list's last item closes several levels at once).
  */
-export function dropTarget(doc: Node, dragged: Block, over: Block, side: "before" | "after"): DropTarget | null {
-  const { from, to } = removalRange(doc, dragged);
-  // Over the dragged block itself, or inside it.
-  if (over.pos >= from && over.pos < to) return null;
-  const land = landing(doc, dragged, side === "before" ? over.pos : over.pos + over.node.nodeSize);
-  if (!land) return null;
-  // The line goes where the block really lands, which may be outside a list.
-  const $land = doc.resolve(land.pos);
-  if ($land.nodeAfter) return { pos: land.pos, block: { pos: land.pos, node: $land.nodeAfter }, side: "before" };
-  const before = $land.nodeBefore!;
-  return { pos: land.pos, block: { pos: land.pos - before.nodeSize, node: before }, side: "after" };
+function placesAfter(doc: Node, block: Block): DropTarget[] {
+  const places: DropTarget[] = [];
+  for (let current = block; ; ) {
+    const end = current.pos + current.node.nodeSize;
+    const parent = parentItem(doc, current.pos);
+    places.push({ pos: end, block, side: "after", parent });
+    if (!parent || end !== parent.pos + parent.node.nodeSize - 1) return places;
+    current = parent;
+  }
+}
+
+/**
+ * The places in the gap below `over`'s line, from the deepest out: nested
+ * first in it when it's a list item, then (unless it has blocks nested
+ * under that line) after it and each item it closes.
+ */
+function placesBelowLine(doc: Node, over: Block): DropTarget[] {
+  if (!isListItem(over.node)) return placesAfter(doc, over);
+  const nested = { pos: over.pos + 1 + over.node.firstChild!.nodeSize, block: over, side: "after" as const, parent: over };
+  return over.node.childCount > 1 ? [nested] : [nested, ...placesAfter(doc, over)];
+}
+
+/**
+ * The block whose line is right above `block` on screen: the one before it
+ * (or the last block nested in that, at any depth), or the item it's nested
+ * in when it's the first block there. Null for the first block of the page.
+ */
+function lineAbove(doc: Node, block: Block): Block | null {
+  const $pos = doc.resolve(block.pos);
+  const index = $pos.index();
+  if (index === 0) return null;
+  if (isListItem($pos.parent) && index === 1) return { pos: $pos.before(), node: $pos.parent };
+  let above: Block = { pos: block.pos - $pos.nodeBefore!.nodeSize, node: $pos.nodeBefore! };
+  while (isListItem(above.node) && above.node.childCount > 1) {
+    above = { pos: above.pos + above.node.nodeSize - 1 - above.node.lastChild!.nodeSize, node: above.node.lastChild! };
+  }
+  return above;
+}
+
+/** The places in the gap above `block`'s line: the same gap as below the line above it. */
+function placesAbove(doc: Node, block: Block): DropTarget[] {
+  const above = lineAbove(doc, block);
+  return above ? placesBelowLine(doc, above) : [{ pos: block.pos, block, side: "before", parent: parentItem(doc, block.pos) }];
+}
+
+const depthOf = (doc: Node, target: DropTarget) => doc.resolve(target.pos).depth;
+
+/**
+ * Where something dropped on the `side` half of `over`'s line can go, one
+ * place per nesting level, from the top level in. Each gap between two
+ * lines offers the same places from both sides of it, so the line never
+ * jumps between two places for the same gap.
+ *
+ * With `dragged`, the block being moved: over itself (or what's nested in
+ * it) it counts as lifted out, so the gaps above and below it are one, and
+ * the places offered include moving it out of the item it's in. Places
+ * inside it are left out; places right where it is stay, so each level
+ * keeps its place in the list (dropping there does nothing).
+ */
+export function dropTargets(doc: Node, over: Block, side: "before" | "after", dragged?: Block): DropTarget[] {
+  let places: DropTarget[];
+  const from = dragged?.pos ?? -1;
+  const to = dragged ? dragged.pos + dragged.node.nodeSize : -1;
+  if (dragged && over.pos >= from && over.pos < to) {
+    places = placesAfter(doc, dragged);
+    for (const place of placesAbove(doc, dragged)) {
+      if (!places.some((p) => p.parent?.pos === place.parent?.pos)) places.push(place);
+    }
+  } else {
+    places = side === "before" ? placesAbove(doc, over) : placesBelowLine(doc, over);
+  }
+  places = places.filter((p) => p.pos <= from || p.pos >= to);
+  return places.sort((a, b) => depthOf(doc, a) - depthOf(doc, b));
 }
 
 // --- The block being dragged, shown faded ---------------------------------

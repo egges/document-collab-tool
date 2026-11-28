@@ -26,6 +26,8 @@ export function placeholderAt(state: EditorState, focused: boolean): { pos: numb
     case undefined:
       return { pos, text: WRITE_HINT };
     case "list_item":
+      // Blocks nested in an item get the usual hint; the item's own line says what it is.
+      if ($from.index($from.depth - 1) > 0) return { pos, text: WRITE_HINT };
       return { pos, text: container.attrs.checked != null ? "To-do" : "List" };
     case "blockquote":
       return { pos, text: "Quote" };

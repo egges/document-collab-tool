@@ -10,6 +10,7 @@ mod git;
 mod github;
 mod locations;
 mod menu;
+mod page_assets;
 mod page_properties;
 mod person;
 mod search;
@@ -33,6 +34,7 @@ pub fn run() {
         builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     }
     builder
+        .register_asynchronous_uri_scheme_protocol(page_assets::PROTOCOL, page_assets::serve)
         .menu(menu::build)
         .manage(commands::AppState::default())
         .manage(updater::UpdateState::default())
@@ -147,6 +149,7 @@ pub fn run() {
             commands::set_page_display,
             commands::delete_page,
             commands::resolve_conflict,
+            page_assets::add_page_asset,
             database_pages::create_database_page,
             database_pages::set_page_database,
             database_pages::set_page_view,

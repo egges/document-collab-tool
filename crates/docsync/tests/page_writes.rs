@@ -174,3 +174,32 @@ fn row_bodies_edited_on_two_devices_merge() {
     );
     assert_valid(&a);
 }
+
+#[test]
+fn pasted_images_go_into_the_page_assets_and_sync() {
+    let net = Net::new();
+    let a = net.device("laptop");
+    let page = a.ws.create_page("Notes", None).unwrap();
+
+    let first = a.engine.add_page_asset(&page, "image.png", b"one").unwrap();
+    let second = a.engine.add_page_asset(&page, "image.png", b"two").unwrap();
+    let spaced = a
+        .engine
+        .add_page_asset(&page, "../My photo (1).jpg", b"three")
+        .unwrap();
+    assert_eq!(first, "assets/image.png");
+    assert_eq!(second, "assets/image-2.png");
+    assert_eq!(spaced, "assets/My%20photo%20%281%29.jpg");
+    let dir = a.ws.page_assets_dir(&page);
+    assert_eq!(std::fs::read(dir.join("image-2.png")).unwrap(), b"two");
+    assert_eq!(std::fs::read(dir.join("My photo (1).jpg")).unwrap(), b"three");
+    assert!(a.engine.add_page_asset("missing", "image.png", b"x").is_err());
+
+    a.ws.write_body(&page, &format!("![]({first})\n")).unwrap();
+    a.sync();
+    let b = net.device("desktop");
+    assert_eq!(
+        std::fs::read(b.ws.page_assets_dir(&page).join("image.png")).unwrap(),
+        b"one"
+    );
+}

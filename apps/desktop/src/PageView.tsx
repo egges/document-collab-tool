@@ -9,6 +9,7 @@ import { DatabasePageView } from "./DatabasePageView.tsx";
 import { log } from "./devlog.ts";
 import { PageProperties, type PropertyActions } from "./PageProperties.tsx";
 import { PageSaver } from "./pageSaver.ts";
+import { imageUrl } from "./pageAssets.ts";
 
 export interface PageViewHandle {
   /** Write unsaved edits (title and body). */
@@ -227,6 +228,15 @@ function LoadedPage({ id, initial, diskVersion, reveal, onOpenLink, onRenamed, o
     onError,
   };
 
+  const addImage = async (file: File) => {
+    try {
+      return await api.addPageAsset(id, file);
+    } catch (e) {
+      onError(errorText(e));
+      throw e;
+    }
+  };
+
   const remove = async () => {
     const question = initial.row
       ? `Delete “${title || "Untitled"}” from “${initial.row.name || "Untitled"}”?`
@@ -316,6 +326,8 @@ function LoadedPage({ id, initial, diskVersion, reveal, onOpenLink, onRenamed, o
           setConflictsInPage(editor.conflicts.length);
         }}
         onOpenLink={onOpenLink}
+        imageSrc={(src) => imageUrl(id, src)}
+        addImage={addImage}
       />
     </article>
   );

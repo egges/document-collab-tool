@@ -24,10 +24,11 @@ use std::collections::{HashMap, HashSet};
 use std::fs;
 use std::path::{Component, Path, PathBuf};
 
-use percent_encoding::{AsciiSet, CONTROLS, percent_decode_str, utf8_percent_encode};
+use percent_encoding::percent_decode_str;
 use serde_json::Map;
 
 use crate::error::IoContext;
+use crate::layout;
 use crate::workspace::{Workspace, new_id};
 use crate::{Error, Result, front_matter};
 
@@ -373,22 +374,6 @@ impl Assets {
     }
 }
 
-/// Characters to escape in a link to a file in `assets/`.
-const PATH_UNSAFE: &AsciiSet = &CONTROLS
-    .add(b' ')
-    .add(b'"')
-    .add(b'#')
-    .add(b'%')
-    .add(b'(')
-    .add(b')')
-    .add(b'<')
-    .add(b'>')
-    .add(b'?')
-    .add(b'[')
-    .add(b']')
-    .add(b'\\')
-    .add(b'`');
-
 /// Resolves the links in one page.
 struct Links<'a> {
     index: &'a Index,
@@ -430,7 +415,7 @@ impl Links<'_> {
             return None;
         }
         let name = self.assets.add(real);
-        Some(format!("assets/{}", utf8_percent_encode(&name, PATH_UNSAFE)))
+        Some(layout::asset_link(&name))
     }
 
     /// Markdown for an Obsidian link, `[[target]]`, `[[target|text]]` or

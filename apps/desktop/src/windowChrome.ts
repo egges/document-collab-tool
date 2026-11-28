@@ -24,7 +24,26 @@ export function movesWindow(target: EventTarget | null): boolean {
   return !!target.closest("[data-window-drag]") && !target.closest(CONTROLS);
 }
 
+/**
+ * Files dragged onto the window: the webview would open one in place of the
+ * app, like a browser does. Only places that take files (the page's text
+ * column, see the editor's FileDrop) accept the drop; everywhere else it's
+ * refused.
+ */
+export function refuseFileDrops(target: Window) {
+  const hasFiles = (event: DragEvent) => !!event.dataTransfer?.types.includes("Files");
+  target.addEventListener("dragover", (event) => {
+    if (event.defaultPrevented || !hasFiles(event)) return; // taken by the page
+    event.preventDefault();
+    event.dataTransfer!.dropEffect = "none";
+  });
+  target.addEventListener("drop", (event) => {
+    if (hasFiles(event)) event.preventDefault();
+  });
+}
+
 export function setUpWindowChrome() {
+  refuseFileDrops(window);
   if (!("__TAURI_INTERNALS__" in window)) return; // a plain browser (tests, vite without the app)
   const window_ = getCurrentWindow();
 

@@ -8,8 +8,9 @@ import {
 } from "@milkdown/kit/core";
 import { clipboard } from "@milkdown/kit/plugin/clipboard";
 import { history } from "@milkdown/kit/plugin/history";
-import { commonmark } from "@milkdown/kit/preset/commonmark";
-import { gfm } from "@milkdown/kit/preset/gfm";
+import * as cm from "@milkdown/kit/preset/commonmark";
+import { extendListItemSchemaForTask, gfm, wrapInTaskListInputRule } from "@milkdown/kit/preset/gfm";
+import type { MilkdownPlugin } from "@milkdown/kit/ctx";
 import { EditorState, Plugin } from "@milkdown/kit/prose/state";
 import { $prose } from "@milkdown/kit/utils";
 import type { Node } from "@milkdown/kit/prose/model";
@@ -17,6 +18,8 @@ import type { EditorView } from "@milkdown/kit/prose/view";
 import { keymap } from "@milkdown/kit/prose/keymap";
 import { BLOCK_KEYS, blockStatePlugin } from "./blocks.ts";
 import { placeholderPlugin } from "./placeholder.ts";
+import { lists } from "./lists.ts";
+import { type ImageOptions, imagesPlugin } from "./images.ts";
 import { SaveRefusedError, findLostContent } from "./check.ts";
 import { codeBlocks } from "./code/index.ts";
 import { tableWidthsPlugins } from "./tableView.ts";
@@ -24,7 +27,7 @@ import { type Commands, createCommands } from "./commands.ts";
 import { type ConflictBlock, type Reader, conflictBlocks, conflictsPlugin, refreshConflicts } from "./conflicts.ts";
 import { configureHouseStyle, joinPage, prepareForSave, splitFrontMatter } from "./markdown.ts";
 
-export interface PageEditorOptions {
+export interface PageEditorOptions extends ImageOptions {
   /** Element the editor is mounted in. */
   root: HTMLElement;
   /** Contents of page.md. */
@@ -74,12 +77,30 @@ export interface PageEditor {
   destroy(): Promise<void>;
 }
 
+/** Leaves out of a preset the plugins in `excluded` (single plugins, or Milkdown's pairs). */
+function without(preset: MilkdownPlugin[], excluded: (MilkdownPlugin | MilkdownPlugin[])[]): MilkdownPlugin[] {
+  const set = new Set(excluded.flat());
+  return preset.filter((plugin) => !set.has(plugin));
+}
+
+// Milkdown's lists are containers around their items; ours aren't (lists.ts).
+const commonmark = without(cm.commonmark, [
+  cm.bulletListAttr, cm.bulletListSchema, cm.orderedListAttr, cm.orderedListSchema, cm.listItemAttr, cm.listItemSchema,
+  cm.wrapInBulletListInputRule, cm.wrapInOrderedListInputRule,
+  cm.listItemKeymap, cm.orderedListKeymap, cm.bulletListKeymap,
+  cm.wrapInBulletListCommand, cm.wrapInOrderedListCommand,
+  cm.sinkListItemCommand, cm.splitListItemCommand, cm.liftListItemCommand, cm.liftFirstListItemCommand,
+  cm.syncListOrderPlugin, cm.remarkAddOrderInListPlugin,
+]);
+const gfmWithoutLists = without(gfm, [extendListItemSchemaForTask, wrapInTaskListInputRule]);
+
 async function createMilkdown(
   root: HTMLElement,
   body: string,
   onUpdate: () => void = () => {},
   handleKeyDown?: (event: KeyboardEvent) => boolean,
   reader: () => Reader = () => NOBODY,
+  images: ImageOptions = {},
 ): Promise<Editor> {
   // Runs synchronously after every change, unlike Milkdown's listener plugin,
   // so `dirty` is always current.
@@ -97,10 +118,13 @@ async function createMilkdown(
       configureHouseStyle(ctx);
     })
     .use(commonmark)
-    .use(gfm)
+    .use(gfmWithoutLists)
+    .use(lists)
     .use(tableWidthsPlugins)
     .use(codeBlocks)
     .use(history)
+    // Before the clipboard plugin, so pasted image files are ours.
+    .use($prose(() => imagesPlugin(images)))
     .use(clipboard)
     .use(updates)
     // After `updates`, so open menus get keys such as Escape first.
@@ -131,7 +155,10 @@ export async function createPageEditor(options: PageEditorOptions): Promise<Page
     }
   };
 
-  const editor = await createMilkdown(options.root, body, updateDirty, options.handleKeyDown, () => reader);
+  const editor = await createMilkdown(options.root, body, updateDirty, options.handleKeyDown, () => reader, {
+    imageSrc: options.imageSrc,
+    addImage: options.addImage,
+  });
   const view = editor.action((ctx) => ctx.get(editorViewCtx));
   const parse = editor.action((ctx) => ctx.get(parserCtx));
   const serialize = editor.action((ctx) => ctx.get(serializerCtx));

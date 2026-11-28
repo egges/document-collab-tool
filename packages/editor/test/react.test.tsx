@@ -11,7 +11,11 @@ import { PageEditorView } from "../src/react/index.ts";
 let container: HTMLDivElement;
 afterEach(() => container?.remove());
 
-async function mount(markdown: string, onOpenLink?: (href: string) => void): Promise<PageEditor> {
+async function mount(
+  markdown: string,
+  onOpenLink?: (href: string) => void,
+  addImage?: (file: File) => Promise<string>,
+): Promise<PageEditor> {
   container = document.createElement("div");
   document.body.append(container);
   let ready!: (editor: PageEditor) => void;
@@ -19,7 +23,7 @@ async function mount(markdown: string, onOpenLink?: (href: string) => void): Pro
   await act(async () => {
     createRoot(container).render(
       <StrictMode>
-        <PageEditorView markdown={markdown} onReady={ready} onOpenLink={onOpenLink} />
+        <PageEditorView markdown={markdown} onReady={ready} onOpenLink={onOpenLink} addImage={addImage} />
       </StrictMode>,
     );
   });
@@ -296,6 +300,85 @@ describe("block handle", () => {
     expect(editor.save()).toBe("B.\n\nC.\n\nA.\n");
     expect(editor.view.dom.querySelector(".page-block-dragging")).toBeNull();
     expect(container.querySelector(".page-block-ghost")).toBeNull();
+  });
+
+  /** Points the editor's hit-testing at the text `text`. */
+  const pointAt = (editor: PageEditor, text: string) => {
+    let pos = -1;
+    editor.view.state.doc.descendants((n, p) => {
+      if (n.isText && n.text === text) pos = p;
+    });
+    editor.view.posAtCoords = () => ({ pos, inside: -1 });
+  };
+
+  test("dragging an image on its own line moves it like a block", async () => {
+    const editor = await mount("![](a.png)\n\nB.\n\nC.\n");
+    const img = editor.view.dom.querySelector("img[src]")!;
+    await act(() => pointer("pointerdown", img, 0, 0));
+    pointAt(editor, "C.");
+    await act(() => pointer("pointermove", document.body, 0, 40));
+    expect(editor.view.dom.querySelector(".page-block-dragging img[src]")).not.toBeNull();
+    expect(container.querySelector(".page-block-drop")).not.toBeNull();
+    await act(() => pointer("pointerup", document.body, 0, 40));
+    expect(editor.save()).toBe("B.\n\nC.\n\n![](a.png)\n");
+    expect(container.querySelector(".page-block-drop")).toBeNull();
+  });
+
+  test("clicking an image selects it", async () => {
+    const editor = await mount("Intro.\n\n![](a.png)\n");
+    const img = editor.view.dom.querySelector("img[src]")!;
+    await act(() => {
+      pointer("pointerdown", img);
+      pointer("pointerup", img);
+    });
+    const { selection } = editor.view.state;
+    expect(selection).toBeInstanceOf(NodeSelection);
+    expect((selection as NodeSelection).node.type.name).toBe("image");
+  });
+
+  test("an image amid text isn't dragged as a block", async () => {
+    const editor = await mount("Text ![](a.png) more.\n");
+    const img = editor.view.dom.querySelector("img[src]")!;
+    const down = new PointerEvent("pointerdown", { bubbles: true, cancelable: true, button: 0, pointerId: 1 });
+    await act(() => img.dispatchEvent(down));
+    expect(down.defaultPrevented).toBe(false);
+    await act(() => pointer("pointerup", img));
+  });
+});
+
+describe("dropping image files", () => {
+  const drag = async (type: string, files: File[], x = 0, y = 10) => {
+    const event = new Event(type, { bubbles: true, cancelable: true }) as DragEvent;
+    Object.defineProperties(event, {
+      dataTransfer: { value: { types: ["Files"], files, dropEffect: "none" } },
+      clientX: { value: x },
+      clientY: { value: y },
+    });
+    await act(() => void document.body.dispatchEvent(event));
+    return event;
+  };
+
+  test("shows where they go, and puts them there", async () => {
+    const added: string[] = [];
+    const editor = await mount("A.\n\nB.\n", undefined, async (f) => (added.push(f.name), `assets/${f.name}`));
+    const file = new File(["x"], "photo.png", { type: "image/png" });
+    // jsdom has no layout: every block is at the top, so this is below them all.
+    const over = await drag("dragover", [file]);
+    expect(over.defaultPrevented).toBe(true);
+    expect(container.querySelector(".page-block-drop")).not.toBeNull();
+    const dropped = await drag("drop", [file]);
+    expect(dropped.defaultPrevented).toBe(true);
+    expect(container.querySelector(".page-block-drop")).toBeNull();
+    await act(async () => {});
+    expect(added).toEqual(["photo.png"]);
+    expect(editor.save()).toBe("A.\n\nB.\n\n![](assets/photo.png)\n");
+  });
+
+  test("aren't taken beside the text's column", async () => {
+    await mount("A.\n", undefined, async () => "assets/x.png");
+    const over = await drag("dragover", [], 500);
+    expect(over.defaultPrevented).toBe(false);
+    expect(container.querySelector(".page-block-drop")).toBeNull();
   });
 });
 

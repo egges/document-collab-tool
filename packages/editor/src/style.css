@@ -119,7 +119,7 @@
 .page-editor .ProseMirror > :first-child { margin-top: 0; }
 .page-editor .ProseMirror :is(h1, h2, h3, h4) { line-height: 1.3; }
 .page-editor .ProseMirror li + li,
-.page-editor .ProseMirror li > :is(ul, ol) { margin-top: 0.15em; }
+.page-editor .ProseMirror li > * + * { margin-top: 0.15em; }
 .page-editor .ProseMirror blockquote > * + * { margin-top: 0.4em; }
 .page-editor .ProseMirror h1 { font-size: 1.9em; }
 .page-editor .ProseMirror h2 { font-size: 1.45em; }
@@ -235,7 +235,24 @@
   border-left: 3px solid var(--page-border);
   color: var(--page-muted);
 }
-.page-editor .ProseMirror :is(ul, ol) { padding-left: 1.6em; }
+/*
+ * List items are blocks side by side, with no list around them (lists.ts),
+ * so each makes its own room for its bullet, number or checkbox.
+ */
+.page-editor .ProseMirror li { margin-left: 1.6em; }
+.page-editor .ProseMirror li[data-list-type="bullet"] { list-style-type: disc; }
+.page-editor .ProseMirror li li[data-list-type="bullet"] { list-style-type: circle; }
+.page-editor .ProseMirror li li li[data-list-type="bullet"] { list-style-type: square; }
+/* A number counts on from the numbered item right before it, or starts at 1 (or at its own start, set inline). */
+.page-editor .ProseMirror li[data-list-type="ordered"] { list-style: none; position: relative; counter-increment: page-ol; }
+.page-editor .ProseMirror li[data-list-type="ordered"]:not(li[data-list-type="ordered"] + *) { counter-reset: page-ol; }
+.page-editor .ProseMirror li[data-list-type="ordered"]:not([data-item-type="task"])::before {
+  content: counter(page-ol) ".";
+  position: absolute;
+  right: 100%;
+  margin-right: 0.45em;
+  font-variant-numeric: tabular-nums;
+}
 .page-editor .ProseMirror li[data-item-type="task"] { list-style: none; position: relative; }
 .page-editor .ProseMirror li[data-item-type="task"]::before {
   content: "";
@@ -254,7 +271,7 @@
   /* A white tick. */
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M3.5 8.5l3 3 6-7' fill='none' stroke='white' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
 }
-.page-editor .ProseMirror li[data-item-type="task"][data-checked="true"] > p {
+.page-editor .ProseMirror li[data-item-type="task"][data-checked="true"] > p:first-child {
   color: var(--page-muted);
   text-decoration: line-through;
 }
@@ -268,7 +285,8 @@
 .page-editor .ProseMirror table { border-collapse: collapse; }
 .page-editor .ProseMirror table[data-layout] :is(th, td) { min-width: 0; overflow-wrap: anywhere; }
 .page-editor .ProseMirror :is(th, td) { border: 1px solid var(--page-border); padding: 4px 10px; min-width: 3em; }
-.page-editor .ProseMirror img { max-width: 100%; }
+.page-editor .ProseMirror img { max-width: 100%; border-radius: 4px; vertical-align: bottom; cursor: grab; }
+.page-editor .ProseMirror img.ProseMirror-selectednode { outline: 2px solid var(--page-accent); outline-offset: 2px; }
 
 /* --- Menus ---------------------------------------------------------------- */
 

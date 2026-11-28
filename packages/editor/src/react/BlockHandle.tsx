@@ -1,18 +1,18 @@
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
+import { NodeSelection } from "@milkdown/kit/prose/state";
 import type { EditorView } from "@milkdown/kit/prose/view";
-import { type Block, type DropTarget, blockAt, blockStartingAt, dropTarget, setDragging } from "../blocks.ts";
+import { type Block, type DropTarget, blockStartingAt, setDragging } from "../blocks.ts";
 import type { PageEditor } from "../editor.ts";
+import { imageBlock } from "../images.ts";
 import { BlockMenu } from "./BlockMenu.tsx";
+import { DropLine } from "./DropLine.tsx";
+import { GUTTER, MARKER, blockElement, blockFromPoint, dropTargetAt } from "./geometry.ts";
 import { GripIcon, PlusIcon } from "./icons.tsx";
 
 /** Width of "+" and the grip together, and the gap to the block. */
 const HANDLE_WIDTH = 44;
 const HANDLE_HEIGHT = 24;
-/** How far left of the text the handle still shows (the gutter it sits in). */
-const GUTTER = 72;
-/** A list item's handle goes left of its bullet or checkbox. */
-const MARKER = 22;
-/** Pixels the pointer moves before a press on the grip becomes a drag. */
+/** Pixels the pointer moves before a press on the grip (or an image) becomes a drag. */
 const DRAG_THRESHOLD = 4;
 
 interface Drag {
@@ -21,85 +21,8 @@ interface Drag {
   startY: number;
   pointerId: number;
   started: boolean;
-}
-
-/**
- * The block at height `y`: the top-level block there, or, in a list, the
- * innermost item there. Goes by height only, so the gutter (where the handle
- * is) counts as part of the block, and the space between blocks goes to the
- * nearer one.
- */
-function blockAtY(view: EditorView, y: number): Block | null {
-  let children = childBlocks(view, view.state.doc, 0);
-  let found: Block | null = null;
-  while (children.length) {
-    const child = nearest(view, children, y);
-    if (!child) break;
-    found = child;
-    const { node, pos } = child;
-    if (node.type.name === "bullet_list" || node.type.name === "ordered_list") {
-      children = childBlocks(view, node, pos + 1);
-      continue;
-    }
-    // In an item, a nested list the pointer is over.
-    children = [];
-    if (node.type.name === "list_item") {
-      for (const inner of childBlocks(view, node, pos + 1)) {
-        const isList = inner.node.type.name === "bullet_list" || inner.node.type.name === "ordered_list";
-        const rect = isList ? rectOf(view, inner) : null;
-        if (rect && y >= rect.top) children = childBlocks(view, inner.node, inner.pos + 1);
-      }
-    }
-  }
-  return found;
-}
-
-function childBlocks(view: EditorView, parent: Block["node"], start: number): Block[] {
-  const blocks: Block[] = [];
-  parent.forEach((node, offset) => blocks.push({ node, pos: start + offset }));
-  return blocks;
-}
-
-function rectOf(view: EditorView, block: Block): DOMRect | null {
-  const element = blockElement(view, block);
-  return element ? element.getBoundingClientRect() : null;
-}
-
-/** The block among `blocks` (in order, top to bottom) containing `y`, or the nearest one. Binary search. */
-function nearest(view: EditorView, blocks: Block[], y: number): Block | null {
-  let lo = 0;
-  let hi = blocks.length - 1;
-  // The last block starting above y.
-  let index = 0;
-  while (lo <= hi) {
-    const mid = (lo + hi) >> 1;
-    const rect = rectOf(view, blocks[mid]);
-    if (rect && rect.top <= y) {
-      index = mid;
-      lo = mid + 1;
-    } else hi = mid - 1;
-  }
-  const rect = rectOf(view, blocks[index]);
-  const next = blocks[index + 1] && rectOf(view, blocks[index + 1]);
-  if (rect && next && y > rect.bottom && next.top - y < y - rect.bottom) return blocks[index + 1];
-  return blocks[index];
-}
-
-/** The block under a point (see `blockAtY`); hit-tests where layout can't be measured (tests). */
-function blockFromPoint(view: EditorView, x: number, y: number): Block | null {
-  const box = view.dom.getBoundingClientRect();
-  if (box.height > 0) return blockAtY(view, Math.min(Math.max(y, box.top + 1), box.bottom - 1));
-  try {
-    const hit = view.posAtCoords({ left: x, top: y });
-    return hit && blockAt(view.state.doc, hit.inside >= 0 ? hit.inside : hit.pos);
-  } catch {
-    return null;
-  }
-}
-
-function blockElement(view: EditorView, block: Block): HTMLElement | null {
-  const dom = view.nodeDOM(block.pos);
-  return dom instanceof HTMLElement ? dom : null;
+  /** What a press that never became a drag does. */
+  onClick: () => void;
 }
 
 /** Vertical middle of the block's first line, in client coordinates. */
@@ -132,38 +55,23 @@ interface Ghost {
   dy: number;
 }
 
-/**
- * Copies the block's element into a faded box that follows the pointer.
- * Inside the editor's container, so the page's styles apply; a list item
- * gets a copy of its list around it, so it keeps its bullet or number.
- */
+/** Copies the block's element into a faded box that follows the pointer, inside the editor's container so the page's styles apply. */
 function createGhost(view: EditorView, container: HTMLElement, block: Block, x: number, y: number): Ghost | null {
   const element = blockElement(view, block);
   if (!element) return null;
   const rect = element.getBoundingClientRect();
-  let copy = element.cloneNode(true) as HTMLElement;
+  const copy = element.cloneNode(true) as HTMLElement;
   copy.classList.remove("page-block-dragging", "ProseMirror-selectednode");
-  let left = rect.left;
-  const list = element.parentElement;
-  if (block.node.type.name === "list_item" && list && /^(UL|OL)$/.test(list.tagName)) {
-    const wrapper = list.cloneNode(false) as HTMLElement;
-    if (wrapper instanceof HTMLOListElement) {
-      wrapper.start = (Number(list.getAttribute("start")) || 1) + [...list.children].indexOf(element);
-    }
-    wrapper.append(copy);
-    copy = wrapper;
-    left -= parseFloat(getComputedStyle(list).paddingLeft) || 0;
-  }
   const content = document.createElement("div");
   content.className = "ProseMirror";
   content.append(copy);
   const ghost = document.createElement("div");
   ghost.className = "page-block-ghost";
   ghost.setAttribute("aria-hidden", "true");
-  ghost.style.width = `${rect.right - left}px`;
+  ghost.style.width = `${rect.width}px`;
   ghost.append(content);
   container.append(ghost);
-  const result = { element: ghost, dx: x - left, dy: y - rect.top };
+  const result = { element: ghost, dx: x - rect.left, dy: y - rect.top };
   moveGhost(result, x, y);
   return result;
 }
@@ -185,6 +93,7 @@ function scrollParent(element: HTMLElement): HTMLElement {
  * The "+" and grip shown left of the block under the pointer, as in Notion.
  * "+" adds a block below (⌥: above) and opens the block menu; dragging the
  * grip moves the block; clicking it selects the block and opens its menu.
+ * An image on its own line moves the same way when it's dragged itself.
  */
 export function BlockHandle({ editor, container }: {
   editor: PageEditor;
@@ -193,7 +102,13 @@ export function BlockHandle({ editor, container }: {
   const { view, commands } = editor;
   const [hovered, setHovered] = useState<number | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [drop, setDrop] = useState<DropTarget | null>(null);
+  const [drop, setDropState] = useState<DropTarget | null>(null);
+  // For the window's pointer listeners, which outlive a render.
+  const dropRef = useRef<DropTarget | null>(null);
+  const setDrop = (target: DropTarget | null) => {
+    dropRef.current = target;
+    setDropState(target);
+  };
   const [dragging, setDraggingState] = useState(false);
   const drag = useRef<Drag | null>(null);
   const pointer = useRef({ x: 0, y: 0 });
@@ -273,12 +188,7 @@ export function BlockHandle({ editor, container }: {
     const current = drag.current;
     if (!current?.started) return;
     const { x, y } = pointer.current;
-    const over = blockFromPoint(view, x, y);
-    const element = over && blockElement(view, over);
-    if (!over || !element) return setDrop(null);
-    const box = element.getBoundingClientRect();
-    const side = y < box.top + box.height / 2 ? "before" : "after";
-    setDrop(dropTarget(view.state.doc, current.block, over, side));
+    setDrop(dropTargetAt(view, x, y, current.block));
   };
 
   const endDrag = (commit: boolean) => {
@@ -290,7 +200,7 @@ export function BlockHandle({ editor, container }: {
     if (current.started) {
       view.dispatch(setDragging(view.state.tr, null));
       setDraggingState(false);
-      const target = drop;
+      const target = dropRef.current;
       setDrop(null);
       if (commit && target) {
         // Positions may have shifted if the page changed during the drag.
@@ -301,14 +211,11 @@ export function BlockHandle({ editor, container }: {
     }
   };
 
-  const onGripDown = (event: React.PointerEvent<HTMLButtonElement>) => {
-    if (event.button !== 0 || !block) return;
-    event.preventDefault();
-    event.currentTarget.setPointerCapture?.(event.pointerId);
-    drag.current = { block, startX: event.clientX, startY: event.clientY, pointerId: event.pointerId, started: false };
+  const startPress = (block: Block, event: { clientX: number; clientY: number; pointerId: number }, onClick: () => void) => {
+    drag.current = { block, startX: event.clientX, startY: event.clientY, pointerId: event.pointerId, started: false, onClick };
   };
 
-  const onGripMove = (event: React.PointerEvent<HTMLButtonElement>) => {
+  const onPressMove = (event: PointerEvent) => {
     const current = drag.current;
     if (!current || current.pointerId !== event.pointerId) return;
     pointer.current = { x: event.clientX, y: event.clientY };
@@ -325,12 +232,54 @@ export function BlockHandle({ editor, container }: {
     updateDrop();
   };
 
-  const onGripUp = (event: React.PointerEvent<HTMLButtonElement>) => {
+  const onPressUp = (event: PointerEvent) => {
     const current = drag.current;
     if (!current || current.pointerId !== event.pointerId) return;
     if (current.started) return endDrag(true);
     drag.current = null;
-    openMenu();
+    current.onClick();
+  };
+
+  // A press is followed on the window, so it works wherever it started (the
+  // grip, an image) and wherever the pointer goes.
+  const press = useRef({ move: onPressMove, up: onPressUp, cancel: () => endDrag(false) });
+  press.current = { move: onPressMove, up: onPressUp, cancel: () => endDrag(false) };
+  useEffect(() => {
+    const move = (e: PointerEvent) => press.current.move(e);
+    const up = (e: PointerEvent) => press.current.up(e);
+    const cancel = () => press.current.cancel();
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", cancel);
+    return () => {
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", cancel);
+    };
+  }, []);
+
+  // Dragging an image on its own line moves its block; clicking selects it.
+  useEffect(() => {
+    const onDown = (event: PointerEvent) => {
+      const found = event.button === 0 ? imageBlock(view, event.target) : null;
+      if (!found) return;
+      // No text selection, no native drag of the image.
+      event.preventDefault();
+      startPress(found.block, event, () => {
+        const now = imageBlock(view, event.target);
+        if (now) view.dispatch(view.state.tr.setSelection(NodeSelection.create(view.state.doc, now.pos)));
+        view.focus();
+      });
+    };
+    view.dom.addEventListener("pointerdown", onDown);
+    return () => view.dom.removeEventListener("pointerdown", onDown);
+  }, [view]);
+
+  const onGripDown = (event: React.PointerEvent<HTMLButtonElement>) => {
+    if (event.button !== 0 || !block) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture?.(event.pointerId);
+    startPress(block, event, () => openMenu());
   };
 
   const openMenu = () => {
@@ -345,13 +294,12 @@ export function BlockHandle({ editor, container }: {
     view.focus();
   };
 
-  if (!block || !container.current) return null;
-  const position = handlePosition(view, container.current, block);
-  if (!position) return null;
+  if (!container.current) return null;
+  const position = block && handlePosition(view, container.current, block);
 
   return (
     <>
-      <div
+      {block && position && (<div
         className={`page-block-handle${frozen ? " active" : ""}`}
         style={{ left: position.left, top: position.top }}
         // Never take focus or the selection from the editor.
@@ -374,9 +322,6 @@ export function BlockHandle({ editor, container }: {
           aria-expanded={menuOpen}
           title={"Drag to move\nClick for options"}
           onPointerDown={onGripDown}
-          onPointerMove={onGripMove}
-          onPointerUp={onGripUp}
-          onPointerCancel={() => endDrag(false)}
           onKeyDown={(e) => {
             if (e.key === "Enter" || e.key === " ") {
               e.preventDefault();
@@ -386,9 +331,9 @@ export function BlockHandle({ editor, container }: {
         >
           <GripIcon size={16} />
         </button>
-      </div>
+      </div>)}
       {drop && <DropLine view={view} container={container.current} target={drop} />}
-      {menuOpen && (
+      {block && position && menuOpen && (
         <BlockMenu
           editor={editor}
           block={block}
@@ -402,24 +347,4 @@ export function BlockHandle({ editor, container }: {
       )}
     </>
   );
-}
-
-/** The line showing where a dragged block will land. */
-function DropLine({ view, container, target }: { view: EditorView; container: HTMLElement; target: DropTarget }) {
-  const element = blockElement(view, target.block);
-  const [, remeasure] = useState(0);
-  // Measure after layout, so the line follows scrolling.
-  useLayoutEffect(() => {
-    const onScroll = () => remeasure((n) => n + 1);
-    window.addEventListener("scroll", onScroll, true);
-    return () => window.removeEventListener("scroll", onScroll, true);
-  }, []);
-  if (!element) return null;
-  const box = container.getBoundingClientRect();
-  const rect = element.getBoundingClientRect();
-  const isItem = target.block.node.type.name === "list_item";
-  const left = (isItem ? rect.left - MARKER : rect.left) - box.left;
-  const right = view.dom.getBoundingClientRect().right - box.left;
-  const top = (target.side === "before" ? rect.top - 4 : rect.bottom + 2) - box.top;
-  return <div className="page-block-drop" style={{ left, top, width: Math.max(0, right - left) }} />;
 }
