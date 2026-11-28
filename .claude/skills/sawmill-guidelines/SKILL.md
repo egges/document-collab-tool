@@ -91,6 +91,37 @@ Follow these whenever you work in this repo.
   `-` under a line reads as a heading underline, and `- [ ]` as text), so
   what's nested under it needs a blank line before it (lists.ts).
 
+## Tracking work in GitHub issues
+
+Bugs, features and chores are tracked as issues on `egges/sawmill`.
+`docs/roadmap.md` stays the plan: the order of the work and the decisions
+behind it. Issues hold the concrete work.
+
+- **Before starting work**, look for its issue (`gh issue list --search
+  "<words>"`, or `--state all`). If there is none, open one, unless the
+  change is trivial (a typo, a one-line fix). Link the issue to the thread
+  (`link_issue`) when that tool is available.
+- **One label per issue for its kind:** `bug` (something broken),
+  `enhancement` (a feature or a change in behaviour), `chore` (upkeep:
+  dependencies, CI, refactoring, tests, tooling) or `documentation`. Add
+  `accessibility` where it applies.
+- **Keep issues short:** what and why in a few lines, then "Done when" with
+  what has to be true. For a bug: the steps, what happens, what should
+  happen. A failing property-test case goes in as the steps.
+- **Found something you won't fix now?** A bug the tests turned up that is
+  out of scope, a follow-up, a "still to do" in a PR: open an issue for it
+  instead of leaving it only in a PR description, and mention its number
+  in the PR.
+- **PRs close their issue:** put `Closes #N` in the PR description (one
+  line per issue) so merging closes it.
+- **Roadmap items and issues:** when an issue is opened for a roadmap item,
+  add its number to the item (`- [ ] **Trash.** (#61) …`). Tick the item
+  when the issue closes. Only open issues for roadmap items that are about
+  to be worked on, not the whole list in advance.
+- **The repository is public.** Issues must not contain private details:
+  no real email contents, names of customers, tokens or paths with personal
+  data. Describe the case in general terms instead.
+
 ## Merging PRs
 
 - After merging a PR, switch the checkout back to `main` (and pull) **before** settling/organizing the thread.
