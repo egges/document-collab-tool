@@ -336,6 +336,11 @@ export const api = {
   readPage: (id: string) => invoke<Page>("read_page", { id }),
   searchText: (query: string) => invoke<TextMatch[]>("search_text", { query }),
   writePage: (id: string, base: string, body: string) => invoke<WriteResult>("write_page", { id, base, body }),
+  /** Save a pasted or dropped file in the page's `assets/`; returns the link to it for the page's text. */
+  addPageAsset: async (page: string, file: File) =>
+    invoke<string>("add_page_asset", new Uint8Array(await file.arrayBuffer()), {
+      headers: { page, name: encodeURIComponent(file.name || "image") },
+    }),
   createPage: (title: string, parent: string | null) => invoke<string>("create_page", { title, parent }),
   importMarkdown: (sources: string[], parent: string | null) =>
     invoke<ImportResult>("import_markdown", { sources, parent }),

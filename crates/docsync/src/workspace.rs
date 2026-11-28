@@ -310,6 +310,39 @@ impl Workspace {
         self.page_dir(id).join(layout::PAGE_ASSETS)
     }
 
+    /// Save `bytes` in the page's `assets/` as `name`, or as `name-2`,
+    /// `name-3`, … when that's taken. `name` is only a suggestion: anything
+    /// before the last `/` or `\\` is dropped. Returns the link to the file
+    /// from the page's text (see [`layout::asset_link`]).
+    pub fn add_page_asset(&self, id: &str, name: &str, bytes: &[u8]) -> Result<String> {
+        let dir = self.page_assets_dir(id);
+        fs::create_dir_all(&dir).at(&dir)?;
+        let name = name
+            .rsplit(['/', '\\'])
+            .next()
+            .unwrap_or("")
+            .trim()
+            .trim_start_matches('.');
+        let name = if name.is_empty() { "file" } else { name };
+        let (stem, ext) = match name.rfind('.') {
+            Some(i) if i > 0 => (&name[..i], &name[i..]),
+            _ => (name, ""),
+        };
+        let mut file = name.to_string();
+        for n in 2.. {
+            let path = dir.join(&file);
+            match fs::OpenOptions::new().write(true).create_new(true).open(&path) {
+                Ok(mut out) => {
+                    std::io::Write::write_all(&mut out, bytes).at(&path)?;
+                    break;
+                }
+                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => file = format!("{stem}-{n}{ext}"),
+                Err(e) => return Err(e).at(&path),
+            }
+        }
+        Ok(layout::asset_link(&file))
+    }
+
     pub fn delete_page(&self, id: &str) -> Result<()> {
         let dir = self.page_dir(id);
         fs::remove_dir_all(&dir).at(&dir)

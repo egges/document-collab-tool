@@ -15,6 +15,8 @@
 //! or moving a page only edits a JSON field. Each page and database is an
 //! *entity*: a directory that is created, deleted and restored as a whole.
 
+use percent_encoding::{AsciiSet, CONTROLS, utf8_percent_encode};
+
 pub const PAGES_DIR: &str = "pages";
 pub const DATABASES_DIR: &str = "databases";
 pub const WORKSPACE_FILE: &str = "workspace.json";
@@ -92,6 +94,28 @@ pub fn conflict_copy_path(path: &str, label: &str, id: &str) -> String {
         _ => (name, ""),
     };
     format!("{dir}{stem}{CONFLICT_COPY_MARKER}{}-{id}{ext}", slug(label))
+}
+
+/// Characters to escape in a link to a file in `assets/`.
+const PATH_UNSAFE: &AsciiSet = &CONTROLS
+    .add(b' ')
+    .add(b'"')
+    .add(b'#')
+    .add(b'%')
+    .add(b'(')
+    .add(b')')
+    .add(b'<')
+    .add(b'>')
+    .add(b'?')
+    .add(b'[')
+    .add(b']')
+    .add(b'\\')
+    .add(b'`');
+
+/// The link to attachment `name` from its page's text: `assets/<name>`,
+/// escaped so it works as a Markdown link destination.
+pub fn asset_link(name: &str) -> String {
+    format!("{PAGE_ASSETS}/{}", utf8_percent_encode(name, PATH_UNSAFE))
 }
 
 /// Where a device's own email address is: a commit's committer is the

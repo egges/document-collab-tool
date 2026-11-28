@@ -1,14 +1,16 @@
 import { useEffect, useLayoutEffect, useReducer, useRef, useState } from "react";
 import { type PageEditor, createPageEditor } from "../editor.ts";
+import type { ImageOptions } from "../images.ts";
 import type { Reader } from "../conflicts.ts";
 import { BlockHandle } from "./BlockHandle.tsx";
 import { ConflictFrames } from "./ConflictFrames.tsx";
+import { FileDrop } from "./FileDrop.tsx";
 import { LinkPopover } from "./LinkPopover.tsx";
 import { SelectionToolbar } from "./SelectionToolbar.tsx";
 import { SlashMenu } from "./SlashMenu.tsx";
 import { TableHandles } from "./TableHandles.tsx";
 
-export interface PageEditorViewProps {
+export interface PageEditorViewProps extends ImageOptions {
   /** Contents of page.md. When this changes, the editor loads it (`load()`). */
   markdown: string;
   /** Called once the editor exists, with the editor to save from. */
@@ -38,7 +40,7 @@ export type KeyHandler = (event: KeyboardEvent) => boolean;
  * and delete rows and columns) and the frames around conflict blocks. Styles:
  * import "@sawmill/editor/style.css".
  */
-export function PageEditorView({ markdown, onReady, onDirtyChange, onChange, onOpenLink, reader, className }: PageEditorViewProps) {
+export function PageEditorView({ markdown, onReady, onDirtyChange, onChange, onOpenLink, reader, className, imageSrc, addImage }: PageEditorViewProps) {
   const container = useRef<HTMLDivElement>(null);
   const root = useRef<HTMLDivElement>(null);
   const [editor, setEditor] = useState<PageEditor | null>(null);
@@ -46,10 +48,11 @@ export function PageEditorView({ markdown, onReady, onDirtyChange, onChange, onO
   const [, rerender] = useReducer((n: number) => n + 1, 0);
 
   // Latest callbacks, so the editor is created once but always calls the current ones.
-  const callbacks = useRef({ onReady, onDirtyChange, onChange, onOpenLink });
+  const callbacks = useRef({ onReady, onDirtyChange, onChange, onOpenLink, imageSrc, addImage });
   useLayoutEffect(() => {
-    callbacks.current = { onReady, onDirtyChange, onChange, onOpenLink };
+    callbacks.current = { onReady, onDirtyChange, onChange, onOpenLink, imageSrc, addImage };
   });
+  const [dropImage] = useState(() => (file: File) => (callbacks.current.addImage ?? addImage!)(file));
   // The slash menu takes over arrow keys, Enter and Escape while it's open.
   const keyHandler = useRef<KeyHandler>(() => false);
 
@@ -66,6 +69,9 @@ export function PageEditorView({ markdown, onReady, onDirtyChange, onChange, onO
       },
       handleKeyDown: (event) => keyHandler.current(event),
       reader,
+      imageSrc: (src) => (callbacks.current.imageSrc ?? ((s: string) => s))(src),
+      // Whether images can be added at all is fixed when the editor is made.
+      addImage: addImage && ((file) => (callbacks.current.addImage ?? addImage)(file)),
     }).then((ed) => {
       if (cancelled) {
         void ed.destroy();
@@ -141,6 +147,7 @@ export function PageEditorView({ markdown, onReady, onDirtyChange, onChange, onO
       {editor && <BlockHandle editor={editor} container={container} />}
       {editor && <TableHandles editor={editor} container={container} />}
       {editor && <ConflictFrames editor={editor} container={container} />}
+      {editor && addImage && <FileDrop view={editor.view} container={container} addImage={dropImage} />}
     </div>
   );
 }

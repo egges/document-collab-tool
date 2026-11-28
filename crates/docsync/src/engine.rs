@@ -568,6 +568,17 @@ impl SyncEngine {
         workspace.lift_front_matter(id)
     }
 
+    /// Save an attachment in page `id`'s `assets/` (see
+    /// [`Workspace::add_page_asset`]). Doesn't commit.
+    pub fn add_page_asset(&self, id: &str, name: &str, bytes: &[u8]) -> Result<String> {
+        let _lock = self.lock()?;
+        let workspace = Workspace::new(&self.root);
+        if !workspace.page_exists(id) {
+            return Err(Error::InvalidState(format!("page {id} doesn't exist")));
+        }
+        workspace.add_page_asset(id, name, bytes)
+    }
+
     /// Import Markdown files and folders as pages under `parent` (see
     /// [`crate::import`]). Waits for a running sync, so a sync never
     /// publishes half an import. Doesn't commit.

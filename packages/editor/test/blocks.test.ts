@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vitest";
 import { NodeSelection, TextSelection } from "@milkdown/kit/prose/state";
-import { type Block, type PageEditor, blockAt, createPageEditor, dropTarget, slashState } from "../src/index.ts";
+import { type Block, type PageEditor, blockAt, createPageEditor, dropTargets, slashState } from "../src/index.ts";
 
 const open = (markdown: string) => createPageEditor({ root: document.createElement("div"), markdown });
 
@@ -33,13 +33,17 @@ function press(editor: PageEditor, key: string, mods: KeyboardEventInit = {}) {
 const LIST = "- one\n- two\n- three\n";
 
 describe("finding blocks", () => {
-  test("top-level elements and list items are blocks", async () => {
+  test("top-level elements, list items and what's nested in them are blocks", async () => {
     const editor = await open("# Title\n\nText.\n\n- one\n  - nested\n\n> quoted\n");
     expect(block(editor, "Title").node.type.name).toBe("heading");
     expect(block(editor, "Text").node.type.name).toBe("paragraph");
     expect(block(editor, "one").node.textContent).toBe("onenested");
     expect(block(editor, "nested").node.textContent).toBe("nested");
     expect(block(editor, "quoted").node.type.name).toBe("blockquote");
+
+    const nested = await open("- item\n\n  More text.\n");
+    expect(block(nested, "item").node.type.name).toBe("list_item");
+    expect(block(nested, "More").node.type.name).toBe("paragraph");
   });
 });
 
@@ -113,9 +117,11 @@ describe("moving a step", () => {
 });
 
 describe("moving by dragging", () => {
-  const drop = (editor: PageEditor, dragged: string, over: string, side: "before" | "after") => {
-    const target = dropTarget(editor.view.state.doc, block(editor, dragged), block(editor, over), side);
-    return target && editor.commands.moveBlockTo(block(editor, dragged), target.pos);
+  /** Drops `dragged` on the `side` half of `over`'s line, at `level` of the places offered (the top level is 0; by default the deepest). */
+  const drop = (editor: PageEditor, dragged: string, over: string, side: "before" | "after", level?: number) => {
+    const targets = dropTargets(editor.view.state.doc, block(editor, over), side, block(editor, dragged));
+    const target = level === undefined ? targets.at(-1) : targets[level];
+    return target ? editor.commands.moveBlockTo(block(editor, dragged), target.pos) : null;
   };
 
   test("a paragraph, before or after another", async () => {
@@ -129,47 +135,79 @@ describe("moving by dragging", () => {
 
   test("dropping a block next to itself does nothing", async () => {
     const editor = await open("A.\n\nB.\n");
-    expect(drop(editor, "A", "A", "after")).toBeNull();
-    expect(drop(editor, "A", "B", "before")).toBeNull();
+    expect(drop(editor, "A", "A", "after")).toBe(false);
+    expect(drop(editor, "A", "B", "before")).toBe(false);
     expect(editor.save()).toBeNull();
   });
 
-  test("a list item out of its list becomes a list of its own", async () => {
+  test("a list item moved away from its list stays an item", async () => {
     const editor = await open(`Intro.\n\n${LIST}`);
     drop(editor, "two", "Intro", "before");
     expect(editor.save()).toBe("- two\n\nIntro.\n\n- one\n- three\n");
   });
 
-  test("a paragraph dropped into a list becomes an item, and a to-do next to to-dos", async () => {
+  test("a paragraph dropped between items stays a paragraph, or is nested in the item above", async () => {
     const editor = await open(`Loose.\n\n${LIST}`);
-    drop(editor, "Loose", "two", "after");
-    expect(editor.save()).toBe("- one\n- two\n- Loose.\n- three\n");
+    drop(editor, "Loose", "two", "after", 0);
+    expect(editor.save()).toBe("- one\n- two\n\nLoose.\n\n- three\n");
 
-    const tasks = await open("Loose.\n\n- [ ] first\n- [x] second\n");
-    drop(tasks, "Loose", "first", "after");
-    expect(tasks.save()).toBe("- [ ] first\n- [ ] Loose.\n- [x] second\n");
+    const nested = await open(`Loose.\n\n${LIST}`);
+    drop(nested, "Loose", "two", "after", 1);
+    expect(nested.save()).toBe("- one\n- two\n\n  Loose.\n- three\n");
   });
 
-  test("a heading can't be a list item, so it goes next to the list", async () => {
-    const editor = await open(`# Head\n\n${LIST}`);
-    // The line is drawn where it will land: after the list, not after the item.
-    const target = dropTarget(editor.view.state.doc, block(editor, "Head"), block(editor, "three"), "after")!;
-    expect(target.block.node.type.name).toBe("bullet_list");
-    expect(target.side).toBe("after");
-    drop(editor, "Head", "three", "after");
-    expect(editor.save()).toBe("- one\n- two\n- three\n\n# Head\n");
-  });
-
-  test("the only item of a list takes its list along", async () => {
-    const editor = await open("- alone\n\nA.\n\nB.\n");
-    drop(editor, "alone", "B", "after");
-    expect(editor.save()).toBe("A.\n\nB.\n\n- alone\n");
+  test("below the last item nested in a list, each level it closes is a place", async () => {
+    const editor = await open("- one\n  - inner\n- two\n\nAfter.\n");
+    const targets = dropTargets(editor.view.state.doc, block(editor, "inner"), "after");
+    expect(targets.map((t) => t.parent?.node.firstChild?.textContent ?? "top")).toEqual(["top", "one", "inner"]);
+    drop(editor, "After", "inner", "after", 0);
+    expect(editor.save()).toBe("- one\n  - inner\n\nAfter.\n\n- two\n");
   });
 
   test("an item into a nested list", async () => {
     const editor = await open("- one\n  - inner\n- two\n");
-    drop(editor, "two", "inner", "after");
+    drop(editor, "two", "inner", "after", 1);
     expect(editor.save()).toBe("- one\n  - inner\n  - two\n");
+  });
+
+  test("below the line of an item with nested blocks, only nested first", async () => {
+    const editor = await open("- one\n  - inner\n\nNew.\n");
+    const targets = dropTargets(editor.view.state.doc, block(editor, "one"), "after");
+    expect(targets).toHaveLength(1);
+    drop(editor, "New", "one", "after");
+    expect(editor.save()).toBe("- one\n\n  New.\n  - inner\n");
+  });
+
+  test("the gap between two items offers the same places from either side of it", async () => {
+    const editor = await open("- one\n- two\n");
+    const { doc } = editor.view.state;
+    const places = (over: string, side: "before" | "after") =>
+      dropTargets(doc, block(editor, over), side).map((t) => [t.pos, t.parent?.pos ?? null]);
+    expect(places("two", "before")).toEqual(places("one", "after"));
+    expect(places("two", "before")).toHaveLength(2); // after "one", or nested in it
+  });
+
+  test("a block nested in an item can be dragged out of it from over itself", async () => {
+    const editor = await open("- text\n\n  ![](a.png)\n\nAfter.\n");
+    const { doc } = editor.view.state;
+    let imagePos = -1;
+    doc.descendants((n, p) => {
+      if (n.type.name === "image") imagePos = p;
+    });
+    const image = blockAt(doc, imagePos)!;
+    expect(image.node.type.name).toBe("paragraph");
+    // Over the top half of the image itself: the top level is offered too.
+    const targets = dropTargets(doc, image, "before", image);
+    expect(targets.map((t) => t.parent?.node.firstChild?.textContent ?? "top")).toEqual(["top", "text"]);
+    editor.commands.moveBlockTo(image, targets[0].pos);
+    expect(editor.save()).toBe("- text\n\n![](a.png)\n\nAfter.\n");
+  });
+
+  test("not into itself", async () => {
+    const editor = await open("- one\n  - inner\n");
+    const targets = dropTargets(editor.view.state.doc, block(editor, "inner"), "after", block(editor, "one"));
+    expect(targets.map((t) => t.parent)).toEqual([null]); // only right after it, where it is
+    expect(drop(editor, "one", "inner", "after")).toBe(false);
   });
 });
 
@@ -235,7 +273,7 @@ describe("turning into", () => {
   test.each([
     ["- one\n- two\n", "two", "text", "- one\n\ntwo\n"],
     ["- one\n- two\n", "two", "heading2", "- one\n\n## two\n"],
-    ["- one\n- two\n", "two", "numberedList", "1. one\n2. two\n"],
+    ["- one\n- two\n", "two", "numberedList", "- one\n\n1. two\n"],
     ["- one\n- two\n", "two", "taskList", "- one\n- [ ] two\n"],
     ["- [x] one\n", "one", "bulletList", "- one\n"],
     ["1. one\n", "one", "taskList", "1. [ ] one\n"],
