@@ -52,7 +52,7 @@ const KEYS: { key: string; ctrlKey?: boolean; shiftKey?: boolean; keeps: Keeps }
 ];
 
 const FORMATS: BlockFormat[] = [
-  "text", "heading1", "heading2", "bulletList", "numberedList", "taskList", "quote", "codeBlock", "divider", "table",
+  "text", "heading1", "heading2", "toggle", "toggleHeading1", "toggleHeading2", "bulletList", "numberedList", "taskList", "quote", "codeBlock", "divider", "table",
 ];
 
 const action = fc.oneof(

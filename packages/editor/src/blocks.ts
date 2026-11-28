@@ -1,5 +1,6 @@
 // Blocks, as in Notion: each top-level element of the page is a block, and so
-// is each block nested in a list item (lists.ts), list items included. These
+// is each block nested in a list item (lists.ts) or a toggle (toggles.ts),
+// list items and toggles included. These
 // are the operations on them the block handle, its menu and the keyboard
 // use: find the block at a position, select, delete, duplicate, move (by a
 // step, or to where it was dragged) and add a new one. Free of any UI
@@ -17,10 +18,30 @@ export interface Block {
 const isListItem = (node: Node | null | undefined) => node?.type.name === "list_item";
 
 /**
- * Whether a child of `parent` at `index` is a block: anything at the top
- * level, and anything nested in a list item except the item's own line.
+ * A block with a line of its own (its first child) and blocks nested under
+ * it: a list item, or a toggle (its heading, and what folds under it).
  */
-const holdsBlock = (parent: Node, index: number) => parent.type.name === "doc" || (isListItem(parent) && index > 0);
+export const isContainer = (node: Node | null | undefined): boolean =>
+  node?.type.name === "list_item" || node?.type.name === "toggle";
+
+/**
+ * Whether a child of `parent` at `index` is a block: anything at the top
+ * level, and anything nested in a container except its own line.
+ */
+const holdsBlock = (parent: Node, index: number) => parent.type.name === "doc" || (isContainer(parent) && index > 0);
+
+/** The container (list item or toggle) whose own line the selection is in. */
+export function lineOwnerAtCursor(state: EditorState): Block | null {
+  const { $from } = state.selection;
+  if (state.selection instanceof NodeSelection || $from.depth < 2) return null;
+  const owner = $from.node(-1);
+  if (!isContainer(owner) || $from.index(-1) !== 0) return null;
+  return { pos: $from.before(-1), node: owner };
+}
+
+/** Whether the toggle at a position is closed, for code that only has the document (see toggles.ts). */
+export type IsFolded = (pos: number) => boolean;
+const NOTHING_FOLDED: IsFolded = () => false;
 
 /** The block `$pos` is in: the innermost one (see `holdsBlock`). */
 function blockAtResolved($pos: ResolvedPos): Block | null {
@@ -204,15 +225,18 @@ export interface DropTarget {
   /** The block under the pointer, and which half of its line. */
   block: Block;
   side: "before" | "after";
-  /** The list item the block would be nested in, or null for the top level. */
+  /** The container (list item or toggle) the block would be nested in, or null for the top level. */
   parent: Block | null;
 }
 
-/** The list item `pos` is directly inside, if any. */
+/** The container `pos` is directly inside, if any. */
 function parentItem(doc: Node, pos: number): Block | null {
   const $pos = doc.resolve(pos);
-  return $pos.depth > 0 && isListItem($pos.parent) ? { pos: $pos.before(), node: $pos.parent } : null;
+  return $pos.depth > 0 && isContainer($pos.parent) ? { pos: $pos.before(), node: $pos.parent } : null;
 }
+
+/** A container whose nested blocks show: a list item, or an open toggle. */
+const showsNested = (block: Block, folded: IsFolded) => isContainer(block.node) && !folded(block.pos);
 
 /**
  * The places after `block` as a whole, from the deepest out: right after
@@ -232,36 +256,37 @@ function placesAfter(doc: Node, block: Block): DropTarget[] {
 
 /**
  * The places in the gap below `over`'s line, from the deepest out: nested
- * first in it when it's a list item, then (unless it has blocks nested
- * under that line) after it and each item it closes.
+ * first in it when it's a list item or an open toggle, then (unless it has
+ * blocks nested under that line) after it and each item it closes.
  */
-function placesBelowLine(doc: Node, over: Block): DropTarget[] {
-  if (!isListItem(over.node)) return placesAfter(doc, over);
+function placesBelowLine(doc: Node, over: Block, folded: IsFolded): DropTarget[] {
+  if (!showsNested(over, folded)) return placesAfter(doc, over);
   const nested = { pos: over.pos + 1 + over.node.firstChild!.nodeSize, block: over, side: "after" as const, parent: over };
   return over.node.childCount > 1 ? [nested] : [nested, ...placesAfter(doc, over)];
 }
 
 /**
  * The block whose line is right above `block` on screen: the one before it
- * (or the last block nested in that, at any depth), or the item it's nested
- * in when it's the first block there. Null for the first block of the page.
+ * (or the last block shown nested in that, at any depth), or the container
+ * it's nested in when it's the first block there. Null for the first block
+ * of the page.
  */
-function lineAbove(doc: Node, block: Block): Block | null {
+function lineAbove(doc: Node, block: Block, folded: IsFolded): Block | null {
   const $pos = doc.resolve(block.pos);
   const index = $pos.index();
   if (index === 0) return null;
-  if (isListItem($pos.parent) && index === 1) return { pos: $pos.before(), node: $pos.parent };
+  if (isContainer($pos.parent) && index === 1) return { pos: $pos.before(), node: $pos.parent };
   let above: Block = { pos: block.pos - $pos.nodeBefore!.nodeSize, node: $pos.nodeBefore! };
-  while (isListItem(above.node) && above.node.childCount > 1) {
+  while (showsNested(above, folded) && above.node.childCount > 1) {
     above = { pos: above.pos + above.node.nodeSize - 1 - above.node.lastChild!.nodeSize, node: above.node.lastChild! };
   }
   return above;
 }
 
 /** The places in the gap above `block`'s line: the same gap as below the line above it. */
-function placesAbove(doc: Node, block: Block): DropTarget[] {
-  const above = lineAbove(doc, block);
-  return above ? placesBelowLine(doc, above) : [{ pos: block.pos, block, side: "before", parent: parentItem(doc, block.pos) }];
+function placesAbove(doc: Node, block: Block, folded: IsFolded): DropTarget[] {
+  const above = lineAbove(doc, block, folded);
+  return above ? placesBelowLine(doc, above, folded) : [{ pos: block.pos, block, side: "before", parent: parentItem(doc, block.pos) }];
 }
 
 const depthOf = (doc: Node, target: DropTarget) => doc.resolve(target.pos).depth;
@@ -277,18 +302,27 @@ const depthOf = (doc: Node, target: DropTarget) => doc.resolve(target.pos).depth
  * the places offered include moving it out of the item it's in. Places
  * inside it are left out; places right where it is stay, so each level
  * keeps its place in the list (dropping there does nothing).
+ *
+ * `folded` says which toggles are closed: nothing can be dropped among
+ * blocks that don't show.
  */
-export function dropTargets(doc: Node, over: Block, side: "before" | "after", dragged?: Block): DropTarget[] {
+export function dropTargets(
+  doc: Node,
+  over: Block,
+  side: "before" | "after",
+  dragged?: Block,
+  folded: IsFolded = NOTHING_FOLDED,
+): DropTarget[] {
   let places: DropTarget[];
   const from = dragged?.pos ?? -1;
   const to = dragged ? dragged.pos + dragged.node.nodeSize : -1;
   if (dragged && over.pos >= from && over.pos < to) {
     places = placesAfter(doc, dragged);
-    for (const place of placesAbove(doc, dragged)) {
+    for (const place of placesAbove(doc, dragged, folded)) {
       if (!places.some((p) => p.parent?.pos === place.parent?.pos)) places.push(place);
     }
   } else {
-    places = side === "before" ? placesAbove(doc, over) : placesBelowLine(doc, over);
+    places = side === "before" ? placesAbove(doc, over, folded) : placesBelowLine(doc, over, folded);
   }
   places = places.filter((p) => p.pos <= from || p.pos >= to);
   return places.sort((a, b) => depthOf(doc, a) - depthOf(doc, b));

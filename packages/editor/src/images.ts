@@ -6,7 +6,7 @@
 import { Fragment, type Node } from "@milkdown/kit/prose/model";
 import { Plugin, TextSelection } from "@milkdown/kit/prose/state";
 import type { EditorView, NodeView } from "@milkdown/kit/prose/view";
-import { type Block, blockAt } from "./blocks.ts";
+import { type Block, blockAt, isContainer } from "./blocks.ts";
 
 export interface ImageOptions {
   /** The address to load an image from, given its `src` as written in the page. Default: as written. */
@@ -116,9 +116,9 @@ export async function insertImages(
   const tr = state.tr;
   const parent = $pos.parent;
   // The block whose text the position is in: the text block itself, or the
-  // list item whose line it is. Not a table, whose cells take images inline.
+  // list item or toggle whose line it is. Not a table, whose cells take images inline.
   const found = parent.isTextblock && $pos.depth > 0 ? blockAt(state.doc, $pos.pos) : null;
-  const around = found && (found.pos === $pos.before() || (found.node.type.name === "list_item" && found.pos === $pos.before(-1))) ? found : null;
+  const around = found && (found.pos === $pos.before() || (isContainer(found.node) && found.pos === $pos.before(-1))) ? found : null;
   const put = (from: number, to: number) => {
     tr.replaceWith(from, to, blocks);
     tr.setSelection(TextSelection.near(tr.doc.resolve(from + blocks.size)));

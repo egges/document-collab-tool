@@ -67,7 +67,10 @@ test("the slash menu filters, navigates and inserts", async () => {
     view.dispatch(view.state.tr.insertText("/head", end - 1, end));
   });
   const options = () => [...container.querySelectorAll(".page-slash-menu [role=option]")].map((o) => o.textContent);
-  expect(options()).toEqual(["H1Heading 1#", "H2Heading 2##", "H3Heading 3###"]);
+  expect(options()).toEqual([
+    "H1Heading 1#", "H2Heading 2##", "H3Heading 3###",
+    "▸H1Toggle heading 1", "▸H2Toggle heading 2", "▸H3Toggle heading 3",
+  ]);
 
   await press(editor, "ArrowDown");
   expect(container.querySelector(".page-slash-menu .active")?.textContent).toContain("Heading 2");
@@ -233,6 +236,16 @@ describe("block handle", () => {
     expect(submenu.querySelector("[aria-checked=true]")?.textContent).toContain("Text");
     await act(() => item(submenu, "Heading 2").click());
     expect(editor.save()).toBe("## First.\n\nFirst.\n");
+  });
+
+  test("Turn into opens on the block's own kind, a toggle list too", async () => {
+    const editor = await mount("<details>\n<summary>My toggle</summary>\n\nInside.\n\n</details>\n");
+    const menu = await openMenu(editor, "My toggle");
+    const key = (k: string) => act(() => menu.dispatchEvent(new KeyboardEvent("keydown", { key: k, bubbles: true })));
+    await key("ArrowRight");
+    const submenu = menu.querySelector<HTMLElement>(".page-block-submenu")!;
+    expect(submenu.querySelector("[aria-checked=true]")?.textContent).toContain("Toggle list");
+    expect(submenu.querySelector(".active")?.textContent).toContain("Toggle list");
   });
 
   test("the menu works from the keyboard", async () => {

@@ -19,6 +19,7 @@ import { keymap } from "@milkdown/kit/prose/keymap";
 import { BLOCK_KEYS, blockStatePlugin } from "./blocks.ts";
 import { placeholderPlugin } from "./placeholder.ts";
 import { lists } from "./lists.ts";
+import { toggles } from "./toggles.ts";
 import { type ImageOptions, imagesPlugin } from "./images.ts";
 import { SaveRefusedError, findLostContent } from "./check.ts";
 import { codeBlocks } from "./code/index.ts";
@@ -120,6 +121,7 @@ async function createMilkdown(
     .use(commonmark)
     .use(gfmWithoutLists)
     .use(lists)
+    .use(toggles)
     .use(tableWidthsPlugins)
     .use(codeBlocks)
     .use(history)
