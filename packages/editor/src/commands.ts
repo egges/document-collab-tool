@@ -197,13 +197,14 @@ export function createCommands(editor: Editor) {
      */
     setBlock(format: BlockFormat): boolean {
       const v = view();
-      if (format === "divider") return run(insertHrCommand.key);
-      if (format === "table") return run(insertTableCommand.key, { row: 3, col: 3 });
       if (format === "bulletList" || format === "numberedList" || format === "taskList") {
         const listType = format === "bulletList" ? "bullet" : format === "numberedList" ? "ordered" : null;
         return dispatchIf(v, setListType(v.state, listType, format === "taskList"));
       }
+      // A rule or table can't be an item's line, so the item becomes text first.
       dispatchIf(v, itemToText(v.state));
+      if (format === "divider") return run(insertHrCommand.key);
+      if (format === "table") return run(insertTableCommand.key, { row: 3, col: 3 });
       if (format !== "quote") leaveQuote(v);
       switch (format) {
         case "text":

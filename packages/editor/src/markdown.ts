@@ -62,18 +62,21 @@ const isEmptyParagraph = (node: Node) => node.type.name === "paragraph" && node.
 
 /**
  * Removes empty paragraphs (the blank lines left by pressing Enter twice)
- * from the top level of a page and from quotes. Markdown can't store them:
- * Milkdown would write each one as a `<br />` line.
+ * from the top level of a page, from quotes and from list items (except an
+ * item's own line). Markdown can't store them: Milkdown would write each one
+ * as a `<br />` line.
  */
 export function withoutEmptyParagraphs(node: Node): Node {
   let changed = false;
   const children: Node[] = [];
-  node.forEach((child) => {
-    if (isEmptyParagraph(child)) {
+  const isItem = node.type.name === "list_item";
+  node.forEach((child, _offset, index) => {
+    if (isEmptyParagraph(child) && !(isItem && index === 0)) {
       changed = true;
       return;
     }
-    const cleaned = child.type.name === "blockquote" ? withoutEmptyParagraphs(child) : child;
+    const holdsBlocks = child.type.name === "blockquote" || child.type.name === "list_item";
+    const cleaned = holdsBlocks ? withoutEmptyParagraphs(child) : child;
     if (cleaned !== child) changed = true;
     // A quote left with nothing in it goes too.
     if (cleaned.type.name === "blockquote" && cleaned.childCount === 0) return;

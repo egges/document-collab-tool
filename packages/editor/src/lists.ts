@@ -89,7 +89,10 @@ export const listItemSchema = $nodeSchema("list_item", () => ({
       const { listType, checked, start, spread, loose } = node.attrs;
       // A list of one; `joinLists` joins it with its neighbours.
       state.openNode("list", undefined, { ordered: listType === "ordered", start: start ?? undefined, spread: loose });
-      state.openNode("listItem", undefined, { spread, ...(checked != null ? { checked } : {}) });
+      // An empty line is written as `<br />`, which starts an HTML block
+      // that runs until a blank line: what's nested under it needs one.
+      const emptyLine = node.firstChild!.content.size === 0 && node.childCount > 1;
+      state.openNode("listItem", undefined, { spread: spread || emptyLine, ...(checked != null ? { checked } : {}) });
       state.next(node.content);
       state.closeNode();
       state.closeNode();
