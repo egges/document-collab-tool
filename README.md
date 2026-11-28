@@ -68,6 +68,8 @@ the editor). The desktop app ships with its own git.
 ## Next
 
 The plan, in order, with what is done: [docs/roadmap.md](docs/roadmap.md).
+Bugs, features and chores are tracked in
+[GitHub issues](https://github.com/egges/sawmill/issues).
 
 Where it is going: the place a company's team works, with pages, conversation
 and agents that do much of the work, all in git repositories the company
