@@ -86,6 +86,12 @@ Follow these whenever you work in this repo.
 - When either finds a bug, fast-check prints a small Markdown page (and the
   steps): fix it, then add that case as an example test next to the
   feature's other tests.
+- jsdom has no layout, so menu placement is checked in a real browser:
+  run the editor demo (`npx vite demo --port 5191` in `packages/editor`)
+  and drive it with `playwright-core@1.49.1` installed in the scratchpad.
+  That version matches the WebKit already in `~/Library/Caches/ms-playwright`
+  (`webkit-2104`), so nothing needs downloading. Keep placement logic in
+  pure functions (`placeMenu` in react/position.ts) so it can be unit-tested.
 - Milkdown writes an empty paragraph as `<br />`, an HTML block that runs
   until a blank line. An empty item's line is written that way too (a bare
   `-` under a line reads as a heading underline, and `- [ ]` as text), so
