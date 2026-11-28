@@ -16,9 +16,10 @@
 // its text: `<summary>Agent steps</summary>`. The line is HTML, so its
 // formatting is written as HTML (`<strong>`, `<a href>`...) too.
 //
-// Whether a toggle is open is per device and isn't saved: toggles start
-// closed when a page opens, a new one starts open, and one opens when the
-// cursor goes into what it hides (a search, undo, a drop).
+// Whether a toggle is open is per device and isn't saved in the page: a new
+// toggle starts open, and one opens when the cursor goes into what it hides
+// (a search, undo, a drop). A page opens with its toggles closed, except
+// those the app remembered as open (`openToggles`, `openOnly`).
 import type { MilkdownPlugin } from "@milkdown/kit/ctx";
 import { Fragment, DOMParser as SchemaParser, type Mark, type Node, type NodeType, type Schema } from "@milkdown/kit/prose/model";
 import { type Command, type EditorState, NodeSelection, Plugin, PluginKey, TextSelection, type Transaction } from "@milkdown/kit/prose/state";
@@ -241,7 +242,8 @@ const bodyStart = (pos: number, toggle: Node) => pos + 1 + toggle.firstChild!.no
 /** The closed toggles, by position. Everything else is open. */
 const foldKey = new PluginKey<number[]>("page-toggles");
 
-type FoldChange = { pos: number; folded: boolean };
+/** One toggle opened or closed, or (`open`) every toggle closed but these. */
+type FoldChange = { pos: number; folded: boolean } | { open: number[] };
 
 export function isFolded(state: EditorState, pos: number): boolean {
   return foldKey.getState(state)?.includes(pos) ?? false;
@@ -260,6 +262,37 @@ export function setFolded(state: EditorState, pos: number, folded: boolean): Tra
     }
   }
   return tr;
+}
+
+/**
+ * The open toggles, as keys that still find them when the page is opened
+ * again, even after edits elsewhere: each toggle's line, and how many
+ * toggles with that line come before it.
+ */
+export function openToggles(state: EditorState): string[] {
+  const folded = foldKey.getState(state) ?? [];
+  return toggleKeys(state.doc)
+    .filter(([pos]) => !folded.includes(pos))
+    .map(([, key]) => key);
+}
+
+/** Closes every toggle but those with keys in `open` (from `openToggles`). */
+export function openOnly(state: EditorState, open: string[]): Transaction {
+  const keys = new Set(open);
+  const positions = toggleKeys(state.doc)
+    .filter(([, key]) => keys.has(key))
+    .map(([pos]) => pos);
+  return state.tr.setMeta(foldKey, { open: positions } satisfies FoldChange);
+}
+
+function toggleKeys(doc: Node): [pos: number, key: string][] {
+  const seen = new Map<string, number>();
+  return allToggles(doc).map((pos) => {
+    const line = doc.nodeAt(pos)!.firstChild!.textContent;
+    const n = seen.get(line) ?? 0;
+    seen.set(line, n + 1);
+    return [pos, `${n}:${line}`];
+  });
 }
 
 function allToggles(doc: Node): number[] {
@@ -321,7 +354,8 @@ function foldPlugin(): Plugin {
           if (lost.length) next.push(...movedHere(tr, old.doc, state.doc, lost));
         }
         const change = tr.getMeta(foldKey) as FoldChange | undefined;
-        if (change) next = change.folded ? [...next.filter((p) => p !== change.pos), change.pos] : next.filter((p) => p !== change.pos);
+        if (change && "open" in change) next = allToggles(state.doc).filter((p) => !change.open.includes(p));
+        else if (change) next = change.folded ? [...next.filter((p) => p !== change.pos), change.pos] : next.filter((p) => p !== change.pos);
         // Never hide the cursor: the toggles around it open.
         const { anchor, head } = state.selection;
         const hiding = next.filter((p) => hides(state.doc, p, anchor) || hides(state.doc, p, head));
