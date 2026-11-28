@@ -91,7 +91,11 @@ Follow these whenever you work in this repo.
   and drive it with `playwright-core@1.49.1` installed in the scratchpad.
   That version matches the WebKit already in `~/Library/Caches/ms-playwright`
   (`webkit-2104`), so nothing needs downloading. Keep placement logic in
-  pure functions (`placeMenu` in react/position.ts) so it can be unit-tested.
+  pure functions (`placement.ts`) so it can be unit-tested.
+- Menus scroll their active row with `showRow` (placement.ts), never
+  `scrollIntoView`: that also scrolls the page, which moves the menu away
+  from where it was just placed. And a `DOMRect`'s fields are getters, so
+  `{ ...rect }` copies nothing.
 - Milkdown writes an empty paragraph as `<br />`, an HTML block that runs
   until a blank line. An empty item's line is written that way too (a bare
   `-` under a line reads as a heading underline, and `- [ ]` as text), so
