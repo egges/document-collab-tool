@@ -4,6 +4,7 @@ import { commonmark } from "@milkdown/kit/preset/commonmark";
 import { gfm } from "@milkdown/kit/preset/gfm";
 import {
   SaveRefusedError,
+  blockAt,
   createPageEditor,
   findLostContent,
   formatPage,
@@ -91,6 +92,16 @@ describe("file format", () => {
   test("front matter is only recognised at the very top", () => {
     expect(splitFrontMatter("text\n---\na: 1\n---\n").frontMatter).toBe("");
     expect(splitFrontMatter("---\na: 1\n---\nbody\n")).toEqual({ frontMatter: "---\na: 1\n---\n", body: "body\n" });
+  });
+
+  test("a rule at the top of a page isn't saved as front matter", async () => {
+    const editor = await open("Text.\n\n---\n\nMore.\n\n---\n");
+    const first = blockAt(editor.view.state.doc, 1)!;
+    editor.commands.moveBlockTo(first, editor.view.state.doc.content.size);
+    const saved = editor.save()!;
+    expect(saved).toBe("***\n\nMore.\n\n---\n\nText.\n");
+    expect(splitFrontMatter(saved).frontMatter).toBe("");
+    await editor.destroy();
   });
 
   test("house style: dash bullets and rules, unpadded tables", async () => {
