@@ -60,6 +60,21 @@ Follow these whenever you work in this repo.
   `joinListsOnSave` in lists.ts); the clipboard reads it lazily, so it
   gets the wrapper too.
 
+- Milkdown's Markdown spelling is decided by remark-stringify's `join`
+  rules (`configureHouseStyle` in markdown.ts). In a tight list item the
+  blocks are joined with no blank line, so anything that can continue the
+  block before it (paragraph, table) or turn it into a heading (a rule)
+  needs a `join` rule of ours.
+
+## Testing the editor
+
+- `test/dragging.test.ts` drops every block at every offered place on
+  random pages (`test/randomPages.ts`, fast-check) and checks content,
+  nesting, save-and-reopen and undo. For a deeper search before merging
+  editor changes: `RUNS=3000 npx vitest run test/dragging.test.ts </dev/null`.
+- When it finds a bug, fast-check prints a small Markdown page: fix it, then
+  add that case as an example test in `blocks.test.ts`.
+
 ## Merging PRs
 
 - After merging a PR, switch the checkout back to `main` (and pull) **before** settling/organizing the thread.

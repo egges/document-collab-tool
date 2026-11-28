@@ -15,8 +15,20 @@ export function configureHouseStyle(ctx: Ctx): void {
     ...options,
     bullet: "-" as const,
     rule: "-" as const,
+    join: [...(options.join ?? []), separateInItem],
   }));
   ctx.set(remarkGFMPlugin.options.key, { tablePipeAlign: false });
+}
+
+/**
+ * In a tight list item, the blocks in it follow each other without a blank
+ * line. A paragraph or table there would read as more of the block before it
+ * (a line, a nested list, a quote), and a rule would turn a line before it
+ * into a heading, so those get a blank line.
+ */
+function separateInItem(_left: { type: string }, right: { type: string }, parent: { type: string }): number | undefined {
+  const continues = right.type === "paragraph" || right.type === "table" || right.type === "thematicBreak";
+  return parent.type === "listItem" && continues ? 1 : undefined;
 }
 
 const FRONT_MATTER = /^---\r?\n[\s\S]*?\r?\n---\r?\n/;
@@ -34,8 +46,13 @@ export function splitFrontMatter(markdown: string): { frontMatter: string; body:
   return { frontMatter: match[0], body: markdown.slice(match[0].length) };
 }
 
-/** The final bytes for page.md: front matter, then the body ending in exactly one newline. */
+/**
+ * The final bytes for page.md: front matter, then the body ending in exactly
+ * one newline. A page without front matter that starts with a rule gets that
+ * rule as `***`: as `---` it would read as front matter up to the next rule.
+ */
 export function joinPage(frontMatter: string, body: string): string {
+  if (!frontMatter && body.match(FRONT_MATTER)) body = `***${body.slice(3)}`;
   const trimmed = body.replace(/\s+$/, "");
   const text = trimmed === "" ? "" : `${trimmed}\n`;
   return frontMatter + (frontMatter && text ? "\n" : "") + text;

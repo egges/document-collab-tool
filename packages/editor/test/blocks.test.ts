@@ -209,6 +209,22 @@ describe("moving by dragging", () => {
     expect(targets.map((t) => t.parent)).toEqual([null]); // only right after it, where it is
     expect(drop(editor, "one", "inner", "after")).toBe(false);
   });
+
+  // Found by dragging.test.ts: in a tight item these read back as part of the block above.
+  test("a table, rule or paragraph nested in a tight item is saved apart from what's above it", async () => {
+    const table = await open("| a | b |\n| - | - |\n| c | d |\n\n- one\n  - inner\n");
+    drop(table, "a", "inner", "after", 1);
+    expect(table.save()).toBe("- one\n  - inner\n\n  | a | b |\n  | - | - |\n  | c | d |\n");
+
+    const rule = await open("---\n\n- one\n- two\n");
+    const hr = blockAt(rule.view.state.doc, 0)!;
+    rule.commands.moveBlockTo(hr, dropTargets(rule.view.state.doc, block(rule, "one"), "after", hr).at(-1)!.pos);
+    expect(rule.save()).toBe("- one\n\n  ---\n- two\n");
+
+    const paragraph = await open("Text.\n\n- one\n  - inner\n");
+    drop(paragraph, "Text", "inner", "after", 1);
+    expect(paragraph.save()).toBe("- one\n  - inner\n\n  Text.\n");
+  });
 });
 
 describe("adding a block", () => {
