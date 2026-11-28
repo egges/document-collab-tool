@@ -128,14 +128,17 @@ const dedent: Command = (state, dispatch) => {
 };
 
 /**
- * Backspace: in an empty block, back to text; between an empty pair, both
- * go; in the indentation, back one level.
+ * Backspace: in an empty block, back to text; at the very start, nothing
+ * (joined to the block above, the code's line breaks would end up in a
+ * paragraph); between an empty pair, both go; in the indentation, back one
+ * level.
  */
 const backspace: Command = (state, dispatch) => {
   const code = inCode(state);
   if (!code || !state.selection.empty) return false;
   const { text, from } = code;
   if (!text) return setBlockType(state.schema.nodes.paragraph)(state, dispatch);
+  if (from === 0) return true;
   const prev = text[from - 1];
   if (prev && PAIRS[prev] && text[from] === PAIRS[prev]) {
     dispatch?.(state.tr.delete(code.start + from - 1, code.start + from + 1));

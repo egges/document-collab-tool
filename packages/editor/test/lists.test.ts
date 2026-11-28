@@ -122,6 +122,30 @@ describe("Enter", () => {
   });
 });
 
+// Found by keyboard.test.ts.
+describe("empty lines in items", () => {
+  test("an empty item with items nested in it keeps them", async () => {
+    const editor = await open("- one\n  - inner\n");
+    cursor(editor, "inner", { atStart: true });
+    press(editor, "Enter"); // an empty item above "inner"
+    const { view } = editor;
+    view.dispatch(view.state.tr.setSelection(TextSelection.create(view.state.doc, view.state.selection.from - 4)));
+    expect(view.state.selection.$from.parent.content.size).toBe(0);
+    press(editor, "Enter"); // out a level, with "inner" nested in it
+    const saved = editor.save()!;
+    expect(saved).toBe("- one\n- <br />\n\n  - inner\n");
+    const reopened = await open(saved);
+    expect(reopened.view.state.doc.toString()).toBe(editor.view.state.doc.toString());
+  });
+
+  test("empty paragraphs nested in an item aren't saved", async () => {
+    const editor = await open("- one\n\n  Nested.\n");
+    cursor(editor, "Nested.");
+    press(editor, "Enter");
+    expect(editor.save()).toBeNull(); // the file stays as it is
+  });
+});
+
 describe("Tab and Shift-Tab", () => {
   test("Tab nests an item in the one before, with what's nested in it", async () => {
     const editor = await open("- one\n- two\n  - inner\n");

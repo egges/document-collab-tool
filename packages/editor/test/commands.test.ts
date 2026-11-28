@@ -99,6 +99,19 @@ describe("block formats", () => {
     expect(third.save()).toMatch(/\| +\| +\| +\|\n\| :?- \| :?- \| :?- \|\n/);
     await third.destroy();
   });
+
+  // Found by keyboard.test.ts: a rule or table can't be an item's line.
+  test("a divider or table chosen on an empty list item replaces the item", async () => {
+    for (const format of ["divider", "table"] as const) {
+      const editor = await open("Text.\n");
+      select(editor, "Text.", { cursor: true });
+      editor.commands.setBlock("bulletList");
+      editor.view.dispatch(editor.view.state.tr.delete(2, 7)); // the page is one empty item
+      editor.commands.setBlock(format);
+      expect(editor.view.state.doc.firstChild!.type.name).toBe(format === "divider" ? "hr" : "table");
+      await editor.destroy();
+    }
+  });
 });
 
 test("to-do items tick and untick", async () => {

@@ -199,6 +199,15 @@ describe("keys in code blocks", () => {
     });
   });
 
+  // Found by keyboard.test.ts: joined to the paragraph above, the line breaks couldn't be saved.
+  test("Backspace at the start of a block does nothing", async () => {
+    await withEditor("Text.\n\n```\na\nb\n```\n", (editor, view) => {
+      cursorAt(view, codeStart(view));
+      press(view, "Backspace");
+      expect(editor.save()).toBeNull();
+    });
+  });
+
   test("Down on the last line of the page's last block adds a line after it", async () => {
     await withEditor("```\nx\n```\n", (editor, view) => {
       cursorAt(view, codeStart(view) + 1);

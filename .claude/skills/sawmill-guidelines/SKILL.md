@@ -72,8 +72,16 @@ Follow these whenever you work in this repo.
   random pages (`test/randomPages.ts`, fast-check) and checks content,
   nesting, save-and-reopen and undo. For a deeper search before merging
   editor changes: `RUNS=3000 npx vitest run test/dragging.test.ts </dev/null`.
-- When it finds a bug, fast-check prints a small Markdown page: fix it, then
-  add that case as an example test in `blocks.test.ts`.
+- `test/keyboard.test.ts` does the same for random sequences of keys, "turn
+  into" and typing: valid page, text kept, save-and-reopen, undo all.
+  `RUNS=3000` works there too; run it a few times, as each run has a new seed.
+- When either finds a bug, fast-check prints a small Markdown page (and the
+  steps): fix it, then add that case as an example test next to the
+  feature's other tests.
+- Milkdown writes an empty paragraph as `<br />`, an HTML block that runs
+  until a blank line. An empty item's line is written that way too (a bare
+  `-` under a line reads as a heading underline, and `- [ ]` as text), so
+  what's nested under it needs a blank line before it (lists.ts).
 
 ## Merging PRs
 
